@@ -2238,7 +2238,7 @@
                 enableSwipeNavigation: true,
                 enableProofreading: false, // 校正機能の有効/無効
                 proofreadingModelName: 'gemini-2.0-flash', // 校正用モデルのデフォルト
-                proofreadingSystemInstruction: 'あなたはプロの編集者です。受け取った文章を誤字脱字なく、より自然で論理的な文章に校正してください。元の文章の意図やニュアンスは最大限維持してください。', // 校正用システムプロンプトのデフォルト
+                proofreadingSystemInstruction: 'あなたはプロの編集者です。受け取った文章の過剰な読点を修正し、日本語として違和感のない読点の使い方に校正してください。承知しました等の応答は不要です。校正後の文章のみ出力して下さい。読点の抑制以外の編集は禁止です。', // 校正用システムプロンプトのデフォルト
             },
             backgroundImageUrl: null, // 生成されたオブジェクトURL (DBには保存しない)
             isSending: false,
