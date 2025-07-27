@@ -5028,7 +5028,9 @@
                 if (state.settings.maxTokens !== null) generationConfig.maxOutputTokens = state.settings.maxTokens;
                 if (state.settings.topK !== null) generationConfig.topK = state.settings.topK;
                 if (state.settings.topP !== null) generationConfig.topP = state.settings.topP;
-                const systemInstruction = state.currentSystemPrompt?.trim() ? { parts: [{ text: state.currentSystemPrompt.trim() }] } : null;
+                const systemInstruction = state.currentSystemPrompt?.trim()
+                    ? { role: "system", parts: [{ text: state.currentSystemPrompt.trim() }] }
+                    : null;
 
                 // --- 5. API呼び出しと応答処理 (リトライロジック含む) ---
                 let modelResponseMetadata = {};
