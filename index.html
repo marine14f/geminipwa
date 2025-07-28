@@ -1657,6 +1657,65 @@
         #fileUploadDialog .dialog-actions #cancel-attach-btn:hover:not(:disabled) {
             background-color: var(--bg-dialog-button-cancel-hover);
         }
+
+        /* --- 画像サムネイル表示調整 --- */
+        .message-content img {
+            max-width: 100%; /* ★表示崩れを防ぐための最も重要な設定 */
+            height: auto;    /* 画像の縦横比を維持 */
+            border-radius: 8px; /* 画像の角を少し丸める */
+            cursor: pointer;    /* クリックできることを示すカーソル */
+            transition: opacity 0.2s ease;
+            display: block; /* 画像下の余分なスペースを削除 */
+            margin-top: 5px;
+            margin-bottom: 5px;
+        }
+        .message-content img:hover {
+            opacity: 0.8; /* ホバー時に少し透明にする */
+        }
+
+        /* --- 画像拡大モーダル --- */
+        #image-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.85);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000; /* 他の要素より最前面に表示 */
+            cursor: pointer;
+            animation: fadeIn 0.3s ease;
+        }
+        #image-modal-overlay.hidden {
+            display: none; /* 初期状態は非表示 */
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        #image-modal-img {
+            max-width: 90vw;  /* 画面幅の90%を最大幅とする */
+            max-height: 90vh; /* 画面高さの90%を最大高とする */
+            object-fit: contain; /* アスペクト比を維持してコンテナに収める */
+            box-shadow: 0 0 25px rgba(0,0,0,0.5);
+            cursor: default; /* 画像上では通常のカーソル */
+        }
+        #image-modal-close {
+            position: absolute;
+            top: 20px;
+            right: 35px;
+            color: #fff;
+            font-size: 40px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: color 0.2s ease;
+            line-height: 1;
+        }
+        #image-modal-close:hover {
+            color: #bbb;
+        }
     </style>
     <script src="marked.js"></script>
 </head>
@@ -1706,7 +1765,7 @@
                 <button id="back-to-chat-from-history" class="header-button" aria-label="チャットへ戻る">＞</button>
                 <h1 id="history-title">履歴一覧</h1>
                 <button id="import-history-btn" class="header-save-button" title="履歴をインポート">インポート</button>
-                <input type="file" id="import-history-input" accept=".json" class="hidden"> <!-- インポート用ファイル入力 -->
+                <input type="file" id="import-history-input" accept=".txt,text/plain" class="hidden"> <!-- インポート用ファイル入力 -->
             </header>
             <main class="main-content">
                 <ul id="history-list" class="history-list">
@@ -1857,6 +1916,17 @@
                        ※実際には一括生成を呼び、応答はストリーミング再生を行う。<br>
                        普通のストリーミングより生成待ち時間は長くなる。
                    </p>
+                   <label class="checkbox-label" style="margin-top: 15px;">
+                    <input type="checkbox" id="enable-auto-retry">
+                    APIエラー/ブロック時に自動でリトライする
+                    </label>
+                    <div id="auto-retry-options">
+                        <label for="max-retries">リトライ上限回数:</label>
+                        <input type="number" id="max-retries" step="1" min="0" placeholder="例: 5">
+                        <p style="font-size: 11px; color: var(--text-secondary); margin-top: -5px; margin-bottom: 10px;">
+                            ※ 0に設定するとリトライしません。
+                        </p>
+                    </div>
                 </div>
                 <div class="settings-group">
                     <h3>検索</h3>
@@ -1889,7 +1959,8 @@
                                 <option value="gemini-2.5-flash">gemini-2.5-flash</option>
                             </optgroup>
                              <optgroup label="その他">
-                                <option value="gemini-2.5-pro-preview-05-06">gemini-2.5-pro-preview-05-06</option>
+                                <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+                                <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
                              </optgroup>
                         </select>
                 
@@ -2037,6 +2108,11 @@
         </div>
     </dialog>
 
+    <div id="image-modal-overlay" class="hidden">
+        <span id="image-modal-close">×</span>
+        <img id="image-modal-img" src="" alt="拡大画像">
+    </div>
+
     <script>
         // --- 定数 ---
         const DB_NAME = 'GeminiPWA_DB';
@@ -2064,7 +2140,6 @@
         const ZOOM_THRESHOLD = 1.01; // ズーム状態と判定するスケールの閾値 (誤差考慮)
         const MAX_FILE_SIZE = 10 * 1024 * 1024; // 最大ファイルサイズ (例: 10MB)
         const MAX_TOTAL_ATTACHMENT_SIZE = 50 * 1024 * 1024; // 1メッセージあたりの合計添付ファイルサイズ上限 (例: 50MB) - API制限も考慮
-        const MAX_RETRIES = 30; // APIエラー時の最大リトライ回数
         const INITIAL_RETRY_DELAY = 100; // 初期リトライ遅延時間 (ミリ秒)
 
         // 添付を確定する処理
@@ -2201,6 +2276,10 @@
             selectedFilesList: document.getElementById('selected-files-list'),
             confirmAttachBtn: document.getElementById('confirm-attach-btn'),
             cancelAttachBtn: document.getElementById('cancel-attach-btn'),
+            cancelAttachBtn: document.getElementById('cancel-attach-btn'),
+            enableAutoRetryCheckbox: document.getElementById('enable-auto-retry'),
+            maxRetriesInput: document.getElementById('max-retries'),
+            autoRetryOptionsDiv: document.getElementById('auto-retry-options'),
         };
 
         // --- アプリ状態 ---
@@ -2236,9 +2315,11 @@
                 hideSystemPromptInChat: false, // SP非表示設定 (デフォルトfalse)
                 enableGrounding: false, //ネット検索設定 (デフォルトfalse)
                 enableSwipeNavigation: true,
+                enableAutoRetry: true,
+                maxRetries: 30, 
                 enableProofreading: false, // 校正機能の有効/無効
-                proofreadingModelName: 'gemini-2.0-flash', // 校正用モデルのデフォルト
-                proofreadingSystemInstruction: 'あなたはプロの編集者です。受け取った文章の過剰な読点を修正し、日本語として違和感のない読点の使い方に校正してください。承知しました等の応答は不要です。校正後の文章のみ出力して下さい。読点の抑制以外の編集は禁止です。', // 校正用システムプロンプトのデフォルト
+                proofreadingModelName: 'gemini-2.5-flash', // 校正用モデルのデフォルト
+                proofreadingSystemInstruction: 'あなたはプロの編集者です。受け取った文章の過剰な読点を抑制し、日本語として違和感のない読点の使用量に校正してください。承知しました等の応答は行わず、校正後の文章のみ出力して下さい。読点の抑制以外の編集は禁止です。読点以外の文章には絶対に手を付けないで下さい。', // 校正用システムプロンプトのデフォルト
             },
             backgroundImageUrl: null, // 生成されたオブジェクトURL (DBには保存しない)
             isSending: false,
@@ -3420,6 +3501,10 @@
                 elements.proofreadingSystemInstructionTextarea.value = state.settings.proofreadingSystemInstruction || '';
                 // 校正チェックボックスの状態に応じてオプションの表示/非表示を切り替え
                 elements.proofreadingOptionsDiv.classList.toggle('hidden', !state.settings.enableProofreading);
+                elements.enableAutoRetryCheckbox.checked = state.settings.enableAutoRetry;
+                elements.maxRetriesInput.value = state.settings.maxRetries;
+                // チェックボックスの状態に応じてオプションの表示/非表示を切り替え
+                elements.autoRetryOptionsDiv.classList.toggle('hidden', !state.settings.enableAutoRetry);
 
                 // ユーザー指定モデルをコンボボックスに追加
                 this.updateUserModelOptions();
@@ -3864,6 +3949,7 @@
                     }
                     return value;
                 }, 2));
+                console.log("Geminiへの送信データ:", JSON.stringify(requestBody, null, 2));
                 console.log("ターゲットエンドポイント:", endpoint);
 
                 try {
@@ -3917,107 +4003,90 @@
                  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
                  let buffer = '';
                  let lastCandidateInfo = null;
-                 // processedContentChunks や processedThoughtChunks はここでは不要になる
                  let isCancelled = false;
                  let groundingMetadata = null;
                  let finalUsageMetadata = null; // 最終的なusageMetadataを保持
 
                  try {
                      while (true) {
-                         // キャンセルシグナルをチェック
                          if (state.abortController?.signal.aborted && !isCancelled) {
                              isCancelled = true;
                              console.log("ストリーミング中に中断シグナルを検出");
-                             await reader.cancel("User aborted"); // リーダーをキャンセル
+                             await reader.cancel("User aborted");
                              throw new Error("リクエストがキャンセルされました。");
                          }
 
                          let readResult;
                          try {
-                             // データを読み取る
                              readResult = await reader.read();
                          } catch (readError) {
-                             // 読み取り中にエラーが発生した場合 (キャンセル含む)
                              if (readError.name === 'AbortError' || readError.message === "User aborted" || readError.message.includes("aborted")) {
-                                 if (!isCancelled) { // まだキャンセルされていなければエラーとして投げる
+                                 if (!isCancelled) {
                                      isCancelled = true;
                                      throw new Error("リクエストがキャンセルされました。");
                                  }
-                                 break; // キャンセル済みならループを抜ける
+                                 break;
                              }
-                             throw readError; // その他の読み取りエラー
+                             throw readError;
                          }
 
                          const { value, done } = readResult;
 
-                         if (done) { // ストリーム終了
-                             console.log("ストリーム終了 (done)");
-                             // バッファに残っているデータを処理
+                         if (done) {
                              if (buffer.trim()) {
-                                 // バッファに残っているデータを処理し、yield する
                                  const finalData = parseSseDataForYield(buffer.trim().substring(6));
                                  if (finalData) yield finalData;
                              }
-                             break; // ループを抜ける
+                             break;
                          }
 
-                         // 受信したデータをバッファに追加
                          buffer += value;
-                         // バッファを処理してSSEメッセージを抽出し、逐次 yield する
                          let remainingBuffer = buffer;
                          while (true) {
                              const newlineIndex = remainingBuffer.indexOf('\n');
                              if (newlineIndex === -1) {
-                                 buffer = remainingBuffer; // 未処理分をバッファに戻す
+                                 buffer = remainingBuffer;
                                  break;
                              }
                              const line = remainingBuffer.substring(0, newlineIndex).trim();
                              remainingBuffer = remainingBuffer.substring(newlineIndex + 1);
 
                              if (line.startsWith('data: ')) {
-                                 const chunkData = parseSseDataForYield(line.substring(6)); // 'data: ' を除いたJSON部分をパース
+                                 const chunkData = parseSseDataForYield(line.substring(6));
                                  if (chunkData) {
-                                     // groundingMetadata と usageMetadata を更新
                                      if (chunkData.groundingMetadata) groundingMetadata = chunkData.groundingMetadata;
-                                     if (chunkData.usageMetadata) finalUsageMetadata = chunkData.usageMetadata; // 常に最新で上書き
-                                     yield chunkData; // パースしたデータを yield
+                                     if (chunkData.usageMetadata) finalUsageMetadata = chunkData.usageMetadata;
+                                     yield chunkData;
                                  }
                              } else if (line !== '') {
                                  console.warn("データ以外のSSE行を無視:", line);
                              }
-                             // ループの最後にバッファを更新
                              if (remainingBuffer === '') {
                                 buffer = '';
                                 break;
                              }
                          }
                      }
-                     // 最終的なメタデータを取得
                      const finishReason = lastCandidateInfo?.finishReason;
                      const safetyRatings = lastCandidateInfo?.safetyRatings;
 
-                     // ストリームの最後にメタデータを yield する (識別子付きで)
                      yield {
-                         type: 'metadata', // メタデータであることを示す
+                         type: 'metadata',
                          finishReason: isCancelled ? 'ABORTED' : finishReason,
                          safetyRatings,
-                         groundingMetadata: groundingMetadata, // 最終的なgroundingMetadata
-                         usageMetadata: finalUsageMetadata // 最終的なusageMetadata
+                         groundingMetadata: groundingMetadata,
+                         usageMetadata: finalUsageMetadata
                      };
 
                  } catch (error) {
-                     // ストリーム処理中のエラー
                      console.error("ストリームの読み取り/処理エラー:", error);
                      throw new Error(`ストリーミング処理エラー: ${error.message || error}`, { cause: { originalError: error } });
                  } finally {
-                     // ループ終了後、リーダーがまだ閉じておらず、キャンセルもされていない場合、クリーンアップのためにキャンセルを試みる
                      if (!reader.closed && !isCancelled) {
-                         console.warn("リーダーがループ後に閉じていません。クリーンアップキャンセルを試みます。");
                          try { await reader.cancel("Cleanup cancellation"); } catch(e) { console.error("クリーンアップキャンセル中のエラー:", e); }
                      }
                  }
 
-                 // SSEデータ (JSON) をパースする内部関数 (yield するデータを返すように変更)
                  function parseSseDataForYield(jsonString) {
                      try {
                          const chunkJson = JSON.parse(jsonString);
@@ -4025,14 +4094,13 @@
                              console.error("ストリーム内のエラーメッセージ:", chunkJson.error);
                              const errorMsg = `モデルエラー: ${chunkJson.error.message || JSON.stringify(chunkJson.error)}`;
                              lastCandidateInfo = { error: chunkJson.error, finishReason: 'ERROR' };
-                             // エラーも yield する (type: 'error' などで)
                              return { type: 'error', error: chunkJson.error, message: errorMsg };
                          }
 
                          let contentText = null;
                          let thoughtText = null;
                          let currentGroundingMetadata = null;
-                         let currentUsageMetadata = null; // このチャンクのusageMetadata
+                         let currentUsageMetadata = null;
 
                          if (chunkJson.candidates && chunkJson.candidates.length > 0) {
                              lastCandidateInfo = chunkJson.candidates[0];
@@ -4051,26 +4119,28 @@
                                  currentGroundingMetadata = lastCandidateInfo.groundingMetadata;
                              }
                          } else if (chunkJson.promptFeedback) {
+                             // ★★★【修正点】ブロック理由を'SAFETY'に固定せず、APIの応答から取得します。
                              console.warn("ストリーム内のプロンプトフィードバック:", chunkJson.promptFeedback);
-                             lastCandidateInfo = { finishReason: 'SAFETY', safetyRatings: chunkJson.promptFeedback.safetyRatings };
-                             // promptFeedbackも yield するか検討 (ここでは省略)
-                             return null; // または適切なデータを返す
+                             const blockReason = chunkJson.promptFeedback.blockReason || 'SAFETY'; // APIからの理由を優先
+                             lastCandidateInfo = { finishReason: blockReason, safetyRatings: chunkJson.promptFeedback.safetyRatings };
+                             // メタデータとしてyieldすることで、呼び出し元に具体的な理由を伝えます。
+                             return { type: 'metadata', finishReason: blockReason, safetyRatings: chunkJson.promptFeedback.safetyRatings };
                          }
 
-                         if (chunkJson.usageMetadata) { // usageMetadataをチェック
+                         if (chunkJson.usageMetadata) {
                              currentUsageMetadata = chunkJson.usageMetadata;
                          }
 
                          if (contentText !== null || thoughtText !== null || currentGroundingMetadata || currentUsageMetadata) {
                              return {
-                                 type: 'chunk', // 通常のチャンクであることを示す
+                                 type: 'chunk',
                                  contentText,
                                  thoughtText,
-                                 groundingMetadata: currentGroundingMetadata, // このチャンクのgroundingMetadata
-                                 usageMetadata: currentUsageMetadata // このチャンクのusageMetadata
+                                 groundingMetadata: currentGroundingMetadata,
+                                 usageMetadata: currentUsageMetadata
                              };
                          }
-                         return null; // 有効なデータがなければnull
+                         return null;
                      } catch (parseError) {
                          console.warn("ストリーム内の不正なJSONをスキップ:", jsonString, parseError);
                          return null;
@@ -4166,6 +4236,42 @@
                     uiUtils.setSendingState(false); // 送信状態をリセット
                     uiUtils.scrollToBottom();
                 }
+                // --- 画像クリックでモーダル表示 ---
+                elements.messageContainer.addEventListener('click', (event) => {
+                    // クリックされたのが画像(IMGタグ)で、かつメッセージコンテント内であるか確認
+                    if (event.target.tagName === 'IMG' && event.target.closest('.message-content')) {
+                        // Step 1で追加したHTML要素を取得
+                        const modalOverlay = document.getElementById('image-modal-overlay');
+                        const modalImg = document.getElementById('image-modal-img');
+                        
+                        if (modalOverlay && modalImg) {
+                            modalImg.src = event.target.src; // クリックされた画像のURLをモーダルにセット
+                            modalOverlay.classList.remove('hidden'); // モーダルを表示する
+                        }
+                    }
+                });
+
+                // --- モーダルを閉じるイベントリスナー ---
+                const modalOverlay = document.getElementById('image-modal-overlay');
+                const modalCloseBtn = document.getElementById('image-modal-close');
+                
+                if (modalOverlay && modalCloseBtn) {
+                    // 右上の「×」ボタンをクリックした時の処理
+                    modalCloseBtn.addEventListener('click', () => {
+                        modalOverlay.classList.add('hidden');
+                    });
+                    
+                    // オーバーレイの背景部分をクリックした時の処理
+                    modalOverlay.addEventListener('click', (event) => {
+                        // 画像自体をクリックした場合は閉じないようにする
+                        if (event.target === modalOverlay) {
+                            modalOverlay.classList.add('hidden');
+                        }
+                    });
+                }
+                elements.enableAutoRetryCheckbox.addEventListener('change', () => {
+                    elements.autoRetryOptionsDiv.classList.toggle('hidden', !elements.enableAutoRetryCheckbox.checked);
+                });
             },
 
             // イベントリスナーを設定
@@ -4693,61 +4799,55 @@
 
             // チャットをテキストファイルとしてエクスポート
             async exportChat(chatId, chatTitle) {
-                 const confirmed = await uiUtils.showCustomConfirm(`チャット「${chatTitle || 'この履歴'}」をJSON形式で出力しますか？`);
+                 const confirmed = await uiUtils.showCustomConfirm(`チャット「${chatTitle || 'この履歴'}」をテキスト出力しますか？`);
                  if (!confirmed) return;
 
                  try {
                      const chat = await dbUtils.getChat(chatId);
-                     if (!chat) {
-                         await uiUtils.showCustomAlert("チャットデータが見つかりません。");
+                     if (!chat || ((!chat.messages || chat.messages.length === 0) && !chat.systemPrompt)) {
+                         await uiUtils.showCustomAlert("チャットデータが空です。");
                          return;
                      }
-
-                     // エクスポート用のデータオブジェクトを作成
-                     const exportData = {
-                         version: APP_VERSION, // どのバージョンでエクスポートされたかの情報
-                         title: chat.title || "無題のチャット",
-                         createdAt: chat.createdAt,
-                         updatedAt: chat.updatedAt,
-                         systemPrompt: chat.systemPrompt || '',
-                         messages: (chat.messages || []).map(msg => {
-                             const messageToExport = {
-                                 role: msg.role,
-                                 content: msg.content,
-                                 timestamp: msg.timestamp,
-                                 isCascaded: msg.isCascaded,
-                                 isSelected: msg.isSelected,
-                                 siblingGroupId: msg.siblingGroupId,
-                             };
-                             // 添付ファイルがある場合は、ファイル実体(base64Data)を含めてエクスポート
-                             if (msg.attachments && msg.attachments.length > 0) {
-                                 messageToExport.attachments = msg.attachments.map(att => ({
-                                     name: att.name,
-                                     mimeType: att.mimeType,
-                                     base64Data: att.base64Data, // これが重要です
-                                 }));
+                     // エクスポート用テキスト生成
+                     let exportText = '';
+                     // システムプロンプトを出力
+                     if (chat.systemPrompt) {
+                         exportText += `<|#|system|#|>\n${chat.systemPrompt}\n<|#|/system|#|>\n\n`;
+                     }
+                     // メッセージを出力
+                     if (chat.messages) {
+                         chat.messages.forEach(msg => {
+                             // userとmodelのメッセージのみ出力
+                             if (msg.role === 'user' || msg.role === 'model') {
+                                 let attributes = '';
+                                 if (msg.role === 'model') {
+                                     if (msg.isCascaded) attributes += ' isCascaded';
+                                     if (msg.isSelected) attributes += ' isSelected';
+                                     // siblingGroupId はエクスポートしない方針
+                                 }
+                                 // 添付ファイル情報を属性として追加 (ファイル名のみ)
+                                 if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
+                                     const fileNames = msg.attachments.map(a => a.name).join(';'); // ファイル名をセミコロン区切りで
+                                     attributes += ` attachments="${fileNames.replace(/"/g, '&quot;')}"`; // 属性値としてエンコード
+                                 }
+                                 exportText += `<|#|${msg.role}|#|${attributes}>\n${msg.content}\n<|#|/${msg.role}|#|>\n\n`;
                              }
-                             return messageToExport;
-                         }),
-                     };
-
-                     // JSON文字列に変換 (null, 2 で整形)
-                     const jsonString = JSON.stringify(exportData, null, 2);
-
+                         });
+                     }
                      // Blobを作成してダウンロードリンクを生成
-                     const blob = new Blob([jsonString], { type: 'application/json;charset=utf-8' });
+                     const blob = new Blob([exportText.trim()], { type: 'text/plain;charset=utf-8' });
                      const url = URL.createObjectURL(blob);
                      const a = document.createElement('a');
+                     // ファイル名を生成 (不正文字を置換)
                      const safeTitle = (chatTitle || `chat_${chatId}_export`).replace(/[<>:"/\\|?*\s]/g, '_');
                      a.href = url;
-                     a.download = `${safeTitle}.json`; // 拡張子を.jsonに
-                     document.body.appendChild(a);
-                     a.click();
-                     document.body.removeChild(a);
-                     URL.revokeObjectURL(url);
-                     console.log("チャットエクスポート(JSON)完了:", chatId);
+                     a.download = `${safeTitle}.txt`;
+                     document.body.appendChild(a); // bodyに追加してクリック可能に
+                     a.click(); // ダウンロード実行
+                     document.body.removeChild(a); // 要素削除
+                     URL.revokeObjectURL(url); // URL破棄
+                     console.log("チャットエクスポート完了:", chatId);
                  } catch (error) {
-                     console.error("エクスポートエラー:", error);
                      await uiUtils.showCustomAlert(`エクスポートエラー: ${error}`);
                  }
             },
@@ -4921,13 +5021,6 @@
                 throw lastError; // 最終的なエラーをスロー
             },
 
-            // 送信処理 (リトライ時も使用)
-
-            // appLogic オブジェクト内の handleSend 関数を以下に置き換えてください。
-
-            // appLogic オブジェクト内の handleSend 関数を、以下のデバッグコード入りのものに置き換えてください。
-
-            // appLogic オブジェクト内の handleSend 関数を、以下のものに置き換えてください。
 
             async handleSend(isRetry = false, retryUserMessageIndex = -1) {
                 console.log("--- handleSend: 処理開始 ---", { isRetry, retryUserMessageIndex });
@@ -5037,9 +5130,16 @@
                 let apiLogicRetryAttempt = 0;
                 
                 try {
-                    console.log("--- handleSend: APIリトライロジックのtryブロックに入りました ---");
-                    while (apiLogicRetryAttempt <= MAX_RETRIES) {
-                        console.log(`--- handleSend: API呼び出しループ開始 (APIロジック試行 ${apiLogicRetryAttempt + 1} / ${MAX_RETRIES + 1}) ---`);
+                    const maxApiLogicRetries = state.settings.enableAutoRetry ? state.settings.maxRetries : 0;
+
+                    while (apiLogicRetryAttempt <= maxApiLogicRetries) {
+                        if (state.abortController?.signal.aborted) {
+                            const error = new Error("リクエストがキャンセルされました。");
+                            error.name = 'AbortError';
+                            throw error;
+                        }
+                        
+                        console.log(`--- handleSend: API呼び出しループ開始 (APIロジック試行 ${apiLogicRetryAttempt + 1} / ${maxApiLogicRetries + 1}) ---`);
 
                         let modelResponseRawContent = '';
                         let modelThoughtSummaryContent = '';
@@ -5051,8 +5151,6 @@
 
                         try {
                             const result = await this.callApiWithRetry({ messagesForApi: apiMessages, generationConfig, systemInstruction });
-                            console.log("--- handleSend: callApiWithRetryからの応答:", result);
-
                             response = result.response;
                             httpRetryCount = result.retryCount;
                         
@@ -5068,14 +5166,8 @@
                                     if (state.abortController?.signal.aborted) break;
 
                                     if (streamData.type === 'chunk') {
-                                        if (streamData.contentText) {
-                                            state.partialStreamContent += streamData.contentText;
-                                            uiUtils.updateStreamingMessage(tempPlaceholderIndex, '', false);
-                                        }
-                                        if (streamData.thoughtText) {
-                                            state.partialThoughtStreamContent += streamData.thoughtText;
-                                            uiUtils.updateStreamingMessage(tempPlaceholderIndex, '', true);
-                                        }
+                                        if (streamData.contentText) { state.partialStreamContent += streamData.contentText; uiUtils.updateStreamingMessage(tempPlaceholderIndex, '', false); }
+                                        if (streamData.thoughtText) { state.partialThoughtStreamContent += streamData.thoughtText; uiUtils.updateStreamingMessage(tempPlaceholderIndex, '', true); }
                                         if (streamData.groundingMetadata) currentGroundingMetadata = streamData.groundingMetadata;
                                         if (streamData.usageMetadata) finalUsageMetadataFromStream = streamData.usageMetadata;
                                     } else if (streamData.type === 'metadata') {
@@ -5088,10 +5180,8 @@
                                 modelResponseRawContent = state.partialStreamContent;
                                 modelThoughtSummaryContent = state.partialThoughtStreamContent;
 
-                            } else {
+                            } else { // 非ストリーミングの場合
                                 const responseData = await response.json();
-                                console.log("非ストリーミング応答データ:", responseData);
-                                
                                 if (responseData.candidates && responseData.candidates.length > 0) {
                                     const candidate = responseData.candidates[0];
                                     modelResponseRawContent = dummyModelPrefix + (candidate.content?.parts?.map(p => p.text).join('') || '');
@@ -5101,10 +5191,11 @@
                                     modelResponseMetadata.usageMetadata = responseData.usageMetadata;
                                     const thoughtPart = candidate.content?.parts?.find(p => p.thought === true);
                                     if (thoughtPart) modelThoughtSummaryContent = thoughtPart.text;
-
                                 } else if (responseData.promptFeedback) {
-                                    modelResponseRawContent = `[ブロックされました: ${responseData.promptFeedback.blockReason || '理由不明'}]`;
-                                    modelResponseMetadata.finishReason = 'SAFETY';
+                                    // ★★★【修正点】ブロック理由を'SAFETY'に固定せず、APIの応答から取得します。
+                                    const blockReason = responseData.promptFeedback.blockReason || 'SAFETY'; // APIからの理由を優先
+                                    modelResponseRawContent = `[ブロックされました: ${blockReason}]`;
+                                    modelResponseMetadata.finishReason = blockReason; // 'SAFETY', 'OTHER'などをfinishReasonとして設定
                                     modelResponseMetadata.safetyRatings = responseData.promptFeedback.safetyRatings;
                                 } else if (responseData.error) {
                                     throw new Error(`APIエラー: ${responseData.error.message}`);
@@ -5113,17 +5204,12 @@
                                 }
                             }
 
-                            console.log(`--- handleSend: 応答メタデータ`, modelResponseMetadata);
-
-                            // ▼▼▼【リトライ判定ロジック】▼▼▼
                             const finishReason = modelResponseMetadata.finishReason;
-                            console.log(`--- handleSend: リトライ判定 (理由: ${finishReason}) ---`);
-                            const isRetryableFinishReason = ['SAFETY', 'RECITATION', 'PROHIBITED_CONTENT'].includes(finishReason);
+                            const isRetryableFinishReason = ['SAFETY', 'RECITATION', 'PROHIBITED_CONTENT', 'OTHER'].includes(finishReason); // 'OTHER'もリトライ対象に含める
 
                             if (isRetryableFinishReason) {
                                 apiLogicRetryAttempt++;
-                                if (apiLogicRetryAttempt > MAX_RETRIES) {
-                                    console.error(`--- handleSend: APIロジックリトライ上限到達 ---`);
+                                if (apiLogicRetryAttempt > maxApiLogicRetries) {
                                     throw new Error(`APIが繰り返し応答をブロックしました (最終理由: ${finishReason})`);
                                 }
                                 if (state.settings.streamingOutput) {
@@ -5134,57 +5220,42 @@
                                 const delay = INITIAL_RETRY_DELAY * Math.pow(2, apiLogicRetryAttempt - 1);
                                 console.log(`--- handleSend: APIロジックリトライ実行。${delay}ms待機します ---`);
                                 await sleep(delay);
-                                continue; 
+                                continue;
                             }
                             
-                            console.log("--- handleSend: 成功、ループ脱出 ---");
-                            
-                            // =======================================================
-                            // ▼▼▼【校正処理の呼び出し】▼▼▼
-                            // =======================================================
                             let finalContent = modelResponseRawContent;
 
-                            // 校正機能が有効で、元の生成が成功した場合に校正を実行
                             if (state.settings.enableProofreading && finalContent && !isRetryableFinishReason && finishReason !== 'ERROR') {
                                 try {
                                     uiUtils.setLoadingIndicatorText('校正中...');
                                     const proofreadContent = await this.proofreadText(finalContent);
-                                    finalContent = proofreadContent; // 校正後のテキストで上書き
+                                    finalContent = proofreadContent;
                                 } catch (proofreadError) {
                                     console.error("校正処理中にエラーが発生しました:", proofreadError);
-                                    // 校正に失敗しても元の生成結果は維持し、末尾にエラーメッセージを追記
                                     finalContent += `\n\n[校正処理に失敗しました: ${proofreadError.message}]`;
                                 } finally {
-                                    uiUtils.setLoadingIndicatorText('応答中'); // インジケーターのテキストを元に戻す
+                                    uiUtils.setLoadingIndicatorText('応答中');
                                 }
                             }
-                            // =======================================================
-                            // ▲▲▲【校正処理ここまで】▲▲▲
-                            // =======================================================
 
                             if (finalContent || modelThoughtSummaryContent || modelResponseMetadata.finishReason) {
                                 let newModelMessageIndex;
                                 const finalUsageMetadata = modelResponseMetadata.usageMetadata || finalUsageMetadataFromStream;
-                                
-                                // contentプロパティに finalContent を使用
+                                const newMessageData = { role: 'model', content: finalContent, timestamp: Date.now(), thoughtSummary: modelThoughtSummaryContent, retryCount: httpRetryCount + apiLogicRetryAttempt, ...modelResponseMetadata, usageMetadata: finalUsageMetadata };
+
                                 if (isRetry && existingSiblingGroupId) {
-                                    const newMessage = { role: 'model', content: finalContent, timestamp: Date.now(), isCascaded: true, isSelected: true, siblingGroupId: existingSiblingGroupId, thoughtSummary: modelThoughtSummaryContent, retryCount: httpRetryCount + apiLogicRetryAttempt, ...modelResponseMetadata, usageMetadata: finalUsageMetadata };
-                                    state.currentMessages.push(newMessage);
-                                    newModelMessageIndex = state.currentMessages.length - 1;
+                                    Object.assign(newMessageData, { isCascaded: true, isSelected: true, siblingGroupId: existingSiblingGroupId });
                                 } else if (isRetry && !existingSiblingGroupId && firstResponseIndexForRetry !== -1) {
                                     const originalResponse = state.currentMessages[firstResponseIndexForRetry];
                                     originalResponse.isCascaded = true;
                                     originalResponse.isSelected = false;
                                     siblingGroupIdToUse = `cascade-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
                                     originalResponse.siblingGroupId = siblingGroupIdToUse;
-                                    const newMessage = { role: 'model', content: finalContent, timestamp: Date.now(), isCascaded: true, isSelected: true, siblingGroupId: siblingGroupIdToUse, thoughtSummary: modelThoughtSummaryContent, retryCount: httpRetryCount + apiLogicRetryAttempt, ...modelResponseMetadata, usageMetadata: finalUsageMetadata };
-                                    state.currentMessages.push(newMessage);
-                                    newModelMessageIndex = state.currentMessages.length - 1;
-                                } else {
-                                    const newMessage = { role: 'model', content: finalContent, timestamp: Date.now(), thoughtSummary: modelThoughtSummaryContent, retryCount: httpRetryCount + apiLogicRetryAttempt, ...modelResponseMetadata, usageMetadata: finalUsageMetadata };
-                                    state.currentMessages.push(newMessage);
-                                    newModelMessageIndex = state.currentMessages.length - 1;
+                                    Object.assign(newMessageData, { isCascaded: true, isSelected: true, siblingGroupId: siblingGroupIdToUse });
                                 }
+                                
+                                state.currentMessages.push(newMessageData);
+                                newModelMessageIndex = state.currentMessages.length - 1;
 
                                 if (state.settings.streamingOutput) {
                                     uiUtils.finalizeStreamingMessage(newModelMessageIndex);
@@ -5193,26 +5264,35 @@
                                 }
                                 await dbUtils.saveChat();
                             }
-                            break; 
+                            break;
 
                         } catch (error) {
-                                console.error("--- handleSend: API呼び出しループ内のcatchブロックでエラー捕捉 ---", error);
                             throw error;
                         }
                     } 
                 } catch(error) {
                     console.error("--- handleSend: 最終catchブロックでエラー捕捉 ---", error);
-                    const errorMessage = error.message || "不明なエラーが発生しました。";
-                    uiUtils.displayError(errorMessage, true);
-                    if (isRetry) {
-                        const tempMessageIndex = state.currentMessages.length;
-                        state.currentMessages[tempMessageIndex - 1].error = errorMessage;
+                    
+                    if (error.name !== 'AbortError') {
+                        const errorMessage = error.message || "不明なエラーが発生しました。";
+                        uiUtils.displayError(errorMessage, true);
+                        if (isRetry) {
+                            const lastMessage = state.currentMessages[state.currentMessages.length - 1];
+                            if(lastMessage) lastMessage.error = errorMessage;
+                        } else {
+                            state.currentMessages.push({ role: 'error', content: errorMessage, timestamp: Date.now() });
+                            uiUtils.appendMessage('error', errorMessage, state.currentMessages.length - 1);
+                        }
+                        await dbUtils.saveChat();
                     } else {
-                        const tempMessageIndex = state.currentMessages.length;
-                        state.currentMessages.push({ role: 'error', content: errorMessage, timestamp: Date.now() });
-                        uiUtils.appendMessage('error', errorMessage, tempMessageIndex);
+                        console.log("--- handleSend: リクエストが正常にキャンセルされたため、エラー表示はスキップします。---");
+                        const tempPlaceholderIndex = state.currentMessages.length;
+                        const placeholderElement = document.getElementById(`streaming-message-${tempPlaceholderIndex}`);
+                        if (placeholderElement) {
+                             placeholderElement.remove();
+                             console.log("キャンセルされたストリーミングのプレースホルダーを削除しました。");
+                        }
                     }
-                    await dbUtils.saveChat();
                 } finally {
                     console.log("--- handleSend: finallyブロック実行。送信状態を解除します。 ---");
                     uiUtils.setSendingState(false);
@@ -5235,43 +5315,70 @@
 
             // --- 履歴インポートハンドラ ---
             async handleHistoryImport(file) {
-                // ファイルタイプチェックを.jsonに変更
-                if (!file || !(file.type === 'application/json' || file.name.endsWith('.json'))) {
-                    await uiUtils.showCustomAlert("JSONファイル (.json) を選択してください。");
+                if (!file || !file.type.startsWith('text/plain')) {
+                    await uiUtils.showCustomAlert("テキストファイル (.txt) を選択してください。");
                     return;
                 }
-                console.log("履歴インポート(JSON)開始:", file.name);
+                console.log("履歴インポート開始:", file.name);
                 const reader = new FileReader();
 
                 reader.onload = async (event) => {
-                    const jsonContent = event.target.result;
-                    if (!jsonContent) {
+                    const textContent = event.target.result;
+                    if (!textContent) {
                         await uiUtils.showCustomAlert("ファイルの内容が空です。");
                         return;
                     }
                     try {
-                        const importedData = JSON.parse(jsonContent);
-
-                        // インポートデータのバリデーション (簡易的)
-                        if (!importedData.messages || !Array.isArray(importedData.messages)) {
-                            throw new Error("JSONファイルに 'messages' 配列が含まれていません。");
+                        const { messages: importedMessages, systemPrompt: importedSystemPrompt } = this.parseImportedHistory(textContent);
+                        if (importedMessages.length === 0 && !importedSystemPrompt) {
+                            await uiUtils.showCustomAlert("ファイルから有効なメッセージまたはシステムプロンプトを読み込めませんでした。形式を確認してください。");
+                            return;
                         }
 
-                        // 新しいチャットデータを作成
+                        // --- インポート後の siblingGroupId 割り当て ---
+                        let currentGroupId = null;
+                        let lastUserIndex = -1;
+                        for (let i = 0; i < importedMessages.length; i++) {
+                            const msg = importedMessages[i];
+                            if (msg.role === 'user') {
+                                lastUserIndex = i;
+                                currentGroupId = null; // ユーザーメッセージでグループリセット
+                            } else if (msg.role === 'model' && msg.isCascaded) {
+                                if (currentGroupId === null && lastUserIndex !== -1) {
+                                    // 新しいグループIDを生成
+                                    currentGroupId = `imp-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+                                }
+                                if (currentGroupId) {
+                                    msg.siblingGroupId = currentGroupId;
+                                }
+                            } else {
+                                currentGroupId = null; // 非カスケードモデルでグループリセット
+                            }
+                        }
+                        // --- isSelected の正規化 (各グループの最後のものを選択) ---
+                        const groupIds = new Set(importedMessages.filter(m => m.siblingGroupId).map(m => m.siblingGroupId));
+                        groupIds.forEach(gid => {
+                            const siblings = importedMessages.filter(m => m.siblingGroupId === gid);
+                            const selected = siblings.filter(m => m.isSelected);
+                            if (selected.length === 0 && siblings.length > 0) {
+                                siblings[siblings.length - 1].isSelected = true;
+                            } else if (selected.length > 1) {
+                                selected.slice(0, -1).forEach(m => m.isSelected = false);
+                                // 最後の isSelected は true のまま
+                            }
+                        });
+                        // -----------------------------------------
+
+                        // ファイル名から拡張子を除去してタイトル生成
+                        const fileNameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
+                        const newTitle = IMPORT_PREFIX + (fileNameWithoutExt || `Imported_${Date.now()}`);
+
                         const newChatData = {
-                            title: IMPORT_PREFIX + (importedData.title || `Imported_${Date.now()}`).substring(0, 100),
-                            systemPrompt: importedData.systemPrompt || '',
-                            messages: importedData.messages.map(msg => ({
-                                ...msg,
-                                timestamp: msg.timestamp || Date.now(),
-                                attachments: (msg.attachments || []).map(att => ({
-                                    name: att.name,
-                                    mimeType: att.mimeType,
-                                    base64Data: att.base64Data,
-                                })),
-                            })),
-                            createdAt: Date.now(),
+                            messages: importedMessages,
+                            systemPrompt: importedSystemPrompt || '', // インポートされたシステムプロンプト
                             updatedAt: Date.now(),
+                            createdAt: Date.now(),
+                            title: newTitle.substring(0, 100) // 100文字制限
                         };
 
                         // 新しいチャットとしてDBに追加
@@ -5284,6 +5391,7 @@
 
                         console.log("履歴インポート成功:", newChatId);
                         await uiUtils.showCustomAlert(`履歴「${newChatData.title}」をインポートしました。`);
+                        // 履歴リストを再描画
                         uiUtils.renderHistoryList();
 
                     } catch (error) {
@@ -5297,7 +5405,67 @@
                     await uiUtils.showCustomAlert("ファイルの読み込みに失敗しました。");
                 };
 
-                reader.readAsText(file);
+                reader.readAsText(file); // ファイルをテキストとして読み込む
+            },
+
+            // インポートされたテキストをパースする
+            parseImportedHistory(text) {
+                const messages = [];
+                let systemPrompt = '';
+                // 正規表現を修正: <|#|role|#| [attributes]>\ncontent\n<|#|/role|#|>
+                const blockRegex = /<\|#\|(system|user|model)\|#\|([^>]*)>([\s\S]*?)<\|#\|\/\1\|#\|>/g;
+                let match;
+
+                while ((match = blockRegex.exec(text)) !== null) {
+                    const role = match[1];
+                    const attributesString = match[2].trim(); // 属性文字列 (例: "isCascaded isSelected")
+                    const content = match[3].trim(); // コンテンツ
+
+                    if (role === 'system' && content) {
+                        systemPrompt = content; // システムプロンプトを抽出
+                    } else if ((role === 'user' || role === 'model') && (content || attributesString.includes('attachments'))) { // コンテンツが空でも attachments があれば処理
+                        const messageData = {
+                            role: role,
+                            content: content,
+                            timestamp: Date.now(),
+                            attachments: [] // 初期化
+                        };
+                        // 属性をパース
+                        const attributes = {};
+                        attributesString.split(/\s+/).forEach(attr => {
+                            const eqIndex = attr.indexOf('=');
+                            if (eqIndex > 0) {
+                                const key = attr.substring(0, eqIndex);
+                                let value = attr.substring(eqIndex + 1);
+                                // クォートを除去
+                                if (value.startsWith('"') && value.endsWith('"')) {
+                                    value = value.substring(1, value.length - 1);
+                                }
+                                attributes[key] = value.replace(/&quot;/g, '"'); // デコード
+                            } else if (attr) {
+                                attributes[attr] = true; // isCascaded, isSelected
+                            }
+                        });
+
+                        if (role === 'model') {
+                            messageData.isCascaded = attributes['isCascaded'] === true;
+                            messageData.isSelected = attributes['isSelected'] === true;
+                        }
+                        // attachments 属性をパース
+                        if (role === 'user' && attributes['attachments']) {
+                            const fileNames = attributes['attachments'].split(';');
+                            messageData.attachments = fileNames.map(name => ({
+                                name: name,
+                                mimeType: 'unknown/unknown', // インポート時は不明
+                                base64Data: '' // Base64データはインポートしない
+                            }));
+                        }
+                        
+                        messages.push(messageData);
+                    }
+                }
+                console.log(`インポートテキストから ${messages.length} 件のメッセージとシステムプロンプト(${systemPrompt ? 'あり' : 'なし'})をパースしました。`);
+                return { messages, systemPrompt };
             },
             // -------------------------------
 
@@ -5391,6 +5559,8 @@
                      hideSystemPromptInChat: elements.hideSystemPromptToggle.checked, // SP非表示設定
                      enableGrounding: elements.enableGroundingToggle.checked, // ネット検索設定を取得
                      enableSwipeNavigation: elements.swipeNavigationToggle.checked,//スワイプナビゲーション設定を取得
+                     enableAutoRetry: elements.enableAutoRetryCheckbox.checked,
+                     maxRetries: parseInt(elements.maxRetriesInput.value, 10) || 0,
                      enableProofreading: elements.enableProofreadingCheckbox.checked,
                      proofreadingModelName: elements.proofreadingModelNameSelect.value,
                      proofreadingSystemInstruction: elements.proofreadingSystemInstructionTextarea.value.trim(),
@@ -5420,6 +5590,9 @@
                  }
                  if (newSettings.thinkingBudget !== null && (isNaN(newSettings.thinkingBudget) || newSettings.thinkingBudget < 0 || !Number.isInteger(newSettings.thinkingBudget))) {
                      newSettings.thinkingBudget = null; // 不正値はnull
+                 }
+                 if (isNaN(newSettings.maxRetries) || newSettings.maxRetries < 0) {
+                     newSettings.maxRetries = 0; // 不正値は0 (リトライなし)
                  }
                  // --- バリデーション終了 ---
 
@@ -5865,7 +6038,6 @@
 
                 // リトライ確認 (メッセージ修正)
                 const messageContentPreview = userMessage.content.substring(0, 30) + "...";
-                // 添付ファイルがある場合、確認メッセージに追加
                 const attachmentInfo = (userMessage.attachments && userMessage.attachments.length > 0)
                     ? ` (${userMessage.attachments.length}件の添付ファイル含む)`
                     : '';
@@ -5876,18 +6048,15 @@
 
                     // --- 後続の不要な履歴を削除する処理 ---
                     let deleteStartIndex = -1;
-                    let scanIndex = index + 1; // リトライ対象ユーザーメッセージの次から開始
+                    let scanIndex = index + 1;
 
-                    // 保持すべきモデル応答群の siblingGroupId を特定
                     let targetSiblingGroupId = null;
                     if (scanIndex < state.currentMessages.length && state.currentMessages[scanIndex].role === 'model') {
-                        // 最初のモデル応答が存在する場合、その siblingGroupId を取得
-                        targetSiblingGroupId = state.currentMessages[scanIndex].siblingGroupId || null; // groupId がない場合は null
+                        targetSiblingGroupId = state.currentMessages[scanIndex].siblingGroupId || null;
                         console.log(`保持対象の siblingGroupId: ${targetSiblingGroupId}`);
                     }
 
-                    // targetSiblingGroupId に一致するモデル応答群をスキップ
-                    if (targetSiblingGroupId !== null) { // siblingGroupId がある場合
+                    if (targetSiblingGroupId !== null) {
                         while (
                             scanIndex < state.currentMessages.length &&
                             state.currentMessages[scanIndex].role === 'model' &&
@@ -5895,60 +6064,28 @@
                         ) {
                             scanIndex++;
                         }
-                    } else { // 最初のモデル応答に siblingGroupId がない場合 (isCascaded=false など)
+                    } else {
                          if (scanIndex < state.currentMessages.length && state.currentMessages[scanIndex].role === 'model') {
-                            // 最初のモデル応答のみスキップ (グループ化されていない)
                             scanIndex++;
                         }
-                         // それ以降は siblingGroupId が一致しないのでループに入らない
                     }
-                    // scanIndex は、保持すべきモデル応答群の次のインデックス、または配列の終端を指す
-
-                    // 削除開始インデックスを決定
+                    
                     if (scanIndex < state.currentMessages.length) {
-                        // 配列の終端でなければ、scanIndex が削除開始位置
                         deleteStartIndex = scanIndex;
                     }
-                    // scanIndex が配列の終端なら deleteStartIndex は -1 のまま (削除不要)
 
                     if (deleteStartIndex !== -1) {
                         const deletedCount = state.currentMessages.length - deleteStartIndex;
                         console.log(`インデックス ${deleteStartIndex} 以降の ${deletedCount} 件の履歴を削除します。`);
-                        state.currentMessages.splice(deleteStartIndex); // deleteStartIndex 以降をすべて削除
+                        state.currentMessages.splice(deleteStartIndex);
                     } else {
                         console.log("削除対象となる未来の会話履歴はありませんでした。");
                     }
-                    // --- 削除処理ここまで ---
-
+                    
                     // UIを更新 (削除された状態を表示)
                     uiUtils.renderChatMessages();
-                    uiUtils.scrollToBottom(); // 削除後の表示位置にスクロール
+                    uiUtils.scrollToBottom();
                     
-                    // --- 既存の応答を一時的に非表示にする処理 ---
-                    const elementsToHide = []; // 非表示にしたDOM要素を保持する配列
-                    const messageContainer = elements.messageContainer; // パフォーマンスのためキャッシュ
-
-                    // targetSiblingGroupId が存在する場合、そのグループ全体を非表示
-                    if (targetSiblingGroupId) {
-                        messageContainer.querySelectorAll(`.message.model[data-index]`).forEach(el => {
-                            const msgIndex = parseInt(el.dataset.index, 10);
-                            const potentialMsg = state.currentMessages[msgIndex]; // 削除後のインデックスでアクセス試行
-                            if (potentialMsg && potentialMsg.role === 'model' && potentialMsg.siblingGroupId === targetSiblingGroupId) {
-                                 el.classList.add('retrying-hidden');
-                                 elementsToHide.push(el);
-                            }
-                        });
-                         console.log(`${elementsToHide.length}件の既存応答 (グループ ${targetSiblingGroupId}) を一時的に非表示にしました。`);
-                    } else if (index + 1 < state.currentMessages.length && state.currentMessages[index + 1]?.role === 'model') {
-                        // 非カスケードの単一応答を非表示（削除後のインデックス index + 1 がモデル応答の場合）
-                        const element = messageContainer.querySelector(`.message.model[data-index="${index + 1}"]`);
-                        if (element) {
-                            element.classList.add('retrying-hidden');
-                            elementsToHide.push(element);
-                            console.log(`1件の既存応答 (非カスケード, 削除後のindex: ${index + 1}) を一時的に非表示にしました。`);
-                        }
-                    }
-
                     // handleSend をリトライモードで呼び出す
                     await this.handleSend(true, index);
                 }
@@ -6275,8 +6412,9 @@
              async callApiWithRetry(apiParams) {
                 const { messagesForApi, generationConfig, systemInstruction } = apiParams;
                 let lastError = null;
+                const maxHttpRetries = state.settings.enableAutoRetry ? state.settings.maxRetries : 0; // ← この行を追加
 
-                for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+                for (let attempt = 0; attempt <= maxHttpRetries; attempt++) { // ← ループ条件を修正
                     try {
                         // 送信が中断されたかチェック
                         if (state.abortController?.signal.aborted) {
@@ -6286,7 +6424,7 @@
                         if (attempt > 0) {
                             // リトライ前に待機 (指数バックオフ)
                             const delay = INITIAL_RETRY_DELAY * Math.pow(2, attempt - 1);
-                            console.log(`API呼び出し失敗。${delay}ms後にリトライします... (試行 ${attempt + 1}/${MAX_RETRIES + 1})`);
+                            console.log(`API呼び出し失敗。${delay}ms後にリトライします... (試行 ${attempt + 1}/${maxHttpRetries + 1})`); // ← ログも修正
                             await sleep(delay);
                         }
                         
