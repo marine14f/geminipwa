@@ -2375,7 +2375,7 @@
                     const error = new Error("Sleep aborted");
                     error.name = "AbortError";
                     return reject(error);
-                }
+                }   
 
                 let timeoutId;
 
@@ -5255,7 +5255,7 @@
                                 }
                                 const delay = INITIAL_RETRY_DELAY * Math.pow(2, apiLogicRetryAttempt - 1);
                                 console.log(`--- handleSend: APIロジックリトライ実行。${delay}ms待機します ---`);
-                                await sleep(delay);
+                                await interruptibleSleep(delay, state.abortController.signal);
                                 continue;
                             }
                             
@@ -6461,7 +6461,7 @@
                             // リトライ前に待機 (指数バックオフ)
                             const delay = INITIAL_RETRY_DELAY * Math.pow(2, attempt - 1);
                             console.log(`API呼び出し失敗。${delay}ms後にリトライします... (試行 ${attempt + 1}/${maxHttpRetries + 1})`); // ← ログも修正
-                            await sleep(delay);
+                            await interruptibleSleep(delay, state.abortController.signal);
                         }
                         
                         // APIを呼び出す
