@@ -4964,8 +4964,18 @@
 
             async proofreadText(textToProofread) {
                 console.log("--- 校正処理開始 ---");
-                // stateから校正用の設定を取得
-                const { proofreadingModelName, proofreadingSystemInstruction, apiKey, temperature, maxTokens, topK, topP } = state.settings;
+                // stateから校正用およびリトライ用の設定を取得
+                const { 
+                    proofreadingModelName, 
+                    proofreadingSystemInstruction, 
+                    apiKey, 
+                    temperature, 
+                    maxTokens, 
+                    topK, 
+                    topP,
+                    enableAutoRetry, // リトライ設定を取得
+                    maxRetries       // リトライ回数を取得
+                } = state.settings;
 
                 if (!proofreadingModelName) {
                     throw new Error("校正用モデルが設定されていません。");
@@ -4999,7 +5009,10 @@
 
                 // リトライロジック
                 let lastError = null;
-                for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+                // ★★★【修正点】設定からリトライ回数を決定します。
+                const maxProofreadRetries = enableAutoRetry ? maxRetries : 0;
+
+                for (let attempt = 0; attempt <= maxProofreadRetries; attempt++) {
                     try {
                         // メインの送信がキャンセルされたら校正も中止
                         if (state.abortController?.signal.aborted) {
@@ -5008,7 +5021,8 @@
                         if (attempt > 0) {
                             const delay = INITIAL_RETRY_DELAY * Math.pow(2, attempt - 1);
                             console.log(`校正APIリトライ ${attempt}: ${delay}ms待機...`);
-                            await sleep(delay);
+                            // 校正処理中も停止できるように interruptibleSleep を使用
+                            await interruptibleSleep(delay, state.abortController.signal);
                         }
 
                         const response = await fetch(endpoint, {
@@ -5037,13 +5051,18 @@
                             console.log("--- 校正処理成功 ---");
                             return proofreadContent; // 校正後のテキストを返す
                         } else if (responseData.promptFeedback) {
-                            throw new Error(`校正モデルに応答がブロックされました (理由: ${responseData.promptFeedback.blockReason || '不明'})`);
+                            const blockReason = responseData.promptFeedback.blockReason || 'SAFETY';
+                            throw new Error(`校正モデルに応答がブロックされました (理由: ${blockReason})`);
                         } else {
                             throw new Error("校正APIの応答に有効なコンテンツが含まれていません。");
                         }
 
                     } catch (error) {
                         lastError = error;
+                        // AbortErrorは即座にスローしてループを抜ける
+                        if (error.name === 'AbortError') {
+                            throw error;
+                        }
                         // 4xx系のクライアントエラーはリトライしない
                         if (error.status && error.status >= 400 && error.status < 500) {
                             console.error(`リトライ不可の校正エラー (ステータス: ${error.status})。`, error);
