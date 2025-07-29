@@ -2362,6 +2362,42 @@
         // --- ユーティリティ関数 ---
         const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+         /**
+         * 中断可能なsleep関数
+         * @param {number} ms - 待機する時間 (ミリ秒)
+         * @param {AbortSignal} signal - 中断を監視するためのAbortSignal
+         * @returns {Promise<void>} 待機が完了するとresolveし、中断されるとrejectするPromise
+         */
+         function interruptibleSleep(ms, signal) {
+            return new Promise((resolve, reject) => {
+                // 待機開始前にもし既に中断されていたら、即座にエラーを投げる
+                if (signal.aborted) {
+                    const error = new Error("Sleep aborted");
+                    error.name = "AbortError";
+                    return reject(error);
+                }
+
+                let timeoutId;
+
+                // 中断信号を受け取った時の処理
+                const onAbort = () => {
+                    clearTimeout(timeoutId); // タイマーをクリア
+                    const error = new Error("Sleep aborted");
+                    error.name = "AbortError";
+                    reject(error); // Promiseをエラーで終了させる
+                };
+
+                // 指定時間後にPromiseを成功させるタイマーを設定
+                timeoutId = setTimeout(() => {
+                    signal.removeEventListener('abort', onAbort); // 成功したので中断リスナーは不要
+                    resolve();
+                }, ms);
+
+                // 中断イベントを監視開始
+                signal.addEventListener('abort', onAbort, { once: true });
+            });
+        }
+
         // ファイルサイズを読みやすい形式にフォーマット
         function formatFileSize(bytes) {
             if (bytes === 0) return '0 Bytes';
