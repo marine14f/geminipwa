@@ -5057,7 +5057,6 @@
                 throw lastError; // 最終的なエラーをスロー
             },
 
-
             async handleSend(isRetry = false, retryUserMessageIndex = -1) {
                 console.log("--- handleSend: 処理開始 ---", { isRetry, retryUserMessageIndex });
 
@@ -5089,6 +5088,7 @@
 
                 // --- 2. 送信状態設定とUI準備 ---
                 uiUtils.setSendingState(true);
+                uiUtils.setLoadingIndicatorText('応答中...'); // ★★★【修正点 3/4】初期ステータスをここで設定
 
                 let userMessageIndex = isRetry ? retryUserMessageIndex : -1;
                 let existingSiblingGroupId = null;
@@ -5195,6 +5195,7 @@
                             state.partialThoughtStreamContent = '';
                             
                             if (state.settings.streamingOutput) {
+                                uiUtils.setLoadingIndicatorText('応答中...'); // ストリーミング開始時に表示を戻す
                                 const tempPlaceholderIndex = state.currentMessages.length;
                                 uiUtils.appendMessage('model', '', tempPlaceholderIndex, true);
 
@@ -5217,6 +5218,7 @@
                                 modelThoughtSummaryContent = state.partialThoughtStreamContent;
 
                             } else { // 非ストリーミングの場合
+                                uiUtils.setLoadingIndicatorText('応答中...'); // 応答受信時に表示を戻す
                                 const responseData = await response.json();
                                 if (responseData.candidates && responseData.candidates.length > 0) {
                                     const candidate = responseData.candidates[0];
@@ -5228,10 +5230,9 @@
                                     const thoughtPart = candidate.content?.parts?.find(p => p.thought === true);
                                     if (thoughtPart) modelThoughtSummaryContent = thoughtPart.text;
                                 } else if (responseData.promptFeedback) {
-                                    // ★★★【修正点】ブロック理由を'SAFETY'に固定せず、APIの応答から取得します。
-                                    const blockReason = responseData.promptFeedback.blockReason || 'SAFETY'; // APIからの理由を優先
+                                    const blockReason = responseData.promptFeedback.blockReason || 'SAFETY';
                                     modelResponseRawContent = `[ブロックされました: ${blockReason}]`;
-                                    modelResponseMetadata.finishReason = blockReason; // 'SAFETY', 'OTHER'などをfinishReasonとして設定
+                                    modelResponseMetadata.finishReason = blockReason;
                                     modelResponseMetadata.safetyRatings = responseData.promptFeedback.safetyRatings;
                                 } else if (responseData.error) {
                                     throw new Error(`APIエラー: ${responseData.error.message}`);
@@ -5241,7 +5242,7 @@
                             }
 
                             const finishReason = modelResponseMetadata.finishReason;
-                            const isRetryableFinishReason = ['SAFETY', 'RECITATION', 'PROHIBITED_CONTENT', 'OTHER'].includes(finishReason); // 'OTHER'もリトライ対象に含める
+                            const isRetryableFinishReason = ['SAFETY', 'RECITATION', 'PROHIBITED_CONTENT', 'OTHER'].includes(finishReason);
 
                             if (isRetryableFinishReason) {
                                 apiLogicRetryAttempt++;
@@ -5254,8 +5255,12 @@
                                     if (placeholderElement) placeholderElement.remove();
                                 }
                                 const delay = INITIAL_RETRY_DELAY * Math.pow(2, apiLogicRetryAttempt - 1);
+                                
+                                // ★★★【修正点 4/4】ロジックレベルのリトライ待機と再送信のステータス表示
+                                uiUtils.setLoadingIndicatorText(`再送信待機中... (${delay}ms)`);
                                 console.log(`--- handleSend: APIロジックリトライ実行。${delay}ms待機します ---`);
                                 await interruptibleSleep(delay, state.abortController.signal);
+                                uiUtils.setLoadingIndicatorText(`${apiLogicRetryAttempt}回目 再送信中...`);
                                 continue;
                             }
                             
@@ -6448,44 +6453,51 @@
              async callApiWithRetry(apiParams) {
                 const { messagesForApi, generationConfig, systemInstruction } = apiParams;
                 let lastError = null;
-                const maxHttpRetries = state.settings.enableAutoRetry ? state.settings.maxRetries : 0; // ← この行を追加
+                const maxHttpRetries = state.settings.enableAutoRetry ? state.settings.maxRetries : 0;
 
-                for (let attempt = 0; attempt <= maxHttpRetries; attempt++) { // ← ループ条件を修正
+                for (let attempt = 0; attempt <= maxHttpRetries; attempt++) {
                     try {
-                        // 送信が中断されたかチェック
                         if (state.abortController?.signal.aborted) {
                             throw new Error("リクエストがキャンセルされました。");
                         }
 
                         if (attempt > 0) {
-                            // リトライ前に待機 (指数バックオフ)
                             const delay = INITIAL_RETRY_DELAY * Math.pow(2, attempt - 1);
-                            console.log(`API呼び出し失敗。${delay}ms後にリトライします... (試行 ${attempt + 1}/${maxHttpRetries + 1})`); // ← ログも修正
+                            
+                            // ★★★【修正点 1/4】リトライ待機中のステータス表示
+                            uiUtils.setLoadingIndicatorText(`再送信待機中... (${delay}ms)`);
+                            console.log(`API呼び出し失敗。${delay}ms後にリトライします... (試行 ${attempt + 1}/${maxHttpRetries + 1})`);
                             await interruptibleSleep(delay, state.abortController.signal);
                         }
                         
-                        // APIを呼び出す
+                        // ★★★【修正点 2/4】再送信実行中のステータス表示
+                        if (attempt > 0) {
+                             uiUtils.setLoadingIndicatorText(`${attempt}回目 再送信中...`);
+                        } else {
+                             uiUtils.setLoadingIndicatorText('応答中...'); // 初回送信時
+                        }
+                        
                         const response = await apiUtils.callGeminiApi(messagesForApi, generationConfig, systemInstruction);
-                        // 成功したらレスポンスと試行回数をオブジェクトで返す
                         return { response, retryCount: attempt };
 
                     } catch (error) {
-                        lastError = error; // 最後に発生したエラーを保持
+                        lastError = error;
                         
-                        // リトライすべきでないエラーか判定
-                        // statusが存在し、4xx系のエラー(クライアントエラー)の場合はリトライしない
+                        if (error.name === 'AbortError') {
+                            console.error("待機中に中断されました。リトライを中止します。", error);
+                            throw error;
+                        }
                         if (error.status && error.status >= 400 && error.status < 500) {
                             console.error(`リトライ不可のエラー (ステータス: ${error.status})。リトライを中止します。`, error);
-                            throw error; // 即座にエラーをスローして終了
+                            throw error;
                         }
                         
                         console.warn(`API呼び出し試行 ${attempt + 1} が失敗しました。`, error);
                     }
                 }
                 
-                // 最大リトライ回数を超えた場合
                 console.error("最大リトライ回数に達しました。最終的なエラーをスローします。");
-                throw lastError; // 最後にキャッチしたエラーをスロー
+                throw lastError;
             },
 
         }; // appLogic終了
