@@ -5186,7 +5186,6 @@
                         modelResponseMetadata = {};
 
                         try {
-                            // ★★★【修正点】callApiWithRetryに現在のロジックリトライ回数を渡す
                             const result = await this.callApiWithRetry({ messagesForApi: apiMessages, generationConfig, systemInstruction, logicRetryAttempt: apiLogicRetryAttempt });
                             response = result.response;
                             httpRetryCount = result.retryCount;
@@ -5196,7 +5195,7 @@
                             state.partialThoughtStreamContent = '';
                             
                             if (state.settings.streamingOutput) {
-                                uiUtils.setLoadingIndicatorText('応答中...');
+                                // ★★★【修正点】このブロック内の '応答中...' への更新を削除します。
                                 const tempPlaceholderIndex = state.currentMessages.length;
                                 uiUtils.appendMessage('model', '', tempPlaceholderIndex, true);
 
@@ -5219,7 +5218,7 @@
                                 modelThoughtSummaryContent = state.partialThoughtStreamContent;
 
                             } else {
-                                uiUtils.setLoadingIndicatorText('応答中...');
+                                // ★★★【修正点】このブロック内の '応答中...' への更新を削除します。
                                 const responseData = await response.json();
                                 if (responseData.candidates && responseData.candidates.length > 0) {
                                     const candidate = responseData.candidates[0];
@@ -5260,7 +5259,6 @@
                                 uiUtils.setLoadingIndicatorText(`再送信待機中... (${delay}ms)`);
                                 console.log(`--- handleSend: APIロジックリトライ実行。${delay}ms待機します ---`);
                                 await interruptibleSleep(delay, state.abortController.signal);
-                                // 次のループの開始時にcallApiWithRetryが正しいステータスを設定するので、ここでの設定は不要
                                 continue;
                             }
                             
