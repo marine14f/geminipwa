@@ -5074,91 +5074,47 @@
             async handleSend(isRetry = false, retryUserMessageIndex = -1) {
                 console.log("--- handleSend: 処理開始 ---", { isRetry, retryUserMessageIndex });
 
+                if (state.isSending) { console.warn("handleSend: 既に送信中のため処理を中断"); return; }
                 if (state.editingMessageIndex !== null) { await uiUtils.showCustomAlert("他のメッセージを編集中です。"); return; }
                 if (state.isEditingSystemPrompt) { await uiUtils.showCustomAlert("システムプロンプトを編集中です。"); return; }
-
-                let text = '';
-                let attachmentsToSend = [];
-                // ▼▼▼【変更】▼▼▼ 
-                // messagesToProcess変数を削除し、ロジックをシンプルに戻す
-                if (isRetry) {
-                    const retryUserMessage = state.currentMessages[retryUserMessageIndex];
-                    if (!retryUserMessage || retryUserMessage.role !== 'user') {
-                        console.error("リトライ対象のユーザーメッセージが見つかりません。", retryUserMessageIndex);
-                        uiUtils.setSendingState(false);
-                        return;
-                    }
-                    text = retryUserMessage.content || '';
-                    attachmentsToSend = retryUserMessage.attachments ? [...retryUserMessage.attachments] : [];
-                } else {
-                    text = elements.userInput.value.trim();
-                    attachmentsToSend = [...state.pendingAttachments];
-                }
-                // ▲▲▲【ここまで変更】▲▲▲
-
-                if (state.isSending || (!text && attachmentsToSend.length === 0)) {
-                    if(!text && attachmentsToSend.length === 0) console.log("入力も添付ファイルもありません。");
-                    return;
-                }
-                if (!state.settings.apiKey) { await uiUtils.showCustomAlert("APIキーが設定されていません。設定画面を開きます。"); uiUtils.showScreen('settings'); return; }
 
                 uiUtils.setSendingState(true);
                 uiUtils.setLoadingIndicatorText('応答中...');
 
-                let userMessageIndex = isRetry ? retryUserMessageIndex : -1;
-                let existingSiblingGroupId = null;
-                let firstResponseIndexForRetry = -1;
-                let siblingGroupIdToUse = null;
-
-                if (!isRetry) {
-                    const userMessage = { role: 'user', content: text, timestamp: Date.now(), attachments: attachmentsToSend };
-                    state.currentMessages.push(userMessage);
-                    userMessageIndex = state.currentMessages.length - 1;
-                    uiUtils.appendMessage(userMessage.role, userMessage.content, userMessageIndex, false, null, userMessage.attachments);
-                    elements.userInput.value = '';
-                    state.pendingAttachments = [];
-                    uiUtils.updateAttachmentBadgeVisibility();
-                    uiUtils.adjustTextareaHeight();
-                    uiUtils.scrollToBottom();
-                } else {
-                    let siblingStartIndex = userMessageIndex + 1;
-                    while (siblingStartIndex < state.currentMessages.length && state.currentMessages[siblingStartIndex].role !== 'model') {
-                        siblingStartIndex++;
-                    }
-                    if (siblingStartIndex < state.currentMessages.length && state.currentMessages[siblingStartIndex].role === 'model') {
-                            firstResponseIndexForRetry = siblingStartIndex;
-                            const firstResponse = state.currentMessages[firstResponseIndexForRetry];
-                            if (firstResponse.isCascaded && firstResponse.siblingGroupId) {
-                                existingSiblingGroupId = firstResponse.siblingGroupId;
-                                state.currentMessages.forEach(msg => { if (msg.siblingGroupId === existingSiblingGroupId) msg.isSelected = false; });
-                                siblingGroupIdToUse = existingSiblingGroupId;
-                            }
-                    }
-                }
-
-                try {
-                    let titleToSave = null;
-                    if(state.currentChatId) {
-                        const currentChat = await dbUtils.getChat(state.currentChatId);
-                        if(currentChat) titleToSave = currentChat.title;
-                    }
-                    if (!titleToSave) {
-                        const firstUserMsg = state.currentMessages.find(m => m.role === 'user');
-                        if(firstUserMsg) titleToSave = firstUserMsg.content.substring(0, 50);
-                    }
-                    await dbUtils.saveChat(titleToSave);
-                } catch (error) {
-                    console.error("送信前のチャット保存失敗:", error);
-                    uiUtils.displayError("チャットの保存に失敗しましたが、送信を試みます。", false);
-                }
+                let turnMessages = []; // この送受信ターンで発生したメッセージの一次保管場所
                 
                 try {
-                    // ▼▼▼【変更】▼▼▼
-                    // 常に state.currentMessages を参照するように戻す
-                    let apiMessages = state.currentMessages
-                        .filter(msg => !msg.isCascaded || msg.isSelected)
-                        .map(msg => {
-                    // ▲▲▲【ここまで変更】▲▲▲
+                    if (isRetry) {
+                        // リトライの場合、指定されたインデックスまでの履歴をベースにする
+                        state.currentMessages.splice(retryUserMessageIndex + 1);
+                        uiUtils.renderChatMessages(true);
+                    } else {
+                        // 通常送信の場合
+                        const text = elements.userInput.value.trim();
+                        const attachmentsToSend = [...state.pendingAttachments];
+                        if (!text && attachmentsToSend.length === 0) {
+                            uiUtils.setSendingState(false);
+                            return;
+                        }
+                        const userMessage = { role: 'user', content: text, timestamp: Date.now(), attachments: attachmentsToSend };
+                        state.currentMessages.push(userMessage);
+                        uiUtils.appendMessage(userMessage.role, userMessage.content, state.currentMessages.length - 1, false, null, userMessage.attachments);
+                        elements.userInput.value = '';
+                        state.pendingAttachments = [];
+                        uiUtils.updateAttachmentBadgeVisibility();
+                        uiUtils.adjustTextareaHeight();
+                    }
+
+                    uiUtils.scrollToBottom();
+                    await dbUtils.saveChat();
+                    
+                    let loopCount = 0;
+                    const MAX_LOOPS = 10; // 無限ループ防止
+
+                    while (loopCount < MAX_LOOPS) {
+                        loopCount++;
+
+                        const messagesForApi = state.currentMessages.map(msg => {
                             const parts = [];
                             if (msg.content && msg.content.trim() !== '') parts.push({ text: msg.content });
                             if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
@@ -5172,206 +5128,98 @@
                             }
                             return { role: msg.role, parts };
                         });
-                    
-                    const dummyUserText = state.settings.dummyUser?.trim();
-                    const dummyModelText = state.settings.dummyModel?.trim();
-                    if (dummyUserText) apiMessages.push({ role: 'user', parts: [{ text: dummyUserText }] });
-                    if (dummyModelText) apiMessages.push({ role: 'model', parts: [{ text: dummyModelText }] });
 
-                    const generationConfig = {};
-                    if (state.settings.temperature !== null) generationConfig.temperature = state.settings.temperature;
-                    if (state.settings.maxTokens !== null) generationConfig.maxOutputTokens = state.settings.maxTokens;
-                    if (state.settings.topK !== null) generationConfig.topK = state.settings.topK;
-                    if (state.settings.topP !== null) generationConfig.topP = state.settings.topP;
-                    const systemInstruction = state.currentSystemPrompt?.trim()
-                        ? { role: "system", parts: [{ text: state.currentSystemPrompt.trim() }] }
-                        : null;
+                        const generationConfig = {};
+                        if (state.settings.temperature !== null) generationConfig.temperature = state.settings.temperature;
+                        if (state.settings.maxTokens !== null) generationConfig.maxOutputTokens = state.settings.maxTokens;
+                        if (state.settings.topK !== null) generationConfig.topK = state.settings.topK;
+                        if (state.settings.topP !== null) generationConfig.topP = state.settings.topP;
+                        const systemInstruction = state.currentSystemPrompt?.trim() ? { role: "system", parts: [{ text: state.currentSystemPrompt.trim() }] } : null;
 
-                    const { response, retryCount } = await this.callApiWithRetry({
-                        messagesForApi: apiMessages,
-                        generationConfig: generationConfig,
-                        systemInstruction: systemInstruction,
-                        logicRetryAttempt: 0,
-                        tools: window.functionDeclarations 
-                    });
-
-                    let finalContent = '';
-                    let modelResponseMetadata = {};
-                    let modelThoughtSummaryContent = '';
-                    let finalUsageMetadata = null;
-
-                    if (state.settings.streamingOutput) {
-                        const tempPlaceholderIndex = state.currentMessages.length;
-                        uiUtils.appendMessage('model', '', tempPlaceholderIndex, true);
-                        let toolCalls = null;
-
-                        for await (const streamData of apiUtils.handleStreamingResponse(response)) {
-                            if (state.abortController?.signal.aborted) break;
-
-                            if (streamData.type === 'chunk') {
-                                if (streamData.contentText) state.partialStreamContent += streamData.contentText;
-                                if (streamData.thoughtText) state.partialThoughtStreamContent += streamData.thoughtText;
-                                if (streamData.toolCalls) toolCalls = (toolCalls || []).concat(streamData.toolCalls);
-                                
-                                uiUtils.updateStreamingMessage(tempPlaceholderIndex, '', false);
-                                if (streamData.thoughtText) uiUtils.updateStreamingMessage(tempPlaceholderIndex, '', true);
-                            } else if (streamData.type === 'metadata') {
-                                modelResponseMetadata = { ...streamData, toolCalls: toolCalls || streamData.toolCalls };
-                            } else if (streamData.type === 'error') {
-                                finalContent = streamData.message;
-                                modelResponseMetadata.finishReason = 'ERROR';
-                            }
-                        }
-                        finalContent = state.partialStreamContent;
-                        modelThoughtSummaryContent = state.partialThoughtStreamContent;
-
-                    } else {
-                        const responseData = await response.json();
-                        if (responseData.candidates && responseData.candidates.length > 0) {
-                            const candidate = responseData.candidates[0];
-                            const parts = candidate.content?.parts || [];
-                            finalContent = parts.find(p => p.text)?.text || '';
-                            modelResponseMetadata = { 
-                                finishReason: candidate.finishReason, 
-                                safetyRatings: candidate.safetyRatings,
-                                groundingMetadata: candidate.groundingMetadata,
-                                usageMetadata: responseData.usageMetadata,
-                                toolCalls: parts.filter(p => p.functionCall).map(p => ({ functionCall: p.functionCall }))
-                            };
-                            const thoughtPart = parts.find(p => p.thought === true);
-                            if (thoughtPart) modelThoughtSummaryContent = thoughtPart.text;
-                        } else if (responseData.promptFeedback) {
-                            const blockReason = responseData.promptFeedback.blockReason || 'SAFETY';
-                            finalContent = `[ブロックされました: ${blockReason}]`;
-                            modelResponseMetadata = { finishReason: blockReason, safetyRatings: responseData.promptFeedback.safetyRatings };
-                        } else if (responseData.error) {
-                            throw new Error(`APIエラー: ${responseData.error.message}`);
-                        } else {
-                            throw new Error("API応答に有効な候補が含まれていません。");
-                        }
-                    }
-
-                    if (modelResponseMetadata.toolCalls && modelResponseMetadata.toolCalls.length > 0) {
-                        console.log("[Function Calling] AIが関数の呼び出しを要求しました:", modelResponseMetadata.toolCalls);
-                        
-                        uiUtils.setLoadingIndicatorText('関数実行中...');
-                        
-                        state.currentMessages.push({
-                            role: 'model',
-                            content: '',
-                            tool_calls: modelResponseMetadata.toolCalls,
-                            timestamp: Date.now()
-                        });
-
-                        const toolResults = await Promise.all(modelResponseMetadata.toolCalls.map(async (toolCall) => {
-                            const functionName = toolCall.functionCall.name;
-                            const functionArgs = toolCall.functionCall.args;
-                            
-                            if (window.functionCallingTools && typeof window.functionCallingTools[functionName] === 'function') {
-                                const result = await window.functionCallingTools[functionName](functionArgs);
-                                return {
-                                    role: 'tool',
-                                    name: functionName,
-                                    response: result,
-                                    timestamp: Date.now()
-                                };
-                            } else {
-                                return {
-                                    role: 'tool',
-                                    name: functionName,
-                                    response: { error: `関数 '${functionName}' が見つかりません。` },
-                                    timestamp: Date.now()
-                                };
-                            }
-                        }));
-                        
-                        state.currentMessages.push(...toolResults);
-                        
-                        uiUtils.setLoadingIndicatorText('応答中...');
-                        
-                        const messagesWithToolResults = state.currentMessages.map(msg => {
-                            const parts = [];
-                            if (msg.content) parts.push({ text: msg.content });
-                            if (msg.tool_calls) msg.tool_calls.forEach(tc => parts.push({ functionCall: tc.functionCall }));
-                            if (msg.role === 'tool') parts.push({ functionResponse: { name: msg.name, response: msg.response } });
-                            return { role: msg.role, parts };
-                        });
-
-                        const secondApiResponse = await this.callApiWithRetry({
-                            messagesForApi: messagesWithToolResults,
+                        const { response } = await this.callApiWithRetry({
+                            messagesForApi,
                             generationConfig,
                             systemInstruction,
-                            logicRetryAttempt: 0
+                            logicRetryAttempt: 0,
+                            tools: window.functionDeclarations
                         });
                         
-                        const tempPlaceholderIndex = state.currentMessages.length;
-                        uiUtils.appendMessage('model', '', tempPlaceholderIndex, true);
-                        
-                        for await (const streamData of apiUtils.handleStreamingResponse(secondApiResponse.response)) {
-                            if (streamData.type === 'chunk' && streamData.contentText) {
-                                state.partialStreamContent += streamData.contentText;
-                                uiUtils.updateStreamingMessage(tempPlaceholderIndex, '', false);
-                            } else if (streamData.type === 'metadata') {
-                                modelResponseMetadata = { ...streamData };
+                        // 非ストリーミングの応答を処理
+                        const responseData = await response.json();
+                        if (!responseData.candidates || responseData.candidates.length === 0) {
+                            if (responseData.promptFeedback) {
+                                const blockReason = responseData.promptFeedback.blockReason || 'SAFETY';
+                                throw new Error(`APIが応答をブロックしました (理由: ${blockReason})`);
                             }
+                            throw new Error("API応答に有効な候補が含まれていません。");
                         }
-                        finalContent = state.partialStreamContent;
-                    }
 
-                    if (finalContent || modelThoughtSummaryContent || modelResponseMetadata.finishReason) {
-                        const newMessageData = {
-                            role: 'model',
-                            content: finalContent,
-                            timestamp: Date.now(),
-                            thoughtSummary: modelThoughtSummaryContent,
-                            retryCount: retryCount,
-                            ...modelResponseMetadata
-                        };
+                        const candidate = responseData.candidates[0];
+                        const parts = candidate.content?.parts || [];
+                        const textPart = parts.find(p => p.text);
+                        const toolCallParts = parts.filter(p => p.functionCall);
 
-                        if (isRetry && existingSiblingGroupId) {
-                            Object.assign(newMessageData, { isCascaded: true, isSelected: true, siblingGroupId: existingSiblingGroupId });
-                        } else if (isRetry && !existingSiblingGroupId && firstResponseIndexForRetry !== -1) {
-                            const originalResponse = state.currentMessages[firstResponseIndexForRetry];
-                            originalResponse.isCascaded = true;
-                            originalResponse.isSelected = false;
-                            siblingGroupIdToUse = `cascade-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-                            originalResponse.siblingGroupId = siblingGroupIdToUse;
-                            Object.assign(newMessageData, { isCascaded: true, isSelected: true, siblingGroupId: siblingGroupIdToUse });
-                        }
-                        
-                        state.currentMessages.push(newMessageData);
-                        const newModelMessageIndex = state.currentMessages.length - 1;
+                        if (toolCallParts.length > 0) {
+                            // --- Function Calling 実行フェーズ ---
+                            console.log("[Function Calling] AIが関数の呼び出しを要求しました:", toolCallParts);
+                            uiUtils.setLoadingIndicatorText('関数実行中...');
 
-                        if (state.settings.streamingOutput) {
-                            uiUtils.finalizeStreamingMessage(newModelMessageIndex);
+                            const modelMessageWithToolCall = {
+                                role: 'model',
+                                content: '',
+                                tool_calls: toolCallParts.map(p => ({ functionCall: p.functionCall })),
+                                timestamp: Date.now()
+                            };
+                            state.currentMessages.push(modelMessageWithToolCall);
+                            
+                            const toolResults = await Promise.all(toolCallParts.map(async (part) => {
+                                const functionName = part.functionCall.name;
+                                const functionArgs = part.functionCall.args;
+                                
+                                if (window.functionCallingTools && typeof window.functionCallingTools[functionName] === 'function') {
+                                    const result = await window.functionCallingTools[functionName](functionArgs);
+                                    return { role: 'tool', name: functionName, response: result, timestamp: Date.now() };
+                                } else {
+                                    return { role: 'tool', name: functionName, response: { error: `関数 '${functionName}' が見つかりません。` }, timestamp: Date.now() };
+                                }
+                            }));
+                            
+                            state.currentMessages.push(...toolResults);
+                            uiUtils.setLoadingIndicatorText('応答中...');
+                            // ループを継続して、関数の結果をAIに渡す
+                            continue; 
                         } else {
+                            // --- 最終応答フェーズ ---
+                            const finalContent = textPart?.text || '';
+                            const modelResponseMetadata = {
+                                finishReason: candidate.finishReason,
+                                safetyRatings: candidate.safetyRatings,
+                                usageMetadata: responseData.usageMetadata
+                            };
+                            
+                            const newMessageData = {
+                                role: 'model',
+                                content: finalContent,
+                                timestamp: Date.now(),
+                                ...modelResponseMetadata
+                            };
+                            
+                            state.currentMessages.push(newMessageData);
                             uiUtils.renderChatMessages();
+                            await dbUtils.saveChat();
+                            break; // ループを終了
                         }
-                        await dbUtils.saveChat();
                     }
 
                 } catch(error) {
                     console.error("--- handleSend: 最終catchブロックでエラー捕捉 ---", error);
-                    
                     if (error.name !== 'AbortError') {
                         const errorMessage = error.message || "不明なエラーが発生しました。";
                         uiUtils.displayError(errorMessage, true);
-                        if (isRetry) {
-                            const lastMessage = state.currentMessages[state.currentMessages.length - 1];
-                            if(lastMessage) lastMessage.error = errorMessage;
-                        } else {
-                            state.currentMessages.push({ role: 'error', content: errorMessage, timestamp: Date.now() });
-                            uiUtils.appendMessage('error', errorMessage, state.currentMessages.length - 1);
-                        }
+                        state.currentMessages.push({ role: 'error', content: errorMessage, timestamp: Date.now() });
                         await dbUtils.saveChat();
                     } else {
-                        console.log("--- handleSend: リクエストが正常にキャンセルされたため、エラー表示はスキップします。---");
-                        const tempPlaceholderIndex = state.currentMessages.length;
-                        const placeholderElement = document.getElementById(`streaming-message-${tempPlaceholderIndex}`);
-                        if (placeholderElement) {
-                            placeholderElement.remove();
-                            console.log("キャンセルされたストリーミングのプレースホルダーを削除しました。");
-                        }
+                        console.log("--- handleSend: リクエストが正常にキャンセルされました。---");
                     }
                 } finally {
                     console.log("--- handleSend: finallyブロック実行。送信状態を解除します。 ---");
