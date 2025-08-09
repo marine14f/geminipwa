@@ -20,7 +20,7 @@
     }
 
     try {
-        // ▼▼▼【変更点】stateから直接メモリを取得・操作する方針に変更▼▼▼
+        // ▼▼▼【重要】DBではなく、常に最新のstate.currentPersistentMemoryを操作する▼▼▼
         const memory = state.currentPersistentMemory || {};
         let resultData = null;
 
@@ -65,7 +65,7 @@
                 return { error: `無効なアクションです: ${action}` };
         }
 
-        // グローバルのstateを更新する（DBへの保存はhandleSendに任せる）
+        // グローバルのstateを更新する（DBへの保存は呼び出し元のhandleSendに一任する）
         state.currentPersistentMemory = memory;
 
         console.log(`[Function Calling] 処理完了、state.currentPersistentMemoryを更新しました:`, resultData);
