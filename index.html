@@ -5079,6 +5079,8 @@
 
                 let text = '';
                 let attachmentsToSend = [];
+                let messagesToProcess = []; // ▼▼▼【変更】▼▼▼
+
                 if (isRetry) {
                     const retryUserMessage = state.currentMessages[retryUserMessageIndex];
                     if (!retryUserMessage || retryUserMessage.role !== 'user') {
@@ -5088,9 +5090,17 @@
                     }
                     text = retryUserMessage.content || '';
                     attachmentsToSend = retryUserMessage.attachments ? [...retryUserMessage.attachments] : [];
+                    // ▼▼▼【変更】▼▼▼
+                    // リトライ時は、指定されたユーザーメッセージまでの履歴を使用する
+                    messagesToProcess = state.currentMessages.slice(0, retryUserMessageIndex + 1);
+                    // ▲▲▲【ここまで変更】▲▲▲
                 } else {
                     text = elements.userInput.value.trim();
                     attachmentsToSend = [...state.pendingAttachments];
+                    // ▼▼▼【変更】▼▼▼
+                    // 通常送信時は全履歴を使用する
+                    messagesToProcess = [...state.currentMessages];
+                    // ▲▲▲【ここまで変更】▲▲▲
                 }
 
                 if (state.isSending || (!text && attachmentsToSend.length === 0)) {
@@ -5109,7 +5119,11 @@
 
                 if (!isRetry) {
                     const userMessage = { role: 'user', content: text, timestamp: Date.now(), attachments: attachmentsToSend };
+                    // ▼▼▼【変更】▼▼▼
+                    // messagesToProcess にも追加する
+                    messagesToProcess.push(userMessage);
                     state.currentMessages.push(userMessage);
+                    // ▲▲▲【ここまで変更】▲▲▲
                     userMessageIndex = state.currentMessages.length - 1;
                     uiUtils.appendMessage(userMessage.role, userMessage.content, userMessageIndex, false, null, userMessage.attachments);
                     elements.userInput.value = '';
@@ -5150,9 +5164,12 @@
                 }
                 
                 try {
-                    let messagesForApi = state.currentMessages
+                    // ▼▼▼【変更】▼▼▼
+                    // messagesToProcess を使ってAPIメッセージを作成
+                    let apiMessages = messagesToProcess
                         .filter(msg => !msg.isCascaded || msg.isSelected)
                         .map(msg => {
+                    // ▲▲▲【ここまで変更】▲▲▲
                             const parts = [];
                             if (msg.content && msg.content.trim() !== '') parts.push({ text: msg.content });
                             if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
@@ -5169,8 +5186,8 @@
                     
                     const dummyUserText = state.settings.dummyUser?.trim();
                     const dummyModelText = state.settings.dummyModel?.trim();
-                    if (dummyUserText) messagesForApi.push({ role: 'user', parts: [{ text: dummyUserText }] });
-                    if (dummyModelText) messagesForApi.push({ role: 'model', parts: [{ text: dummyModelText }] });
+                    if (dummyUserText) apiMessages.push({ role: 'user', parts: [{ text: dummyUserText }] });
+                    if (dummyModelText) apiMessages.push({ role: 'model', parts: [{ text: dummyModelText }] });
 
                     const generationConfig = {};
                     if (state.settings.temperature !== null) generationConfig.temperature = state.settings.temperature;
@@ -5182,7 +5199,7 @@
                         : null;
 
                     const { response, retryCount } = await this.callApiWithRetry({
-                        messagesForApi: messagesForApi,
+                        messagesForApi: apiMessages,
                         generationConfig: generationConfig,
                         systemInstruction: systemInstruction,
                         logicRetryAttempt: 0,
