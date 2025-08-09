@@ -20,17 +20,8 @@
     }
 
     try {
-        // 最新のチャットデータを取得 (dbUtilsもグローバル前提)
-        const chat = await dbUtils.getChat(state.currentChatId);
-        if (!chat) {
-            throw new Error(`チャットデータ (ID: ${state.currentChatId}) が見つかりません。`);
-        }
-
-        // メモリ空間を初期化（存在しない場合）
-        if (!chat.persistentMemory) {
-            chat.persistentMemory = {};
-        }
-        const memory = chat.persistentMemory;
+        // ▼▼▼【変更点】stateから直接メモリを取得・操作する方針に変更▼▼▼
+        const memory = state.currentPersistentMemory || {};
         let resultData = null;
 
         switch (action) {
@@ -74,15 +65,10 @@
                 return { error: `無効なアクションです: ${action}` };
         }
 
-        // 1. まずグローバルのstateを更新する
+        // グローバルのstateを更新する（DBへの保存はhandleSendに任せる）
         state.currentPersistentMemory = memory;
 
-        //    (awaitを外し、バックグラウンドで実行することでAIへの応答を高速化)
-        dbUtils.saveChat(chat.title).catch(err => {
-            console.error("永続メモリのバックグラウンド保存に失敗:", err);
-        });
-
-        console.log(`[Function Calling] 処理完了:`, resultData);
+        console.log(`[Function Calling] 処理完了、state.currentPersistentMemoryを更新しました:`, resultData);
         return resultData;
 
     } catch (error) {
