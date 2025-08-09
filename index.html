@@ -5080,16 +5080,10 @@
 
                 uiUtils.setSendingState(true);
                 uiUtils.setLoadingIndicatorText('応答中...');
-
-                let turnMessages = []; // この送受信ターンで発生したメッセージの一次保管場所
                 
                 try {
-                    if (isRetry) {
-                        // リトライの場合、指定されたインデックスまでの履歴をベースにする
-                        state.currentMessages.splice(retryUserMessageIndex + 1);
-                        uiUtils.renderChatMessages(true);
-                    } else {
-                        // 通常送信の場合
+                    // 通常送信の場合のみ、新しいユーザーメッセージを作成
+                    if (!isRetry) {
                         const text = elements.userInput.value.trim();
                         const attachmentsToSend = [...state.pendingAttachments];
                         if (!text && attachmentsToSend.length === 0) {
@@ -5103,13 +5097,13 @@
                         state.pendingAttachments = [];
                         uiUtils.updateAttachmentBadgeVisibility();
                         uiUtils.adjustTextareaHeight();
+                        uiUtils.scrollToBottom();
                     }
 
-                    uiUtils.scrollToBottom();
                     await dbUtils.saveChat();
                     
                     let loopCount = 0;
-                    const MAX_LOOPS = 10; // 無限ループ防止
+                    const MAX_LOOPS = 10;
 
                     while (loopCount < MAX_LOOPS) {
                         loopCount++;
@@ -5144,7 +5138,6 @@
                             tools: window.functionDeclarations
                         });
                         
-                        // 非ストリーミングの応答を処理
                         const responseData = await response.json();
                         if (!responseData.candidates || responseData.candidates.length === 0) {
                             if (responseData.promptFeedback) {
@@ -5160,7 +5153,6 @@
                         const toolCallParts = parts.filter(p => p.functionCall);
 
                         if (toolCallParts.length > 0) {
-                            // --- Function Calling 実行フェーズ ---
                             console.log("[Function Calling] AIが関数の呼び出しを要求しました:", toolCallParts);
                             uiUtils.setLoadingIndicatorText('関数実行中...');
 
@@ -5186,10 +5178,8 @@
                             
                             state.currentMessages.push(...toolResults);
                             uiUtils.setLoadingIndicatorText('応答中...');
-                            // ループを継続して、関数の結果をAIに渡す
                             continue; 
                         } else {
-                            // --- 最終応答フェーズ ---
                             const finalContent = textPart?.text || '';
                             const modelResponseMetadata = {
                                 finishReason: candidate.finishReason,
@@ -5204,10 +5194,22 @@
                                 ...modelResponseMetadata
                             };
                             
+                            // リトライの場合、カスケード情報を付与
+                            if (isRetry) {
+                                const firstResponseIndexForRetry = retryUserMessageIndex + 1;
+                                if (firstResponseIndexForRetry < state.currentMessages.length && state.currentMessages[firstResponseIndexForRetry].isCascaded) {
+                                    const originalResponse = state.currentMessages[firstResponseIndexForRetry];
+                                    newMessageData.isCascaded = true;
+                                    newMessageData.isSelected = true;
+                                    newMessageData.siblingGroupId = originalResponse.siblingGroupId;
+                                    originalResponse.isSelected = false; // 古い応答の選択を解除
+                                }
+                            }
+                            
                             state.currentMessages.push(newMessageData);
                             uiUtils.renderChatMessages();
                             await dbUtils.saveChat();
-                            break; // ループを終了
+                            break;
                         }
                     }
 
@@ -5964,69 +5966,26 @@
                 if (!userMessage || userMessage.role !== 'user') return;
 
                 const messageContentPreview = userMessage.content.substring(0, 30) + "...";
-                const confirmed = await uiUtils.showCustomConfirm(`「${messageContentPreview}」から再生成しますか？\n(この入力に対する既存の応答は保持されますが、**これより未来の会話履歴は削除されます**)`);
+                const confirmed = await uiUtils.showCustomConfirm(`「${messageContentPreview}」から再生成しますか？\n(この入力に対する既存の応答と、それ以降の会話履歴はすべて削除されます)`);
 
                 if (confirmed) {
                     console.log(`リトライ開始: index=${index}`);
 
-                    // ▼▼▼【ここからロジックを全面的に変更】▼▼▼
-                    // 1. どの履歴までを残すかを決定する
-                    let deleteStartIndex = index + 1;
-
-                    // 2. ユーザーメッセージの直後のAI応答（functionCallやカスケードグループ）を特定
-                    if (deleteStartIndex < state.currentMessages.length && state.currentMessages[deleteStartIndex].role === 'model') {
-                        const firstResponse = state.currentMessages[deleteStartIndex];
-                        
-                        if (firstResponse.tool_calls) {
-                            // Function Callingのターンだった場合、tool応答と最終応答もスキップ
-                            deleteStartIndex += 2; // model(functionCall)とtool(functionResponse)をスキップ
-                            // さらにその後に続くはずの最終応答もスキップ対象
-                            while (deleteStartIndex < state.currentMessages.length && state.currentMessages[deleteStartIndex].role === 'model') {
-                                deleteStartIndex++;
-                            }
-                        } else if (firstResponse.isCascaded && firstResponse.siblingGroupId) {
-                            // カスケード応答だった場合、同じグループの応答をすべてスキップ
-                            const groupId = firstResponse.siblingGroupId;
-                            while (
-                                deleteStartIndex < state.currentMessages.length &&
-                                state.currentMessages[deleteStartIndex].role === 'model' &&
-                                state.currentMessages[deleteStartIndex].siblingGroupId === groupId
-                            ) {
-                                deleteStartIndex++;
-                            }
-                        } else {
-                            // 通常のモデル応答の場合
-                            deleteStartIndex++;
-                        }
-                    }
-
-                    // 3. 未来の履歴が存在すれば削除
-                    if (deleteStartIndex < state.currentMessages.length) {
-                        const deletedCount = state.currentMessages.length - deleteStartIndex;
-                        console.log(`インデックス ${deleteStartIndex} 以降の ${deletedCount} 件の履歴を削除します。`);
-                        state.currentMessages.splice(deleteStartIndex);
+                    // 1. 指定されたユーザーメッセージ(index)より未来の履歴をすべて削除
+                    if (index + 1 < state.currentMessages.length) {
+                        const deletedCount = state.currentMessages.length - (index + 1);
+                        console.log(`インデックス ${index + 1} 以降の ${deletedCount} 件の履歴を削除します。`);
+                        state.currentMessages.splice(index + 1);
                     } else {
                         console.log("削除対象となる未来の会話履歴はありませんでした。");
                     }
                     
-                    // 4. UIから古いAI応答を非表示にする
-                    const messageContainer = elements.messageContainer;
-                    const elementsToHide = [];
-                    for (let i = index + 1; i < deleteStartIndex; i++) {
-                        const element = messageContainer.querySelector(`.message[data-index="${i}"]`);
-                        if (element) {
-                            element.classList.add('retrying-hidden');
-                            elementsToHide.push(element);
-                        }
-                    }
-                    
-                    // 5. UIを再描画して、古いAI応答をDOMから削除する
-                    uiUtils.renderChatMessages();
+                    // 2. UIを再描画して、古いAI応答をDOMから完全に削除する
+                    uiUtils.renderChatMessages(true); // スクロール位置を維持して再描画
                     uiUtils.scrollToBottom();
                     
-                    // 6. handleSendをリトライモードで呼び出す
+                    // 3. handleSendをリトライモードで呼び出す
                     await this.handleSend(true, index);
-                    // ▲▲▲【ここまでロジックを全面的に変更】▲▲▲
                 }
             },
 
