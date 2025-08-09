@@ -5102,6 +5102,7 @@
                 throw lastError;
             },
 
+            // appLogic オブジェクト内の handleSend 関数をこれで置き換えてください
             async handleSend(isRetry = false, retryUserMessageIndex = -1) {
                 console.log("--- handleSend: 処理開始 ---", { isRetry, retryUserMessageIndex });
 
@@ -5130,7 +5131,7 @@
                         uiUtils.scrollToBottom();
                     }
 
-                    // ▼▼▼【変更点】ここでの保存は、リトライ時の履歴削除や新規メッセージを反映するために重要▼▼▼
+                    // ★★★ 処理開始前に一度DBに保存 (リトライ時の履歴削除などを反映) ★★★
                     await dbUtils.saveChat();
                     
                     let loopCount = 0;
@@ -5138,7 +5139,7 @@
 
                     while (loopCount < MAX_LOOPS) {
                         loopCount++;
-                        uiUtils.setLoadingIndicatorText('応答中...');
+                        uiUtils.setLoadingIndicatorText('応答中...'); // ループ開始時にインジケーターをリセット
 
                         const messagesForApi = state.currentMessages.map(msg => {
                             const parts = [];
@@ -5152,8 +5153,9 @@
                             if (msg.role === 'tool') {
                                 parts.push({ functionResponse: { name: msg.name, response: msg.response } });
                             }
+                            // APIに送る形式に整形
                             return { role: msg.role === 'tool' ? 'tool' : (msg.role === 'model' ? 'model' : 'user'), parts };
-                        }).filter(c => c.parts.length > 0 && (c.role === 'user' || c.role === 'model' || c.role === 'tool'));
+                        }).filter(c => c.parts.length > 0 && (c.role === 'user' || c.role === 'model' || c.role === 'tool')); // APIが受け付けるロールのみ
 
                         const generationConfig = {};
                         if (state.settings.temperature !== null) generationConfig.temperature = state.settings.temperature;
@@ -5162,7 +5164,6 @@
                         if (state.settings.topP !== null) generationConfig.topP = state.settings.topP;
                         const systemInstruction = state.currentSystemPrompt?.trim() ? { role: "system", parts: [{ text: state.currentSystemPrompt.trim() }] } : null;
 
-                        // API呼び出し (ストリーミングはまだ未実装なので、非ストリーミングの前提で進めます)
                         const { response, retryCount } = await this.callApiWithRetry({
                             messagesForApi,
                             generationConfig,
@@ -5171,59 +5172,121 @@
                             isFunctionCallingSequence: loopCount > 1
                         });
                         
-                        const responseData = await response.json();
-                        if (!responseData.candidates || responseData.candidates.length === 0) {
-                            if (responseData.promptFeedback) {
-                                const blockReason = responseData.promptFeedback.blockReason || 'SAFETY';
-                                throw new Error(`APIが応答をブロックしました (理由: ${blockReason})`);
+                        const useStreaming = state.settings.streamingOutput;
+
+                        if (useStreaming) {
+                            // --- ストリーミング処理 ---
+                            let fullContent = '';
+                            let fullThoughtSummary = '';
+                            let toolCalls = null;
+                            let modelResponseMetadata = {};
+
+                            const modelMessageIndex = state.currentMessages.length;
+                            state.currentMessages.push({ role: 'model', content: '', timestamp: Date.now(), retryCount });
+                            uiUtils.appendMessage('model', '', modelMessageIndex, true);
+
+                            for await (const chunk of apiUtils.handleStreamingResponse(response)) {
+                                if (chunk.type === 'chunk') {
+                                    if (chunk.contentText) {
+                                        state.partialStreamContent += chunk.contentText;
+                                        uiUtils.updateStreamingMessage(modelMessageIndex, null);
+                                    }
+                                    if (chunk.thoughtText) {
+                                        state.partialThoughtStreamContent += chunk.thoughtText;
+                                        uiUtils.updateStreamingMessage(modelMessageIndex, null, true);
+                                    }
+                                    if (chunk.toolCalls) {
+                                        if (!toolCalls) toolCalls = [];
+                                        toolCalls.push(...chunk.toolCalls);
+                                    }
+                                } else if (chunk.type === 'metadata') {
+                                    modelResponseMetadata = chunk;
+                                } else if (chunk.type === 'error') {
+                                    throw new Error(chunk.message || 'ストリーム内でエラーが発生しました');
+                                }
                             }
-                            throw new Error("API応答に有効な候補が含まれていません。");
-                        }
 
-                        const candidate = responseData.candidates[0];
-                        const parts = candidate.content?.parts || [];
-                        const textPart = parts.find(p => p.text);
-                        const toolCallParts = parts.filter(p => p.functionCall);
+                            fullContent = state.partialStreamContent;
+                            fullThoughtSummary = state.partialThoughtStreamContent;
+                            state.partialStreamContent = '';
+                            state.partialThoughtStreamContent = '';
 
-                        if (toolCallParts.length > 0) {
-                            // --- Function Callingが要求された場合の処理 ---
-                            const modelMessageWithToolCall = {
-                                role: 'model',
-                                content: textPart?.text || '',
-                                tool_calls: toolCallParts,
-                                timestamp: Date.now()
-                            };
-                            state.currentMessages.push(modelMessageWithToolCall);
+                            const finalMessage = state.currentMessages[modelMessageIndex];
+                            finalMessage.content = fullContent;
+                            finalMessage.thoughtSummary = fullThoughtSummary;
+                            Object.assign(finalMessage, modelResponseMetadata);
                             
-                            uiUtils.setLoadingIndicatorText('関数実行中...');
-                            const toolResults = await this.executeToolCalls(toolCallParts);
-                            state.currentMessages.push(...toolResults);
-
-                            // ▼▼▼【最重要修正点】関数実行後、DBに状態を保存する▼▼▼
-                            await dbUtils.saveChat();
+                            if (toolCalls && toolCalls.length > 0) {
+                                finalMessage.tool_calls = toolCalls;
+                            }
                             
-                            uiUtils.renderChatMessages();
-                            uiUtils.scrollToBottom();
-                            continue; // 次のループへ（AIに関数結果を渡して応答を待つ）
+                            uiUtils.finalizeStreamingMessage(modelMessageIndex);
+                            await dbUtils.saveChat(); // ★★★ モデルからの応答(tool_calls含む)を保存
+
+                            if (toolCalls && toolCalls.length > 0) {
+                                uiUtils.setLoadingIndicatorText('関数実行中...');
+                                const toolResults = await this.executeToolCalls(toolCalls);
+                                state.currentMessages.push(...toolResults);
+                                await dbUtils.saveChat(); // ★★★ 関数実行結果と永続メモリ更新を保存
+                                uiUtils.renderChatMessages();
+                                uiUtils.scrollToBottom();
+                                continue; // 次のループへ
+                            }
+                            break; // 通常応答だったのでループ終了
+
                         } else {
-                            // --- 通常のテキスト応答があった場合の処理 ---
-                            const finalContent = textPart?.text || '';
-                            const modelResponseMetadata = {
-                                finishReason: candidate.finishReason,
-                                safetyRatings: candidate.safetyRatings,
-                                usageMetadata: responseData.usageMetadata
-                            };
-                            const newMessageData = {
-                                role: 'model',
-                                content: finalContent,
-                                timestamp: Date.now(),
-                                ...modelResponseMetadata,
-                                retryCount
-                            };
-                            state.currentMessages.push(newMessageData);
-                            await dbUtils.saveChat();
-                            uiUtils.renderChatMessages();
-                            break; // ループ終了
+                            // --- 非ストリーミング処理 ---
+                            const responseData = await response.json();
+                            if (!responseData.candidates || responseData.candidates.length === 0) {
+                                if (responseData.promptFeedback) {
+                                    const blockReason = responseData.promptFeedback.blockReason || 'SAFETY';
+                                    throw new Error(`APIが応答をブロックしました (理由: ${blockReason})`);
+                                }
+                                throw new Error("API応答に有効な候補が含まれていません。");
+                            }
+
+                            const candidate = responseData.candidates[0];
+                            const parts = candidate.content?.parts || [];
+                            const textPart = parts.find(p => p.text);
+                            const toolCallParts = parts.filter(p => p.functionCall);
+
+                            if (toolCallParts.length > 0) {
+                                const modelMessageWithToolCall = {
+                                    role: 'model',
+                                    content: textPart?.text || '',
+                                    tool_calls: toolCallParts,
+                                    timestamp: Date.now()
+                                };
+                                state.currentMessages.push(modelMessageWithToolCall);
+                                await dbUtils.saveChat(); // ★★★【重要】モデルからの関数呼び出し要求を保存
+                                uiUtils.renderChatMessages();
+                                
+                                uiUtils.setLoadingIndicatorText('関数実行中...');
+                                const toolResults = await this.executeToolCalls(toolCallParts);
+                                state.currentMessages.push(...toolResults);
+                                await dbUtils.saveChat(); // ★★★【重要】関数実行結果と更新された永続メモリを保存
+                                uiUtils.renderChatMessages();
+                                uiUtils.scrollToBottom();
+                                continue; // 次のループへ
+                            } else {
+                                const finalContent = textPart?.text || '';
+                                const modelResponseMetadata = {
+                                    finishReason: candidate.finishReason,
+                                    safetyRatings: candidate.safetyRatings,
+                                    usageMetadata: responseData.usageMetadata
+                                };
+                                const newMessageData = {
+                                    role: 'model',
+                                    content: finalContent,
+                                    timestamp: Date.now(),
+                                    ...modelResponseMetadata,
+                                    retryCount
+                                };
+                                state.currentMessages.push(newMessageData);
+                                await dbUtils.saveChat(); // 通常応答を保存
+                                uiUtils.renderChatMessages();
+                                break; // ループ終了
+                            }
                         }
                     }
 
