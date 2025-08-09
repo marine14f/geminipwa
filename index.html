@@ -3984,19 +3984,22 @@
                     ]
                 };
                 
-                let finalTools = [];
-                // 優先度1: Function Callingが設定で有効になっているかチェック
-                if (state.settings.geminiEnableFunctionCalling) {
+                let finalTools = Array.isArray(window.functionDeclarations) ? window.functionDeclarations : [];
+                if (!finalTools.length && state.settings?.geminiEnableFunctionCalling) {
+                    // （任意）設定がONだが宣言が空のケースに備えた保険
                     finalTools = window.functionDeclarations || [];
+                }
+                if (finalTools.length > 0) {
                     console.log("Function Calling を有効にしてAPIを呼び出します。");
-                } 
+                }
                 // 優先度2: Function Callingが無効で、Google Searchが有効になっているかチェック
                 else if (state.settings.enableGrounding) {
                     finalTools.push({ "google_search": {} });
                     console.log("グラウンディング (Google Search) を有効にしてAPIを呼び出します。");
                 }
-                
-                if (finalTools.length > 0) {
+
+                // ▼ Function Calling を送信ペイロードへ
+                if (Array.isArray(finalTools) && finalTools.length > 0) {
                     requestBody.tools = finalTools;
                 }
 
