@@ -5547,7 +5547,7 @@
                     const currentBgBlob = state.settings.backgroundImageBlob;
                     state.settings = { ...state.settings, ...settingsToSave };
                     state.settings.backgroundImageBlob = currentBgBlob;
-                    this.updateCurrentSystemPrompt();
+                    appLogic.updateCurrentSystemPrompt();
                     uiUtils.applySettingsToUI();
                     uiUtils.renderChatMessages(true);
 
