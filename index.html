@@ -5079,8 +5079,8 @@
 
                 let text = '';
                 let attachmentsToSend = [];
-                let messagesToProcess = []; // ▼▼▼【変更】▼▼▼
-
+                // ▼▼▼【変更】▼▼▼ 
+                // messagesToProcess変数を削除し、ロジックをシンプルに戻す
                 if (isRetry) {
                     const retryUserMessage = state.currentMessages[retryUserMessageIndex];
                     if (!retryUserMessage || retryUserMessage.role !== 'user') {
@@ -5090,18 +5090,11 @@
                     }
                     text = retryUserMessage.content || '';
                     attachmentsToSend = retryUserMessage.attachments ? [...retryUserMessage.attachments] : [];
-                    // ▼▼▼【変更】▼▼▼
-                    // リトライ時は、指定されたユーザーメッセージまでの履歴を使用する
-                    messagesToProcess = state.currentMessages.slice(0, retryUserMessageIndex + 1);
-                    // ▲▲▲【ここまで変更】▲▲▲
                 } else {
                     text = elements.userInput.value.trim();
                     attachmentsToSend = [...state.pendingAttachments];
-                    // ▼▼▼【変更】▼▼▼
-                    // 通常送信時は全履歴を使用する
-                    messagesToProcess = [...state.currentMessages];
-                    // ▲▲▲【ここまで変更】▲▲▲
                 }
+                // ▲▲▲【ここまで変更】▲▲▲
 
                 if (state.isSending || (!text && attachmentsToSend.length === 0)) {
                     if(!text && attachmentsToSend.length === 0) console.log("入力も添付ファイルもありません。");
@@ -5119,11 +5112,7 @@
 
                 if (!isRetry) {
                     const userMessage = { role: 'user', content: text, timestamp: Date.now(), attachments: attachmentsToSend };
-                    // ▼▼▼【変更】▼▼▼
-                    // messagesToProcess にも追加する
-                    messagesToProcess.push(userMessage);
                     state.currentMessages.push(userMessage);
-                    // ▲▲▲【ここまで変更】▲▲▲
                     userMessageIndex = state.currentMessages.length - 1;
                     uiUtils.appendMessage(userMessage.role, userMessage.content, userMessageIndex, false, null, userMessage.attachments);
                     elements.userInput.value = '';
@@ -5165,8 +5154,8 @@
                 
                 try {
                     // ▼▼▼【変更】▼▼▼
-                    // messagesToProcess を使ってAPIメッセージを作成
-                    let apiMessages = messagesToProcess
+                    // 常に state.currentMessages を参照するように戻す
+                    let apiMessages = state.currentMessages
                         .filter(msg => !msg.isCascaded || msg.isSelected)
                         .map(msg => {
                     // ▲▲▲【ここまで変更】▲▲▲
@@ -6132,34 +6121,39 @@
                 if (confirmed) {
                     console.log(`リトライ開始: index=${index}`);
 
-                    let deleteStartIndex = -1;
-                    let scanIndex = index + 1;
+                    // ▼▼▼【ここからロジックを全面的に変更】▼▼▼
+                    // 1. どの履歴までを残すかを決定する
+                    let deleteStartIndex = index + 1;
 
-                    let targetSiblingGroupId = null;
-                    if (scanIndex < state.currentMessages.length && state.currentMessages[scanIndex].role === 'model') {
-                        targetSiblingGroupId = state.currentMessages[scanIndex].siblingGroupId || null;
-                        console.log(`保持対象の siblingGroupId: ${targetSiblingGroupId}`);
-                    }
-
-                    if (targetSiblingGroupId !== null) {
-                        while (
-                            scanIndex < state.currentMessages.length &&
-                            state.currentMessages[scanIndex].role === 'model' &&
-                            state.currentMessages[scanIndex].siblingGroupId === targetSiblingGroupId
-                        ) {
-                            scanIndex++;
+                    // 2. ユーザーメッセージの直後のAI応答（functionCallやカスケードグループ）を特定
+                    if (deleteStartIndex < state.currentMessages.length && state.currentMessages[deleteStartIndex].role === 'model') {
+                        const firstResponse = state.currentMessages[deleteStartIndex];
+                        
+                        if (firstResponse.tool_calls) {
+                            // Function Callingのターンだった場合、tool応答と最終応答もスキップ
+                            deleteStartIndex += 2; // model(functionCall)とtool(functionResponse)をスキップ
+                            // さらにその後に続くはずの最終応答もスキップ対象
+                            while (deleteStartIndex < state.currentMessages.length && state.currentMessages[deleteStartIndex].role === 'model') {
+                                deleteStartIndex++;
+                            }
+                        } else if (firstResponse.isCascaded && firstResponse.siblingGroupId) {
+                            // カスケード応答だった場合、同じグループの応答をすべてスキップ
+                            const groupId = firstResponse.siblingGroupId;
+                            while (
+                                deleteStartIndex < state.currentMessages.length &&
+                                state.currentMessages[deleteStartIndex].role === 'model' &&
+                                state.currentMessages[deleteStartIndex].siblingGroupId === groupId
+                            ) {
+                                deleteStartIndex++;
+                            }
+                        } else {
+                            // 通常のモデル応答の場合
+                            deleteStartIndex++;
                         }
-                    } else {
-                        if (scanIndex < state.currentMessages.length && state.currentMessages[scanIndex].role === 'model') {
-                            scanIndex++;
-                        }
-                    }
-                    
-                    if (scanIndex < state.currentMessages.length) {
-                        deleteStartIndex = scanIndex;
                     }
 
-                    if (deleteStartIndex !== -1) {
+                    // 3. 未来の履歴が存在すれば削除
+                    if (deleteStartIndex < state.currentMessages.length) {
                         const deletedCount = state.currentMessages.length - deleteStartIndex;
                         console.log(`インデックス ${deleteStartIndex} 以降の ${deletedCount} 件の履歴を削除します。`);
                         state.currentMessages.splice(deleteStartIndex);
@@ -6167,39 +6161,24 @@
                         console.log("削除対象となる未来の会話履歴はありませんでした。");
                     }
                     
-                    uiUtils.renderChatMessages();
-                    uiUtils.scrollToBottom();
-
-                    // リトライ対象のユーザーメッセージに続くAI応答をUI上から非表示にする
-                    const elementsToHide = [];
+                    // 4. UIから古いAI応答を非表示にする
                     const messageContainer = elements.messageContainer;
-                    // リトライ対象のユーザーメッセージの次のメッセージからスキャンを開始
-                    const scanStartIndexForHide = index + 1;
-                    
-                    if (scanStartIndexForHide < state.currentMessages.length && state.currentMessages[scanStartIndexForHide].role === 'model') {
-                        const firstResponse = state.currentMessages[scanStartIndexForHide];
-                        if (firstResponse.isCascaded && firstResponse.siblingGroupId) {
-                            // カスケードグループ全体を非表示対象にする
-                            const groupId = firstResponse.siblingGroupId;
-                            messageContainer.querySelectorAll(`.message.model[data-index]`).forEach(el => {
-                                const msgIndex = parseInt(el.dataset.index, 10);
-                                const potentialMsg = state.currentMessages[msgIndex];
-                                if (potentialMsg && potentialMsg.role === 'model' && potentialMsg.siblingGroupId === groupId) {
-                                    el.classList.add('retrying-hidden');
-                                    elementsToHide.push(el);
-                                }
-                            });
-                        } else {
-                            // 単一の応答を非表示対象にする
-                            const element = messageContainer.querySelector(`.message.model[data-index="${scanStartIndexForHide}"]`);
-                            if (element) {
-                                element.classList.add('retrying-hidden');
-                                elementsToHide.push(element);
-                            }
+                    const elementsToHide = [];
+                    for (let i = index + 1; i < deleteStartIndex; i++) {
+                        const element = messageContainer.querySelector(`.message[data-index="${i}"]`);
+                        if (element) {
+                            element.classList.add('retrying-hidden');
+                            elementsToHide.push(element);
                         }
                     }
-
+                    
+                    // 5. UIを再描画して、古いAI応答をDOMから削除する
+                    uiUtils.renderChatMessages();
+                    uiUtils.scrollToBottom();
+                    
+                    // 6. handleSendをリトライモードで呼び出す
                     await this.handleSend(true, index);
+                    // ▲▲▲【ここまでロジックを全面的に変更】▲▲▲
                 }
             },
 
