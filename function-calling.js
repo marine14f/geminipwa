@@ -12,6 +12,7 @@
     console.log(`[Function Calling] manage_persistent_memoryが呼び出されました。`, { action, key, value });
 
     // 前提条件: チャットが保存されているか（IDが存在するか）を確認
+    // appLogicとstateはindex.htmlでグローバルに定義されている前提
     if (!state.currentChatId) {
         const errorMsg = "チャットがまだ保存されていません。最初のメッセージを送信してから、再度実行してください。";
         console.error(`[Function Calling] エラー: ${errorMsg}`);
@@ -19,7 +20,7 @@
     }
 
     try {
-        // 最新のチャットデータを取得
+        // 最新のチャットデータを取得 (dbUtilsもグローバル前提)
         const chat = await dbUtils.getChat(state.currentChatId);
         if (!chat) {
             throw new Error(`チャットデータ (ID: ${state.currentChatId}) が見つかりません。`);
@@ -72,13 +73,15 @@
             default:
                 return { error: `無効なアクションです: ${action}` };
         }
-
-        // 変更をDBに保存
-        chat.updatedAt = Date.now(); // 更新日時を更新
-        await dbUtils.saveChat(chat.title); // タイトルは既存のものを維持
-
-        // stateにも反映
+        
+        // stateに先に反映（UI/UXのため）
         state.currentPersistentMemory = memory;
+
+        // 変更をDBに非同期で保存
+        // ここではsaveChatの完了を待たないことで、AIへの応答を高速化する
+        dbUtils.saveChat(chat.title).catch(err => {
+            console.error("永続メモリのバックグラウンド保存に失敗:", err);
+        });
 
         console.log(`[Function Calling] 処理完了:`, resultData);
         return resultData;
@@ -143,7 +146,6 @@ window.functionDeclarations = [
                     "required": ["expression"]
                 }
             },
-            // 新しい関数の定義を追加
             {
                 "name": "manage_persistent_memory",
                 "description": "現在の会話セッションに限定して、重要な情報（記念日、登場人物の設定、世界の法則など）を後から参照できるように記憶・管理します。他の会話には影響しません。",
