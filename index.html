@@ -2213,23 +2213,21 @@
             sendButton: document.getElementById('send-button'),
             loadingIndicator: document.getElementById('loading-indicator'),
             historyList: document.getElementById('history-list'),
-            historyTitle: document.getElementById('history-title'), // 履歴画面タイトル要素
+            historyTitle: document.getElementById('history-title'),
             noHistoryMessage: document.getElementById('no-history-message'),
             historyItemTemplate: document.querySelector('.js-history-item-template'),
             themeColorMeta: document.getElementById('theme-color-meta'),
-            // システムプロンプトUI
             systemPromptArea: document.getElementById('system-prompt-area'),
             systemPromptDetails: document.getElementById('system-prompt-details'),
             systemPromptEditor: document.getElementById('system-prompt-editor'),
             saveSystemPromptBtn: document.getElementById('save-system-prompt-btn'),
             cancelSystemPromptBtn: document.getElementById('cancel-system-prompt-btn'),
-            // 設定要素
             apiKeyInput: document.getElementById('api-key'),
             modelNameSelect: document.getElementById('model-name'),
-            userDefinedModelsGroup: document.getElementById('user-defined-models-group'), // ユーザー指定モデルのoptgroup
+            userDefinedModelsGroup: document.getElementById('user-defined-models-group'),
             streamingOutputCheckbox: document.getElementById('streaming-output'),
             streamingSpeedInput: document.getElementById('streaming-speed'),
-            systemPromptDefaultTextarea: document.getElementById('system-prompt-default'), // デフォルト用
+            systemPromptDefaultTextarea: document.getElementById('system-prompt-default'),
             temperatureInput: document.getElementById('temperature'),
             maxTokensInput: document.getElementById('max-tokens'),
             topKInput: document.getElementById('top-k'),
@@ -2237,27 +2235,24 @@
             presencePenaltyInput: document.getElementById('presence-penalty'),
             frequencyPenaltyInput: document.getElementById('frequency-penalty'),
             thinkingBudgetInput: document.getElementById('thinking-budget'),
-            includeThoughtsToggle: document.getElementById('include-thoughts-toggle'), // Include Thoughts トグル
+            includeThoughtsToggle: document.getElementById('include-thoughts-toggle'),
             dummyUserInput: document.getElementById('dummy-user'),
             dummyModelInput: document.getElementById('dummy-model'),
-            concatDummyModelCheckbox: document.getElementById('concat-dummy-model'), // ダミーモデル連結チェックボックス
-            additionalModelsTextarea: document.getElementById('additional-models'), // 追加モデル入力
+            concatDummyModelCheckbox: document.getElementById('concat-dummy-model'),
+            additionalModelsTextarea: document.getElementById('additional-models'),
             pseudoStreamingCheckbox: document.getElementById('pseudo-streaming'),
             enterToSendCheckbox: document.getElementById('enter-to-send'),
             historySortOrderSelect: document.getElementById('history-sort-order'),
             darkModeToggle: document.getElementById('dark-mode-toggle'),
-            fontFamilyInput: document.getElementById('font-family-input'), // フォント指定入力
-            hideSystemPromptToggle: document.getElementById('hide-system-prompt-toggle'), // SP非表示トグル
+            fontFamilyInput: document.getElementById('font-family-input'),
+            hideSystemPromptToggle: document.getElementById('hide-system-prompt-toggle'),
             geminiEnableGroundingToggle: document.getElementById('gemini-enable-grounding-toggle'),
             geminiEnableFunctionCallingToggle: document.getElementById('gemini-enable-function-calling-toggle'),
-            enableGroundingToggle: document.getElementById('enable-grounding-toggle'), // ネット検索トグル
             appVersionSpan: document.getElementById('app-version'),
-            // 背景画像設定要素
             backgroundImageInput: document.getElementById('background-image-input'),
             uploadBackgroundBtn: document.getElementById('upload-background-btn'),
             backgroundThumbnail: document.getElementById('background-thumbnail'),
             deleteBackgroundBtn: document.getElementById('delete-background-btn'),
-            // ボタン
             gotoHistoryBtn: document.getElementById('goto-history-btn'),
             gotoSettingsBtn: document.getElementById('goto-settings-btn'),
             backToChatFromHistoryBtn: document.getElementById('back-to-chat-from-history'),
@@ -2266,9 +2261,8 @@
             saveSettingsBtns: document.querySelectorAll('.js-save-settings-btn'),
             updateAppBtn: document.getElementById('update-app-btn'),
             clearDataBtn: document.getElementById('clear-data-btn'),
-            importHistoryBtn: document.getElementById('import-history-btn'), // 履歴インポートボタン
-            importHistoryInput: document.getElementById('import-history-input'), // 履歴インポートファイル入力
-            // カスタムダイアログ
+            importHistoryBtn: document.getElementById('import-history-btn'),
+            importHistoryInput: document.getElementById('import-history-input'),
             alertDialog: document.getElementById('alertDialog'),
             alertMessage: document.getElementById('alertDialog').querySelector('.dialog-message'),
             alertOkBtn: document.getElementById('alertDialog').querySelector('.dialog-ok-btn'),
@@ -2293,7 +2287,6 @@
             selectedFilesList: document.getElementById('selected-files-list'),
             confirmAttachBtn: document.getElementById('confirm-attach-btn'),
             cancelAttachBtn: document.getElementById('cancel-attach-btn'),
-            cancelAttachBtn: document.getElementById('cancel-attach-btn'),
             enableAutoRetryCheckbox: document.getElementById('enable-auto-retry'),
             maxRetriesInput: document.getElementById('max-retries'),
             autoRetryOptionsDiv: document.getElementById('auto-retry-options'),
@@ -2303,14 +2296,14 @@
         const state = {
             db: null,
             currentChatId: null,
-            currentMessages: [], // { role: 'user'|'model'|'error', content: string, timestamp: number, attachments?: { name: string, base64Data: string, mimeType: string }[], ... }
-            currentSystemPrompt: '', // 現在のチャットのシステムプロンプト
-            settings: { // デフォルト値
+            currentMessages: [],
+            currentSystemPrompt: '',
+            settings: {
                 apiKey: '',
                 modelName: DEFAULT_MODEL,
                 streamingOutput: true,
                 streamingSpeed: DEFAULT_STREAMING_SPEED,
-                systemPrompt: '', // デフォルトのシステムプロンプト
+                systemPrompt: '',
                 temperature: null,
                 maxTokens: null,
                 topK: null,
@@ -2318,45 +2311,43 @@
                 presencePenalty: null,
                 frequencyPenalty: null,
                 thinkingBudget: null,
-                includeThoughts: true, // Include Thoughts のデフォルト値
+                includeThoughts: true,
                 dummyUser: '',
                 dummyModel: '',
-                concatDummyModel: false, // ダミーモデル連結設定
-                additionalModels: '', // 追加モデル用設定
+                concatDummyModel: false,
+                additionalModels: '',
                 pseudoStreaming: false,
                 enterToSend: true,
                 historySortOrder: 'updatedAt',
-                darkMode: false, // デフォルトはダークモードOFF
-                backgroundImageBlob: null, // デフォルト背景はnull
-                fontFamily: '', // デフォルトフォントは空 (CSS変数で定義)
-                hideSystemPromptInChat: false, // SP非表示設定 (デフォルトfalse)
-                enableGrounding: false, //ネット検索設定 (デフォルトfalse)
+                darkMode: false,
+                backgroundImageBlob: null,
+                fontFamily: '',
+                hideSystemPromptInChat: false,
                 enableSwipeNavigation: true,
                 enableAutoRetry: true,
                 maxRetries: 30, 
-                enableProofreading: false, // 校正機能の有効/無効
-                proofreadingModelName: 'gemini-2.5-flash', // 校正用モデルのデフォルト
-                proofreadingSystemInstruction: 'あなたはプロの編集者です。受け取った文章の過剰な読点を抑制し、日本語として違和感のない読点の使用量に校正してください。承知しました等の応答は行わず、校正後の文章のみ出力して下さい。読点の抑制以外の編集は禁止です。読点以外の文章には絶対に手を付けないで下さい。', // 校正用システムプロンプトのデフォルト
+                enableProofreading: false,
+                proofreadingModelName: 'gemini-2.5-flash',
+                proofreadingSystemInstruction: 'あなたはプロの編集者です。受け取った文章の過剰な読点を抑制し、日本語として違和感のない読点の使用量に校正してください。承知しました等の応答は行わず、校正後の文章のみ出力して下さい。読点の抑制以外の編集は禁止です。読点以外の文章には絶対に手を付けないで下さい。',
                 geminiEnableGrounding: false,
                 geminiEnableFunctionCalling: false,
             },
-            backgroundImageUrl: null, // 生成されたオブジェクトURL (DBには保存しない)
+            backgroundImageUrl: null,
             isSending: false,
             abortController: null,
             partialStreamContent: '',
-            partialThoughtStreamContent: '', // Thought Summary ストリーミング用バッファ
+            partialThoughtStreamContent: '',
             editingMessageIndex: null,
-            isEditingSystemPrompt: false, // システムプロンプト編集中フラグ
-            touchStartX: 0, // スワイプ開始X座標
-            touchStartY: 0, // スワイプ開始Y座標
-            touchEndX: 0,   // スワイプ終了X座標
-            touchEndY: 0,   // スワイプ終了Y座標
-            isSwiping: false, // スワイプ中フラグ
-            isZoomed: false, // ズーム状態フラグ
-            currentScreen: 'chat', // 現在表示中の画面名 (戻るボタン制御用)
-            // ファイルアップロード用状態
-            selectedFilesForUpload: [], // { file: File, base64Data?: string, error?: string } ダイアログで選択中のファイル
-            pendingAttachments: [], // { name: string, base64Data: string, mimeType: string } 送信時にメッセージに添付されるファイル
+            isEditingSystemPrompt: false,
+            touchStartX: 0,
+            touchStartY: 0,
+            touchEndX: 0,
+            touchEndY: 0,
+            isSwiping: false,
+            isZoomed: false,
+            currentScreen: 'chat',
+            selectedFilesForUpload: [],
+            pendingAttachments: [],
         };
 
         function updateMessageMaxWidthVar() {
@@ -3524,7 +3515,7 @@
                 elements.modelNameSelect.value = state.settings.modelName || DEFAULT_MODEL;
                 elements.streamingOutputCheckbox.checked = state.settings.streamingOutput;
                 elements.streamingSpeedInput.value = state.settings.streamingSpeed ?? DEFAULT_STREAMING_SPEED;
-                elements.systemPromptDefaultTextarea.value = state.settings.systemPrompt || ''; // デフォルト用
+                elements.systemPromptDefaultTextarea.value = state.settings.systemPrompt || '';
                 elements.temperatureInput.value = state.settings.temperature === null ? '' : state.settings.temperature;
                 elements.maxTokensInput.value = state.settings.maxTokens === null ? '' : state.settings.maxTokens;
                 elements.topKInput.value = state.settings.topK === null ? '' : state.settings.topK;
@@ -3532,7 +3523,7 @@
                 elements.presencePenaltyInput.value = state.settings.presencePenalty === null ? '' : state.settings.presencePenalty;
                 elements.frequencyPenaltyInput.value = state.settings.frequencyPenalty === null ? '' : state.settings.frequencyPenalty;
                 elements.thinkingBudgetInput.value = state.settings.thinkingBudget === null ? '' : state.settings.thinkingBudget;
-                elements.includeThoughtsToggle.checked = state.settings.includeThoughts; // Include Thoughts 設定を適用
+                elements.includeThoughtsToggle.checked = state.settings.includeThoughts;
                 elements.dummyUserInput.value = state.settings.dummyUser || '';
                 elements.dummyModelInput.value = state.settings.dummyModel || '';
                 elements.concatDummyModelCheckbox.checked = state.settings.concatDummyModel;
@@ -3540,30 +3531,25 @@
                 elements.pseudoStreamingCheckbox.checked = state.settings.pseudoStreaming;
                 elements.enterToSendCheckbox.checked = state.settings.enterToSend;
                 elements.historySortOrderSelect.value = state.settings.historySortOrder || 'updatedAt';
-                elements.darkModeToggle.checked = state.settings.darkMode; // ダークモードチェックボックスに状態を適用
-                elements.fontFamilyInput.value = state.settings.fontFamily || ''; // フォント設定を適用
-                elements.hideSystemPromptToggle.checked = state.settings.hideSystemPromptInChat; // SP非表示設定
+                elements.darkModeToggle.checked = state.settings.darkMode;
+                elements.fontFamilyInput.value = state.settings.fontFamily || '';
+                elements.hideSystemPromptToggle.checked = state.settings.hideSystemPromptInChat;
                 elements.geminiEnableGroundingToggle.checked = state.settings.geminiEnableGrounding;
                 elements.geminiEnableFunctionCallingToggle.checked = state.settings.geminiEnableFunctionCalling;
-                elements.enableGroundingToggle.checked = state.settings.enableGrounding; // ネット検索設定を適用
                 elements.swipeNavigationToggle.checked = state.settings.enableSwipeNavigation;
                 elements.enableProofreadingCheckbox.checked = state.settings.enableProofreading;
                 elements.proofreadingModelNameSelect.value = state.settings.proofreadingModelName || 'gemini-2.5-flash';
                 elements.proofreadingSystemInstructionTextarea.value = state.settings.proofreadingSystemInstruction || '';
-                // 校正チェックボックスの状態に応じてオプションの表示/非表示を切り替え
                 elements.proofreadingOptionsDiv.classList.toggle('hidden', !state.settings.enableProofreading);
                 elements.enableAutoRetryCheckbox.checked = state.settings.enableAutoRetry;
                 elements.maxRetriesInput.value = state.settings.maxRetries;
-                // チェックボックスの状態に応じてオプションの表示/非表示を切り替え
                 elements.autoRetryOptionsDiv.classList.toggle('hidden', !state.settings.enableAutoRetry);
 
-                // ユーザー指定モデルをコンボボックスに追加
                 this.updateUserModelOptions();
-
-                this.updateBackgroundSettingsUI(); // 背景画像UI要素を更新
-                this.applyDarkMode(); // 読み込み/更新された設定を反映してテーマを適用 (チェックボックス設定後)
-                this.applyFontFamily(); // フォント設定を適用
-                this.toggleSystemPromptVisibility(); // SP表示/非表示を適用
+                this.updateBackgroundSettingsUI();
+                this.applyDarkMode();
+                this.applyFontFamily();
+                this.toggleSystemPromptVisibility();
             },
 
             // ユーザー指定モデルをコンボボックスに反映
@@ -5487,98 +5473,93 @@
 
             // 設定を保存
             async saveSettings() {
-                 // UIから値を取得 (背景Blobは別途処理済みなので除く)
-                 const newSettings = {
-                     apiKey: elements.apiKeyInput.value.trim(),
-                     modelName: elements.modelNameSelect.value,
-                     streamingOutput: elements.streamingOutputCheckbox.checked,
-                     streamingSpeed: elements.streamingSpeedInput.value === '' ? DEFAULT_STREAMING_SPEED : parseInt(elements.streamingSpeedInput.value),
-                     systemPrompt: elements.systemPromptDefaultTextarea.value.trim(), // デフォルト用
-                     temperature: elements.temperatureInput.value === '' ? null : parseFloat(elements.temperatureInput.value),
-                     maxTokens: elements.maxTokensInput.value === '' ? null : parseInt(elements.maxTokensInput.value),
-                     topK: elements.topKInput.value === '' ? null : parseInt(elements.topKInput.value),
-                     topP: elements.topPInput.value === '' ? null : parseFloat(elements.topPInput.value),
-                     presencePenalty: elements.presencePenaltyInput.value === '' ? null : parseFloat(elements.presencePenaltyInput.value),
-                     frequencyPenalty: elements.frequencyPenaltyInput.value === '' ? null : parseFloat(elements.frequencyPenaltyInput.value),
-                     thinkingBudget: elements.thinkingBudgetInput.value === '' ? null : parseInt(elements.thinkingBudgetInput.value, 10),
-                     includeThoughts: elements.includeThoughtsToggle.checked, // Include Thoughts 設定を取得
-                     dummyUser: elements.dummyUserInput.value.trim(),
-                     dummyModel: elements.dummyModelInput.value.trim(),
-                     concatDummyModel: elements.concatDummyModelCheckbox.checked,
-                     additionalModels: elements.additionalModelsTextarea.value.trim(),
-                     pseudoStreaming: elements.pseudoStreamingCheckbox.checked,
-                     enterToSend: elements.enterToSendCheckbox.checked,
-                     historySortOrder: elements.historySortOrderSelect.value,
-                     darkMode: elements.darkModeToggle.checked,
-                     fontFamily: elements.fontFamilyInput.value.trim(), // フォント設定を取得
-                     hideSystemPromptInChat: elements.hideSystemPromptToggle.checked, // SP非表示設定
-                     geminiEnableGrounding: elements.geminiEnableGroundingToggle.checked,
-                     geminiEnableFunctionCalling: elements.geminiEnableFunctionCallingToggle.checked,
-                     enableGrounding: elements.enableGroundingToggle.checked, // ネット検索設定を取得
-                     enableSwipeNavigation: elements.swipeNavigationToggle.checked,//スワイプナビゲーション設定を取得
-                     enableAutoRetry: elements.enableAutoRetryCheckbox.checked,
-                     maxRetries: parseInt(elements.maxRetriesInput.value, 10) || 0,
-                     enableProofreading: elements.enableProofreadingCheckbox.checked,
-                     proofreadingModelName: elements.proofreadingModelNameSelect.value,
-                     proofreadingSystemInstruction: elements.proofreadingSystemInstructionTextarea.value.trim(),
-                 };
+                const newSettings = {
+                    apiKey: elements.apiKeyInput.value.trim(),
+                    modelName: elements.modelNameSelect.value,
+                    streamingOutput: elements.streamingOutputCheckbox.checked,
+                    streamingSpeed: elements.streamingSpeedInput.value === '' ? DEFAULT_STREAMING_SPEED : parseInt(elements.streamingSpeedInput.value),
+                    systemPrompt: elements.systemPromptDefaultTextarea.value.trim(),
+                    temperature: elements.temperatureInput.value === '' ? null : parseFloat(elements.temperatureInput.value),
+                    maxTokens: elements.maxTokensInput.value === '' ? null : parseInt(elements.maxTokensInput.value),
+                    topK: elements.topKInput.value === '' ? null : parseInt(elements.topKInput.value),
+                    topP: elements.topPInput.value === '' ? null : parseFloat(elements.topPInput.value),
+                    presencePenalty: elements.presencePenaltyInput.value === '' ? null : parseFloat(elements.presencePenaltyInput.value),
+                    frequencyPenalty: elements.frequencyPenaltyInput.value === '' ? null : parseFloat(elements.frequencyPenaltyInput.value),
+                    thinkingBudget: elements.thinkingBudgetInput.value === '' ? null : parseInt(elements.thinkingBudgetInput.value, 10),
+                    includeThoughts: elements.includeThoughtsToggle.checked,
+                    dummyUser: elements.dummyUserInput.value.trim(),
+                    dummyModel: elements.dummyModelInput.value.trim(),
+                    concatDummyModel: elements.concatDummyModelCheckbox.checked,
+                    additionalModels: elements.additionalModelsTextarea.value.trim(),
+                    pseudoStreaming: elements.pseudoStreamingCheckbox.checked,
+                    enterToSend: elements.enterToSendCheckbox.checked,
+                    historySortOrder: elements.historySortOrderSelect.value,
+                    darkMode: elements.darkModeToggle.checked,
+                    fontFamily: elements.fontFamilyInput.value.trim(),
+                    hideSystemPromptInChat: elements.hideSystemPromptToggle.checked,
+                    geminiEnableGrounding: elements.geminiEnableGroundingToggle.checked,
+                    geminiEnableFunctionCalling: elements.geminiEnableFunctionCallingToggle.checked,
+                    enableSwipeNavigation: elements.swipeNavigationToggle.checked,
+                    enableAutoRetry: elements.enableAutoRetryCheckbox.checked,
+                    maxRetries: parseInt(elements.maxRetriesInput.value, 10) || 0,
+                    enableProofreading: elements.enableProofreadingCheckbox.checked,
+                    proofreadingModelName: elements.proofreadingModelNameSelect.value,
+                    proofreadingSystemInstruction: elements.proofreadingSystemInstructionTextarea.value.trim(),
+                };
 
-                 // --- 数値入力のバリデーション ---
-                 if (isNaN(newSettings.streamingSpeed) || newSettings.streamingSpeed < 0) {
-                     newSettings.streamingSpeed = DEFAULT_STREAMING_SPEED;
-                 }
-                 if (newSettings.temperature !== null && (isNaN(newSettings.temperature) || newSettings.temperature < 0 || newSettings.temperature > 2)) {
-                     newSettings.temperature = null; // 不正値はnull (APIデフォルト) に
-                 }
-                 if (newSettings.maxTokens !== null && (isNaN(newSettings.maxTokens) || newSettings.maxTokens < 1)) {
-                     newSettings.maxTokens = null;
-                 }
-                 if (newSettings.topK !== null && (isNaN(newSettings.topK) || newSettings.topK < 1)) {
-                     newSettings.topK = null;
-                 }
-                 if (newSettings.topP !== null && (isNaN(newSettings.topP) || newSettings.topP < 0 || newSettings.topP > 1)) {
-                     newSettings.topP = null;
-                 }
-                 if (newSettings.presencePenalty !== null && (isNaN(newSettings.presencePenalty) || newSettings.presencePenalty < -2.0 || newSettings.presencePenalty >= 2.0)) {
-                     newSettings.presencePenalty = null; // 不正値は null (APIデフォルト) に
-                 }
-                 if (newSettings.frequencyPenalty !== null && (isNaN(newSettings.frequencyPenalty) || newSettings.frequencyPenalty < -2.0 || newSettings.frequencyPenalty >= 2.0)) {
-                     newSettings.frequencyPenalty = null; // 不正値は null (APIデフォルト) に
-                 }
-                 if (newSettings.thinkingBudget !== null && (isNaN(newSettings.thinkingBudget) || newSettings.thinkingBudget < 0 || !Number.isInteger(newSettings.thinkingBudget))) {
-                     newSettings.thinkingBudget = null; // 不正値はnull
-                 }
-                 if (isNaN(newSettings.maxRetries) || newSettings.maxRetries < 0) {
-                     newSettings.maxRetries = 0; // 不正値は0 (リトライなし)
-                 }
-                 // --- バリデーション終了 ---
+                if (isNaN(newSettings.streamingSpeed) || newSettings.streamingSpeed < 0) {
+                    newSettings.streamingSpeed = DEFAULT_STREAMING_SPEED;
+                }
+                if (newSettings.temperature !== null && (isNaN(newSettings.temperature) || newSettings.temperature < 0 || newSettings.temperature > 2)) {
+                    newSettings.temperature = null;
+                }
+                if (newSettings.maxTokens !== null && (isNaN(newSettings.maxTokens) || newSettings.maxTokens < 1)) {
+                    newSettings.maxTokens = null;
+                }
+                if (newSettings.topK !== null && (isNaN(newSettings.topK) || newSettings.topK < 1)) {
+                    newSettings.topK = null;
+                }
+                if (newSettings.topP !== null && (isNaN(newSettings.topP) || newSettings.topP < 0 || newSettings.topP > 1)) {
+                    newSettings.topP = null;
+                }
+                if (newSettings.presencePenalty !== null && (isNaN(newSettings.presencePenalty) || newSettings.presencePenalty < -2.0 || newSettings.presencePenalty >= 2.0)) {
+                    newSettings.presencePenalty = null;
+                }
+                if (newSettings.frequencyPenalty !== null && (isNaN(newSettings.frequencyPenalty) || newSettings.frequencyPenalty < -2.0 || newSettings.frequencyPenalty >= 2.0)) {
+                    newSettings.frequencyPenalty = null;
+                }
+                if (newSettings.thinkingBudget !== null && (isNaN(newSettings.thinkingBudget) || newSettings.thinkingBudget < 0 || !Number.isInteger(newSettings.thinkingBudget))) {
+                    newSettings.thinkingBudget = null;
+                }
+                if (isNaN(newSettings.maxRetries) || newSettings.maxRetries < 0) {
+                    newSettings.maxRetries = 0;
+                }
 
-                 try {
-                     const oldSortOrder = state.settings.historySortOrder; // 更新前のソート順を保持
+                try {
+                    const oldSortOrder = state.settings.historySortOrder;
+                    const { backgroundImageBlob, ...settingsToSave } = newSettings;
 
-                     // 各設定をDBに保存 (背景Blobは除く)
-                     const promises = Object.entries(newSettings).map(([key, value]) =>
-                         dbUtils.saveSetting(key, value)
-                     );
-                     await Promise.all(promises);
+                    const promises = Object.entries(settingsToSave).map(([key, value]) =>
+                        dbUtils.saveSetting(key, value)
+                    );
+                    await Promise.all(promises);
 
-                     // stateをバリデーション後の値で更新 (背景Blobは既にstateにある)
-                     state.settings = { ...state.settings, ...newSettings };
+                    const currentBgBlob = state.settings.backgroundImageBlob;
+                    state.settings = { ...state.settings, ...settingsToSave };
+                    state.settings.backgroundImageBlob = currentBgBlob;
+                    this.updateCurrentSystemPrompt();
+                    uiUtils.applySettingsToUI();
+                    uiUtils.renderChatMessages(true);
 
-                     // 全設定をUIに再適用 (バリデーションで修正された値も反映)
-                     uiUtils.applySettingsToUI();
-                     // applyDarkMode, applyFontFamily, toggleSystemPromptVisibility は applySettingsToUI内で呼ばれる
+                    console.log("設定保存成功:", { ...state.settings, backgroundImageBlob: state.settings.backgroundImageBlob ? '[Blob]' : null });
+                    await uiUtils.showCustomAlert("設定を保存しました。");
 
-                     console.log("設定保存成功:", { ...state.settings, backgroundImageBlob: state.settings.backgroundImageBlob ? '[Blob]' : null });
-                     await uiUtils.showCustomAlert("設定を保存しました。");
-
-                     // ソート順が変更され、履歴画面が表示中ならリストを再描画
-                     if (newSettings.historySortOrder !== oldSortOrder && state.currentScreen === 'history') {
-                         uiUtils.renderHistoryList();
-                     }
-                 } catch (error) {
-                     await uiUtils.showCustomAlert(`設定の保存中にエラーが発生しました: ${error}`);
-                 }
+                    if (newSettings.historySortOrder !== oldSortOrder && state.currentScreen === 'history') {
+                        uiUtils.renderHistoryList();
+                    }
+                } catch (error) {
+                    await uiUtils.showCustomAlert(`設定の保存中にエラーが発生しました: ${error}`);
+                }
             },
 
             // アプリを更新 (キャッシュクリア)
