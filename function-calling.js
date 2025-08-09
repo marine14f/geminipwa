@@ -1,216 +1,213 @@
-/**
- * function-calling.js
- * - Gemini Function Calling 用の function_declarations と実装
- * - IndexedDB 永続メモリ (per chat) を manage_persistent_memory で扱う
- * - 依存: window.state, window.dbUtils, window.appLogic (存在すれば), window.fetch など
+/*
+ * function-calling.js (merged)
+ * - Tools: calculate, manage_persistent_memory
+ * - Per-chat persistent memory: mutations are immediately persisted to IndexedDB
+ * - Guards: usable only after first message is saved (currentChatId must exist)
  */
 
- (() => {
-    // ---- ツール宣言（Gemini v1beta 形式）--------------------------------------
-    const functionDeclarations = [
-      {
-        name: "calculate",
-        description:
-          "ユーザーから与えられた数学的な計算式（四則演算）を評価し、その正確な結果を返します。複雑な計算や、信頼性が求められる計算の場合に必ず使用してください。",
-        parameters: {
-          type: "OBJECT",
-          properties: {
-            expression: {
-              type: "STRING",
-              description: "計算する数式。例: '2 * (3 + 5)'",
-            },
-          },
-          required: ["expression"],
-        },
-      },
-      {
-        name: "manage_persistent_memory",
-        description:
-          "現在の会話セッションに限定して、重要な情報（記念日、登場人物の設定、世界の法則など）を後から参照できるように記憶・管理します。他の会話には影響しません。",
-        parameters: {
-          type: "OBJECT",
-          properties: {
-            action: {
-              type: "STRING",
-              description:
-                "実行する操作を選択します。'add': 情報を追加/上書き, 'get': 情報を取得, 'delete': 情報を削除, 'list': 記憶している全ての情報キーを一覧表示。",
-            },
-            key: {
-              type: "STRING",
-              description:
-                "情報を識別するための一意のキー（名前）。'add', 'get', 'delete' アクションで必須です。例: '主人公の性格', '次の目的地'",
-            },
-            value: {
-              type: "STRING",
-              description:
-                "キーに紐付けて記憶させる情報の内容。'add' アクションで必須です。例: '冷静沈着', '東の塔'",
-            },
-          },
-          required: ["action"],
-        },
-      },
-    ];
+(function () {
+    // ===== Helpers =====
+    const ok = (message, extra = {}) => ({ success: true, message, ...extra });
+    const fail = (message, extra = {}) => ({ success: false, message, ...extra });
   
-    // グローバルへエクスポート（index.html から参照）
-    window.functionDeclarations = functionDeclarations;
-    console.log("[Function Calling] tools & declarations registered (v5)");
+    // Debounced saver (coalesce multiple mutations)
+    let saveTimer = null;
+    async function savePersistentMemorySoon() {
+      if (saveTimer) clearTimeout(saveTimer);
+      await new Promise((resolve) => {
+        saveTimer = setTimeout(async () => {
+          try {
+            if (window.dbUtils && typeof window.dbUtils.saveChat === "function") {
+              await window.dbUtils.saveChat();
+            } else {
+              console.warn("[Function Calling] dbUtils.saveChat が見つかりません");
+            }
+          } catch (e) {
+            console.warn("[Function Calling] 永続メモリ保存に失敗:", e);
+          } finally {
+            saveTimer = null;
+            resolve();
+          }
+        }, 50);
+      });
+    }
   
-    // ---- ツール実装 ------------------------------------------------------------
-  
-    async function tool_calculate(args) {
-      const { expression } = args || {};
-      if (typeof expression !== "string" || !expression.trim()) {
-        return {
-          name: "calculate",
-          response: { success: false, message: "式が空です。" },
-        };
+    function ensureState() {
+      if (!window.state) throw new Error("global state is missing");
+      if (!("currentPersistentMemory" in window.state)) {
+        window.state.currentPersistentMemory = {};
       }
-      // 極めて限定的な評価（四則演算と括弧のみに制限）
-      if (!/^[\d+\-*/().\s]+$/.test(expression)) {
-        return {
-          name: "calculate",
-          response: { success: false, message: "不正な文字が含まれています。" },
-        };
+    }
+  
+    function ensureUsableChat() {
+      // 要件: 最初のメッセージ送信後（= currentChatId が存在）
+      if (!window.state || !window.state.currentChatId) {
+        return fail(
+          "この関数は最初のメッセージ送信後に使用できます。先にメッセージを送信してください。"
+        );
+      }
+      return null;
+    }
+  
+    // ===== calculate (四則演算) =====
+    function calculate(args) {
+      const { expression } = args || {};
+      if (typeof expression !== "string" || expression.trim() === "") {
+        return fail("'expression' は必須の文字列です。");
+      }
+      // 許可する文字のみ（数字, + - * / . () 半角スペース）
+      const safe = /^[0-9+*/(). -]+$/;
+      if (!safe.test(expression)) {
+        return fail("使用できない文字が含まれています（四則演算と括弧のみ対応）。");
       }
       try {
         // eslint-disable-next-line no-new-func
-        const result = Function(`"use strict"; return (${expression})`)();
-        if (Number.isFinite(result)) {
-          return {
-            name: "calculate",
-            response: { success: true, result },
-          };
+        const result = Function("\"use strict\";return (" + expression + ")")();
+        if (typeof result !== "number" || !isFinite(result)) {
+          return fail("計算結果が数値ではありません。");
         }
-        throw new Error("計算結果が有限数ではありません。");
+        return ok("計算しました。", { expression, result });
       } catch (e) {
-        return {
-          name: "calculate",
-          response: { success: false, message: `計算エラー: ${e.message}` },
-        };
+        return fail("式の評価に失敗しました。", { error: String((e && e.message) || e) });
       }
     }
   
-    /**
-     * 重要: ここが今回の修正ポイント
-     * - chatId 未確定でも、saveChat() を一度呼び出して ID を確定させる
-     * - state.currentPersistentMemory を更新してから、必ず saveChat() で DB へ永続化
-     */
-    async function tool_manage_persistent_memory(args) {
-      const { action, key, value } = args || {};
-      console.log("[Function Calling] manage_persistent_memoryが呼び出されました。", args);
-  
-      const state = window.state || (window.state = {});
-      if (!state.currentPersistentMemory) state.currentPersistentMemory = {};
-  
-      const mem = state.currentPersistentMemory;
-  
-      const ensureChatId = async () => {
-        // 既にIDがあるなら何もしない
-        if (state.currentChatId) return state.currentChatId;
-  
-        // まだIDがない場合：現在の state を DB へ保存して ID を払い出す
-        // saveChat は新規なら keyPath autoIncrement により ID を採番し、
-        // 保存成功時に state.currentChatId へ反映します。
-        if (window.dbUtils?.saveChat) {
-          await window.dbUtils.saveChat();
-          if (state.currentChatId) return state.currentChatId;
-        }
-        // 念のための保険：IDが取れなければ例外
-        throw new Error("chatId を確定できませんでした。");
-      };
-  
+    // ===== manage_persistent_memory =====
+    async function managePersistentMemory(args) {
+      console.log("[Function Calling] manage_persistent_memory が呼び出されました", args);
       try {
-        switch (action) {
-          case "add": {
-            if (!key) return { name: "manage_persistent_memory", response: { success: false, message: "key が必要です。" } };
-            if (typeof value !== "string") return { name: "manage_persistent_memory", response: { success: false, message: "value は文字列で指定してください。" } };
-  
-            mem[key] = value; // まずは state を更新
-            // ここで chatId を必ず確定させてから保存
-            await ensureChatId();
-            // saveChat() は persistentMemory も含めて保存します。
-            await window.dbUtils.saveChat();
-  
-            return {
-              name: "manage_persistent_memory",
-              response: { success: true, message: `キー「${key}」に値を保存しました。` },
-            };
-          }
-          case "get": {
-            if (!key) return { name: "manage_persistent_memory", response: { success: false, message: "key が必要です。" } };
-            const v = mem[key];
-            return {
-              name: "manage_persistent_memory",
-              response: { success: true, value: v ?? null, hit: v !== undefined },
-            };
-          }
-          case "delete": {
-            if (!key) return { name: "manage_persistent_memory", response: { success: false, message: "key が必要です。" } };
-            const existed = Object.prototype.hasOwnProperty.call(mem, key);
-            if (existed) delete mem[key];
-            await ensureChatId();
-            await window.dbUtils.saveChat();
-            return {
-              name: "manage_persistent_memory",
-              response: { success: true, deleted: existed },
-            };
-          }
-          case "list": {
-            return {
-              name: "manage_persistent_memory",
-              response: { success: true, keys: Object.keys(mem) },
-            };
-          }
-          default:
-            return {
-              name: "manage_persistent_memory",
-              response: { success: false, message: `未知の action: ${action}` },
-            };
-        }
+        ensureState();
       } catch (e) {
-        console.error("[Function Calling] manage_persistent_memory エラー:", e);
-        return {
-          name: "manage_persistent_memory",
-          response: { success: false, message: e?.message || String(e) },
-        };
+        return fail("内部状態が初期化されていません: " + e.message);
+      }
+  
+      const guard = ensureUsableChat();
+      if (guard) return guard; // 前提条件 NG
+  
+      const { action, key, value } = args || {};
+      const mem = window.state.currentPersistentMemory || (window.state.currentPersistentMemory = {});
+  
+      const a = String(action || "").toLowerCase();
+      if (!a || !["add", "get", "delete", "list"].includes(a)) {
+        return fail("action は 'add' | 'get' | 'delete' | 'list' のいずれかです。");
+      }
+      if ((a === "add" || a === "get" || a === "delete") && (!key || typeof key !== "string")) {
+        return fail("'key' は必須の文字列です。");
+      }
+      if (a === "add" && (value === undefined || value === null)) {
+        return fail("'value' は 'add' アクションで必須です。");
+      }
+  
+      switch (a) {
+        case "add": {
+          mem[key] = String(value);
+          await savePersistentMemorySoon();
+          return ok(`キー「${key}」に値を保存しました。`, { key, value: mem[key] });
+        }
+        case "get": {
+          if (!(key in mem)) return ok(`キー「${key}」は未登録です。`, { exists: false });
+          return ok(`キー「${key}」の値です。`, { exists: true, key, value: mem[key] });
+        }
+        case "delete": {
+          if (key in mem) {
+            delete mem[key];
+            await savePersistentMemorySoon();
+            return ok(`キー「${key}」を削除しました。`);
+          }
+          return ok(`キー「${key}」は存在しませんでした。`);
+        }
+        case "list": {
+          const keys = Object.keys(mem);
+          return ok("保存されているキーの一覧です。", { keys, count: keys.length });
+        }
       }
     }
   
-    // ---- ツールディスパッチャ --------------------------------------------------
-    window.executeToolCall = async (toolCall) => {
-      const { functionCall } = toolCall || {};
-      if (!functionCall?.name) return null;
-  
-      if (functionCall.name === "calculate") {
-        return await tool_calculate(functionCall.args || {});
-      }
-      if (functionCall.name === "manage_persistent_memory") {
-        return await tool_manage_persistent_memory(functionCall.args || {});
-      }
-      return {
-        name: functionCall.name,
-        response: { success: false, message: "未対応のツールです。" },
+    // ===== Merge function declarations safely =====
+    function mergeFunctionDeclarations(existing, incoming) {
+      const flat = [];
+      const pushDecl = (decl) => {
+        const name = decl && decl.name;
+        if (!name) return;
+        const already = flat.find((d) => d.name === name);
+        if (!already) flat.push(decl);
       };
+  
+      // Existing
+      if (Array.isArray(existing)) {
+        for (const block of existing) {
+          if (block && Array.isArray(block.function_declarations)) {
+            for (const decl of block.function_declarations) pushDecl(decl);
+          }
+        }
+      }
+      // Incoming (wins over existing with same name by replacing)
+      for (const decl of incoming) {
+        const idx = flat.findIndex((d) => d.name === decl.name);
+        if (idx >= 0) flat.splice(idx, 1, decl); else flat.push(decl);
+      }
+      return [{ function_declarations: flat }];
+    }
+  
+    const calcDecl = {
+      name: "calculate",
+      description:
+        "ユーザーから与えられた数学的な計算式（四則演算）を評価し、その正確な結果を返します。複雑な計算や、信頼性が求められる計算の場合に必ず使用してください。",
+      parameters: {
+        type: "OBJECT",
+        properties: {
+          expression: {
+            type: "STRING",
+            description: "計算する数式。例: '2 * (3 + 5)'",
+          },
+        },
+        required: ["expression"],
+      },
     };
   
-    /**
-     * 複数ツール呼び出し（index.html 側の呼び出しに対応）
-     * - 戻り値は { role:'tool', name, response } の配列
-     */
-    window.executeToolCalls = async (toolCalls) => {
-      const results = [];
-      for (const call of toolCalls) {
-        const res = await window.executeToolCall(call);
-        if (res) {
-          results.push({
-            role: "tool",
-            name: res.name,
-            response: res.response,
-            timestamp: Date.now(),
-          });
-        }
+    const memDecl = {
+      name: "manage_persistent_memory",
+      description:
+        "現在の会話で登場した重要な情報（例：記念日、登場人物の設定、世界の法則など）を、会話を跨いで記憶・参照・削除するための長期記憶を管理する。他の会話には影響しない。",
+      parameters: {
+        type: "OBJECT",
+        properties: {
+          action: {
+            type: "STRING",
+            description: "'add' | 'get' | 'delete' | 'list' のいずれか。",
+          },
+          key: {
+            type: "STRING",
+            description: "情報を識別するための一意の文字列 (add, get, delete時に必須)。",
+          },
+          value: {
+            type: "STRING",
+            description: "保存する情報 (add時に必須)。",
+          },
+        },
+        required: ["action"],
+      },
+    };
+  
+    window.functionDeclarations = mergeFunctionDeclarations(
+      window.functionDeclarations,
+      [calcDecl, memDecl]
+    );
+  
+    // ===== Register implementations =====
+    window.functionCallingTools = Object.assign({}, window.functionCallingTools, {
+      calculate,
+      manage_persistent_memory: managePersistentMemory,
+    });
+  
+    // ===== Small debug helpers =====
+    window.debugListPersistentMemory = function () {
+      try {
+        ensureState();
+        console.log("[Debug] currentPersistentMemory:", window.state.currentPersistentMemory);
+      } catch (e) {
+        console.warn(e);
       }
-      return results;
     };
   })();
   
