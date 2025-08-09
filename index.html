@@ -3152,6 +3152,31 @@
 
                 // 編集用エリア (初期非表示)
                 const editArea = document.createElement('div');
+                // ▼▼▼ Function Calling の使用関数を表示（GoogleSearchの出典風） ▼▼▼
+                if (role === 'model' && messageData && Array.isArray(messageData.tool_calls) && messageData.tool_calls.length > 0) {
+                    const details = document.createElement('details');
+                    details.className = 'citation-details'; // 既存の見た目を流用
+                    // details.open = false; // 初期で閉じたい場合は有効化
+
+                    const summary = document.createElement('summary');
+                    summary.textContent = '使用ツール';
+                    details.appendChild(summary);
+
+                    const ul = document.createElement('ul');
+                    ul.style.margin = '6px 0 0 0';
+                    ul.style.paddingLeft = '16px';
+
+                    for (const tc of messageData.tool_calls) {
+                        const li = document.createElement('li');
+                        const callName = (tc && tc.functionCall && tc.functionCall.name) ? tc.functionCall.name : '(unknown function)';
+                        li.textContent = callName;
+                        ul.appendChild(li);
+                    }
+
+                    details.appendChild(ul);
+                    contentDiv.appendChild(details); 
+                }
+
                 editArea.classList.add('message-edit-area', 'hidden');
                 messageDiv.appendChild(editArea);
 
