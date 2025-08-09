@@ -5564,25 +5564,49 @@
 
             // アプリを更新 (キャッシュクリア)
             async updateApp() {
-                // Service Workerが利用可能かチェック
-                if (!navigator.serviceWorker || !navigator.serviceWorker.controller) {
-                    await uiUtils.showCustomAlert("Service Workerが検出されませんでした。ページをリロードしてから再試行してください。");
+                // ▼▼▼【ここからロジックを全面的に変更】▼▼▼
+                if (!('serviceWorker' in navigator)) {
+                    await uiUtils.showCustomAlert("お使いのブラウザはService Workerをサポートしていません。");
                     return;
                 }
+                
                 const confirmed = await uiUtils.showCustomConfirm("アプリのキャッシュをクリアして最新版を再取得しますか？ (ページがリロードされます)");
-                if (confirmed) {
-                    // Service Workerにキャッシュクリアメッセージを送信
-                    navigator.serviceWorker.ready.then(reg => {
-                        if (reg.active) {
-                            reg.active.postMessage({ action: 'clearCache' });
-                            // リロードはService Workerからの応答メッセージで行う
-                        } else {
-                            uiUtils.showCustomAlert("アクティブなService Workerが見つかりません。手動でリロードが必要かもしれません。");
-                        }
-                    }).catch(async err => {
-                        await uiUtils.showCustomAlert("Service Workerの準備中にエラーが発生しました。");
-                    });
+                if (!confirmed) return;
+
+                try {
+                    // navigator.serviceWorker.ready は、Service Workerの登録が完了し、
+                    // アクティブなワーカーが存在することを保証するPromiseを返します。
+                    const registration = await navigator.serviceWorker.ready;
+                    
+                    if (registration && registration.active) {
+                        // アクティブなService Workerにキャッシュクリアのメッセージを送信
+                        registration.active.postMessage({ action: 'clearCache' });
+                        // Service Workerからの応答を待ってリロードするリスナーを追加
+                        navigator.serviceWorker.addEventListener('message', function handler(event) {
+                            if (event.data && event.data.action === 'cacheCleared') {
+                                // リスナーを削除して、再読み込み
+                                navigator.serviceWorker.removeEventListener('message', handler);
+                                window.location.reload();
+                            }
+                        });
+
+                        // タイムアウト処理: 5秒以内に応答がなければ強制リロード
+                        setTimeout(() => {
+                            console.warn("Service Workerからの応答がタイムアウトしました。強制的にリロードします。");
+                            window.location.reload();
+                        }, 5000);
+
+                    } else {
+                        // アクティブなワーカーが見つからない場合 (通常は発生しにくい)
+                        await uiUtils.showCustomAlert("アクティブなService Workerが見つかりませんでした。ページを強制的に再読み込みします。");
+                        window.location.reload(true); // Service Workerを無視してリロード
+                    }
+                } catch (error) {
+                    console.error("Service Workerの処理中にエラー:", error);
+                    await uiUtils.showCustomAlert(`Service Workerの処理中にエラーが発生しました。ページを強制的に再読み込みします。\nエラー: ${error.message}`);
+                    window.location.reload(true); // Service Workerを無視してリロード
                 }
+                // ▲▲▲【ここまでロジックを全面的に変更】▲▲▲
             },
 
             // 全データ削除の確認と実行
