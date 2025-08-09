@@ -6409,5 +6409,43 @@
         // --- 初期化処理 ---
         appLogic.initializeApp();
     </script>
+    <script>
+        // システムプロンプト更新処理
+        appLogic.updateCurrentSystemPrompt = function () {
+            try {
+                const settings = appLogic.getSettings ? appLogic.getSettings() : {};
+        
+                let prompt = "You are a helpful AI assistant.";
+        
+                if (settings.enableFunctionCalling) {
+                    prompt += "\nFunction Calling is enabled. You may call functions when appropriate.";
+                }
+        
+                if (settings.enableGoogleSearch) {
+                    prompt += "\nYou can retrieve up-to-date information from the internet when needed.";
+                }
+        
+                if (settings.language) {
+                    prompt += `\nPlease respond in ${settings.language}.`;
+                }
+        
+                const promptEditor = document.getElementById("system-prompt-editor");
+                if (promptEditor) {
+                    promptEditor.value = prompt;
+                }
+        
+                if (appLogic.setSystemPrompt) {
+                    appLogic.setSystemPrompt(prompt);
+                }
+        
+                console.log("System prompt updated:", prompt);
+            } catch (err) {
+                console.error("Failed to update system prompt:", err);
+            }
+        };
+        </script>
+        </body>
+        </html>
+        
 </body>
 </html>
