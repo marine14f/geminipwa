@@ -6240,6 +6240,7 @@
                 const userMessage = state.currentMessages[index];
                 if (!userMessage || userMessage.role !== 'user') return;
 
+                // 破壊的な操作の前に、必ずユーザーに確認する
                 const messageContentPreview = userMessage.content.substring(0, 30) + "...";
                 const confirmed = await uiUtils.showCustomConfirm(`「${messageContentPreview}」から再生成しますか？\n(この入力に対する既存の応答と、それ以降の会話履歴はすべて削除されます)`);
 
