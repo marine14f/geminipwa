@@ -4191,6 +4191,19 @@
             },
         };
 
+        function updateCurrentSystemPrompt() {
+            const provider = state.settings.apiProvider;
+            // 'gemini' 以外のプロバイダー設定も将来的に考慮に入れる
+            const commonPrompt = state.settings.systemPrompt || '';
+            
+            // ひとまずGemini用のシステムプロンプトを優先するロジック（仮）
+            // 将来的には各プロバイダーの設定をここで分岐させる
+            const specificPrompt = state.settings.systemPrompt || commonPrompt;
+
+            state.currentSystemPrompt = specificPrompt;
+            console.log(`システムプロンプトを更新しました。Provider: ${provider}, Current Prompt: "${state.currentSystemPrompt.substring(0, 30)}..."`);
+        }
+
         // --- アプリケーションロジック (appLogic) ---
         const appLogic = {
             // アプリ初期化
@@ -4224,6 +4237,8 @@
                 try {
                     await dbUtils.openDB(); // DBを開く
                     await dbUtils.loadSettings(); // 設定を読み込む (stateに反映)
+
+                    updateCurrentSystemPrompt();
 
                     // 読み込んだ設定に基づいて初期テーマとフォントを適用
                     uiUtils.applyDarkMode();
@@ -5547,7 +5562,7 @@
                     const currentBgBlob = state.settings.backgroundImageBlob;
                     state.settings = { ...state.settings, ...settingsToSave };
                     state.settings.backgroundImageBlob = currentBgBlob;
-                    appLogic.updateCurrentSystemPrompt();
+                    updateCurrentSystemPrompt();
                     uiUtils.applySettingsToUI();
                     uiUtils.renderChatMessages(true);
 
