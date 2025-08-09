@@ -6505,7 +6505,7 @@
              * @throws {Error} リトライしても失敗した場合のエラー
              */
              async callApiWithRetry(apiParams) {
-                const { messagesForApi, generationConfig, systemInstruction, logicRetryAttempt } = apiParams; // logicRetryAttempt を受け取る
+                const { messagesForApi, generationConfig, systemInstruction, logicRetryAttempt, tools } = apiParams;
                 let lastError = null;
                 const maxHttpRetries = state.settings.enableAutoRetry ? state.settings.maxRetries : 0;
 
@@ -6532,7 +6532,7 @@
                             uiUtils.setLoadingIndicatorText('応答中...');
                         }
                         
-                        const response = await apiUtils.callGeminiApi(messagesForApi, generationConfig, systemInstruction);
+                        const response = await apiUtils.callGeminiApi(messagesForApi, generationConfig, systemInstruction, tools);
                         return { response, retryCount: attempt };
 
                     } catch (error) {
