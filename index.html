@@ -1928,18 +1928,33 @@
                         </p>
                     </div>
                 </div>
-                <div class="settings-group">
-                    <h3>検索</h3>
+                      
+                <div id="gemini-grounding-param" class="settings-group">
+                    <h3>ツール設定 (Gemini)</h3>
+                    <p style="font-size: 12px; color: var(--text-secondary); margin-top: -10px; margin-bottom: 15px;">
+                        ※ Function Calling と Google Search は同時に使用できません。
+                    </p>
                     <label class="checkbox-label">
-                        <input type="checkbox" id="enable-grounding-toggle">
+                        <input type="checkbox" id="gemini-enable-function-calling-toggle">
+                        Function Calling を使用する
+                    </label>
+                    <p style="font-size: 11px; color: var(--text-secondary); margin-top: -5px; margin-bottom: 10px;">
+                        ※ チェック時、AIは計算などのタスクを外部関数に任せようとします。<br>
+                        ※ Google Searchより優先されます。
+                    </p>
+
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="gemini-enable-grounding-toggle">
                         ネットから情報を取得させる (Google Search)
                     </label>
                     <p style="font-size: 11px; color: var(--text-secondary); margin-top: -5px; margin-bottom: 10px;">
-                        ※ チェック時、モデルは回答生成のためにWeb検索を行う。<br>
-                        ※ 2.0以降でのみ対応(1.5以前は互換なし。エラーになる)<br>
+                        ※ チェック時、モデルは回答生成のためにWeb検索を行います。<br>
+                        ※ Gemini 2.0以降でのみ対応(1.5以前は互換なし。エラーになる)<br>
                         ※ 推論モデルは推論内で検索する場合があり、引用データが帰らない場合がある。
                     </p>
                 </div>
+
+
                 <div class="settings-group">
                     <h3>校正機能</h3>
                     <label class="checkbox-label">
@@ -2233,6 +2248,8 @@
             darkModeToggle: document.getElementById('dark-mode-toggle'),
             fontFamilyInput: document.getElementById('font-family-input'), // フォント指定入力
             hideSystemPromptToggle: document.getElementById('hide-system-prompt-toggle'), // SP非表示トグル
+            geminiEnableGroundingToggle: document.getElementById('gemini-enable-grounding-toggle'),
+            geminiEnableFunctionCallingToggle: document.getElementById('gemini-enable-function-calling-toggle'),
             enableGroundingToggle: document.getElementById('enable-grounding-toggle'), // ネット検索トグル
             appVersionSpan: document.getElementById('app-version'),
             // 背景画像設定要素
@@ -2320,6 +2337,8 @@
                 enableProofreading: false, // 校正機能の有効/無効
                 proofreadingModelName: 'gemini-2.5-flash', // 校正用モデルのデフォルト
                 proofreadingSystemInstruction: 'あなたはプロの編集者です。受け取った文章の過剰な読点を抑制し、日本語として違和感のない読点の使用量に校正してください。承知しました等の応答は行わず、校正後の文章のみ出力して下さい。読点の抑制以外の編集は禁止です。読点以外の文章には絶対に手を付けないで下さい。', // 校正用システムプロンプトのデフォルト
+                geminiEnableGrounding: false,
+                geminiEnableFunctionCalling: false,
             },
             backgroundImageUrl: null, // 生成されたオブジェクトURL (DBには保存しない)
             isSending: false,
@@ -3524,6 +3543,8 @@
                 elements.darkModeToggle.checked = state.settings.darkMode; // ダークモードチェックボックスに状態を適用
                 elements.fontFamilyInput.value = state.settings.fontFamily || ''; // フォント設定を適用
                 elements.hideSystemPromptToggle.checked = state.settings.hideSystemPromptInChat; // SP非表示設定
+                elements.geminiEnableGroundingToggle.checked = state.settings.geminiEnableGrounding;
+                elements.geminiEnableFunctionCallingToggle.checked = state.settings.geminiEnableFunctionCalling;
                 elements.enableGroundingToggle.checked = state.settings.enableGrounding; // ネット検索設定を適用
                 elements.swipeNavigationToggle.checked = state.settings.enableSwipeNavigation;
                 elements.enableProofreadingCheckbox.checked = state.settings.enableProofreading;
@@ -3951,15 +3972,13 @@
                 };
                 
                 let finalTools = [];
-                // Function Callingのツール定義が渡されたかチェック
-                const hasFunctionDeclarations = tools && tools.some(t => t.function_declarations);
-
-                if (hasFunctionDeclarations) {
-                    // Function Callingが要求されている場合は、function_declarationsのみを設定
-                    finalTools = tools;
-                    console.log("Function Callingが有効なため、Google Searchをリクエストから除外します。");
-                } else if (state.settings.enableGrounding) {
-                    // Function Callingがなく、設定がONの場合のみGoogle Searchを設定
+                // 優先度1: Function Callingが設定で有効になっているかチェック
+                if (state.settings.geminiEnableFunctionCalling) {
+                    finalTools = window.functionDeclarations || [];
+                    console.log("Function Calling を有効にしてAPIを呼び出します。");
+                } 
+                // 優先度2: Function Callingが無効で、Google Searchが有効になっているかチェック
+                else if (state.settings.enableGrounding) {
                     finalTools.push({ "google_search": {} });
                     console.log("グラウンディング (Google Search) を有効にしてAPIを呼び出します。");
                 }
@@ -5493,6 +5512,8 @@
                      darkMode: elements.darkModeToggle.checked,
                      fontFamily: elements.fontFamilyInput.value.trim(), // フォント設定を取得
                      hideSystemPromptInChat: elements.hideSystemPromptToggle.checked, // SP非表示設定
+                     geminiEnableGrounding: elements.geminiEnableGroundingToggle.checked,
+                     geminiEnableFunctionCalling: elements.geminiEnableFunctionCallingToggle.checked,
                      enableGrounding: elements.enableGroundingToggle.checked, // ネット検索設定を取得
                      enableSwipeNavigation: elements.swipeNavigationToggle.checked,//スワイプナビゲーション設定を取得
                      enableAutoRetry: elements.enableAutoRetryCheckbox.checked,
