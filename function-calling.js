@@ -73,12 +73,11 @@
             default:
                 return { error: `無効なアクションです: ${action}` };
         }
-        
-        // stateに先に反映（UI/UXのため）
+
+        // 1. まずグローバルのstateを更新する
         state.currentPersistentMemory = memory;
 
-        // 変更をDBに非同期で保存
-        // ここではsaveChatの完了を待たないことで、AIへの応答を高速化する
+        //    (awaitを外し、バックグラウンドで実行することでAIへの応答を高速化)
         dbUtils.saveChat(chat.title).catch(err => {
             console.error("永続メモリのバックグラウンド保存に失敗:", err);
         });
