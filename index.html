@@ -3902,7 +3902,7 @@
         // --- APIユーティリティ (apiUtils) ---
         const apiUtils = {
             // Gemini APIを呼び出す
-            async callGeminiApi(messagesForApi, generationConfig, systemInstruction, tools = null) { // tools引数を追加
+            async callGeminiApi(messagesForApi, generationConfig, systemInstruction, tools = null) {
                 if (!state.settings.apiKey) {
                     throw new Error("APIキーが設定されていません。");
                 }
@@ -3950,11 +3950,20 @@
                     ]
                 };
                 
-                const finalTools = tools || [];
-                if (state.settings.enableGrounding) {
+                let finalTools = [];
+                // Function Callingのツール定義が渡されたかチェック
+                const hasFunctionDeclarations = tools && tools.some(t => t.function_declarations);
+
+                if (hasFunctionDeclarations) {
+                    // Function Callingが要求されている場合は、function_declarationsのみを設定
+                    finalTools = tools;
+                    console.log("Function Callingが有効なため、Google Searchをリクエストから除外します。");
+                } else if (state.settings.enableGrounding) {
+                    // Function Callingがなく、設定がONの場合のみGoogle Searchを設定
                     finalTools.push({ "google_search": {} });
                     console.log("グラウンディング (Google Search) を有効にしてAPIを呼び出します。");
                 }
+                
                 if (finalTools.length > 0) {
                     requestBody.tools = finalTools;
                 }
