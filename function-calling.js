@@ -1,335 +1,216 @@
-// function-calling.js — full / v6
-// Tools: calculate, manage_persistent_memory
-// 変更点(v6):
-//  - chatId 解決を強化（state.currentChatId / state.currentChat.id / IndexedDB スキャン / saveChat 再試行）
-//  - add/delete 後に IndexedDB('GeminiPWA_DB').chats を直接 put して確実に保存
-//  - ツール宣言・実装は既存にマージ登録
+/**
+ * function-calling.js
+ * - Gemini Function Calling 用の function_declarations と実装
+ * - IndexedDB 永続メモリ (per chat) を manage_persistent_memory で扱う
+ * - 依存: window.state, window.dbUtils, window.appLogic (存在すれば), window.fetch など
+ */
 
-(function () {
-    'use strict';
+ (() => {
+    // ---- ツール宣言（Gemini v1beta 形式）--------------------------------------
+    const functionDeclarations = [
+      {
+        name: "calculate",
+        description:
+          "ユーザーから与えられた数学的な計算式（四則演算）を評価し、その正確な結果を返します。複雑な計算や、信頼性が求められる計算の場合に必ず使用してください。",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            expression: {
+              type: "STRING",
+              description: "計算する数式。例: '2 * (3 + 5)'",
+            },
+          },
+          required: ["expression"],
+        },
+      },
+      {
+        name: "manage_persistent_memory",
+        description:
+          "現在の会話セッションに限定して、重要な情報（記念日、登場人物の設定、世界の法則など）を後から参照できるように記憶・管理します。他の会話には影響しません。",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            action: {
+              type: "STRING",
+              description:
+                "実行する操作を選択します。'add': 情報を追加/上書き, 'get': 情報を取得, 'delete': 情報を削除, 'list': 記憶している全ての情報キーを一覧表示。",
+            },
+            key: {
+              type: "STRING",
+              description:
+                "情報を識別するための一意のキー（名前）。'add', 'get', 'delete' アクションで必須です。例: '主人公の性格', '次の目的地'",
+            },
+            value: {
+              type: "STRING",
+              description:
+                "キーに紐付けて記憶させる情報の内容。'add' アクションで必須です。例: '冷静沈着', '東の塔'",
+            },
+          },
+          required: ["action"],
+        },
+      },
+    ];
   
-    // ===== Helpers =====
-    function ensureGlobalState() {
-      const g = typeof window !== 'undefined' ? window : globalThis;
-      if (!g.state) g.state = {};
-      if (typeof g.state.currentPersistentMemory !== 'object' || g.state.currentPersistentMemory == null) {
-        g.state.currentPersistentMemory = {};
-      }
-      return g;
-    }
+    // グローバルへエクスポート（index.html から参照）
+    window.functionDeclarations = functionDeclarations;
+    console.log("[Function Calling] tools & declarations registered (v5)");
   
-    // IndexedDB: 最新チャットIDを推定（updatedAt 降順 or id の最大／最後）
-    async function findLatestChatIdFromIDB() {
-      return new Promise((resolve) => {
-        const openReq = indexedDB.open('GeminiPWA_DB');
-        openReq.onerror = () => resolve(null);
-        openReq.onsuccess = () => {
-          const db = openReq.result;
-          let tx;
-          try {
-            tx = db.transaction('chats', 'readonly');
-          } catch (e) {
-            resolve(null);
-            return;
-          }
-          const store = tx.objectStore('chats');
+    // ---- ツール実装 ------------------------------------------------------------
   
-          // getAll が使えるなら簡単
-          if (typeof store.getAll === 'function') {
-            const allReq = store.getAll();
-            allReq.onerror = () => resolve(null);
-            allReq.onsuccess = () => {
-              const arr = allReq.result || [];
-              if (arr.length === 0) { resolve(null); return; }
-              // updatedAt があれば降順、無ければ id を文字列比較 or 数値化
-              arr.sort((a, b) => {
-                const au = a.updatedAt || a.updated_at || 0;
-                const bu = b.updatedAt || b.updated_at || 0;
-                if (au && bu && au !== bu) return bu - au; // 降順
-                // 次善：id 比較（数値化できれば数値）
-                const ai = +a.id || 0;
-                const bi = +b.id || 0;
-                return bi - ai;
-              });
-              resolve(arr[0]?.id || null);
-            };
-            return;
-          }
-  
-          // getAll がない環境用：カーソルで走査して最新っぽいものを選ぶ
-          let best = null;
-          const cursorReq = store.openCursor();
-          cursorReq.onerror = () => resolve(null);
-          cursorReq.onsuccess = (ev) => {
-            const cursor = ev.target.result;
-            if (cursor) {
-              const v = cursor.value;
-              if (!best) best = v;
-              else {
-                const bu = best.updatedAt || best.updated_at || 0;
-                const vu = v.updatedAt || v.updated_at || 0;
-                if (vu && vu > bu) best = v;
-                else if (!vu && !bu) {
-                  const bi = +best.id || 0;
-                  const vi = +v.id || 0;
-                  if (vi > bi) best = v;
-                }
-              }
-              cursor.continue();
-            } else {
-              resolve(best?.id || null);
-            }
-          };
+    async function tool_calculate(args) {
+      const { expression } = args || {};
+      if (typeof expression !== "string" || !expression.trim()) {
+        return {
+          name: "calculate",
+          response: { success: false, message: "式が空です。" },
         };
-      });
-    }
-  
-    // IndexedDB: chats に persistentMemory を直接書き戻す
-    async function persistMemoryToIndexedDB(chatId, memory) {
-      if (!chatId) return { skipped: true, reason: 'no chatId' };
-  
-      return new Promise((resolve) => {
-        const openReq = indexedDB.open('GeminiPWA_DB');
-        openReq.onerror = () => resolve({ ok: false, error: openReq.error?.message || 'IDB open failed' });
-        openReq.onsuccess = () => {
-          const db = openReq.result;
-          let tx;
-          try {
-            tx = db.transaction('chats', 'readwrite');
-          } catch (e) {
-            resolve({ ok: false, error: 'transaction failed: ' + (e?.message || e) });
-            return;
-          }
-          const store = tx.objectStore('chats');
-          const getReq = store.get(chatId);
-          getReq.onerror = () => resolve({ ok: false, error: getReq.error?.message || 'get failed' });
-          getReq.onsuccess = () => {
-            const chat = getReq.result;
-            if (!chat) { resolve({ ok: false, error: 'chat not found: ' + chatId }); return; }
-            chat.persistentMemory = memory || {};
-            // 可能なら updatedAt を更新
-            try { chat.updatedAt = Date.now(); } catch {}
-            const putReq = store.put(chat);
-            putReq.onerror = () => resolve({ ok: false, error: putReq.error?.message || 'put failed' });
-            putReq.onsuccess = () => resolve({ ok: true });
-          };
+      }
+      // 極めて限定的な評価（四則演算と括弧のみに制限）
+      if (!/^[\d+\-*/().\s]+$/.test(expression)) {
+        return {
+          name: "calculate",
+          response: { success: false, message: "不正な文字が含まれています。" },
         };
-      });
-    }
-  
-    // chatId を最大限解決する
-    async function resolveChatId() {
-      const g = ensureGlobalState();
-      const state = g.state;
-  
-      if (state.currentChatId) return state.currentChatId;
-      if (state.currentChat && state.currentChat.id) {
-        state.currentChatId = state.currentChat.id;
-        return state.currentChatId;
       }
-  
-      // IndexedDB から最新を推定
-      const latest = await findLatestChatIdFromIDB();
-      if (latest) {
-        state.currentChatId = latest;
-        return latest;
-      }
-  
-      // ここまで無ければ saveChat を試す（存在する場合）
-      try {
-        if (g.dbUtils?.saveChat) { await g.dbUtils.saveChat(); }
-      } catch (e) {
-        console.warn("[Function Calling] resolveChatId: saveChat failed", e);
-      }
-  
-      // 再トライ
-      if (state.currentChatId) return state.currentChatId;
-      if (state.currentChat && state.currentChat.id) {
-        state.currentChatId = state.currentChat.id;
-        return state.currentChatId;
-      }
-      const latest2 = await findLatestChatIdFromIDB();
-      if (latest2) {
-        state.currentChatId = latest2;
-        return latest2;
-      }
-  
-      return null;
-    }
-  
-    // ===== Tool: manage_persistent_memory =====
-    async function manage_persistent_memory({ action, key, value }) {
-      console.log(`[Function Calling] manage_persistent_memoryが呼び出されました。`, { action, key, value });
-  
-      const g = ensureGlobalState();
-      const state = g.state;
-  
-      // chatId をできる限り解決
-      let chatId = await resolveChatId();
-      const ephemeral = !chatId;
-      if (ephemeral) {
-        console.warn("[Function Calling] chatId未確定のため、今回はインメモリのみ更新します。");
-      }
-  
-      try {
-        const memory = state.currentPersistentMemory || {};
-        let resultData = null;
-  
-        switch (action) {
-          case "add": {
-            if (!key || value === undefined) {
-              return { error: "addアクションには 'key' と 'value' が必要です。" };
-            }
-            memory[key] = value;
-            resultData = { success: true, message: `キー「${key}」に値を保存しました。` };
-  
-            // 可能なら即保存（IDBに直接書く）
-            if (!ephemeral) {
-              const r = await persistMemoryToIndexedDB(chatId, memory);
-              if (!r.ok) console.warn("[Function Calling] IDB persist failed:", r);
-              // dbUtils.saveChat があれば併用（任意）
-              if (g.dbUtils?.saveChat) { try { await g.dbUtils.saveChat(); } catch (e) { console.warn("[Function Calling] saveChat failed", e); } }
-            }
-            break;
-          }
-  
-          case "get": {
-            if (!key) return { error: "getアクションには 'key' が必要です。" };
-            if (key in memory) resultData = { success: true, key, value: memory[key] };
-            else resultData = { success: false, message: `キー「${key}」は見つかりませんでした。` };
-            break;
-          }
-  
-          case "delete": {
-            if (!key) return { error: "deleteアクションには 'key' が必要です。" };
-            if (key in memory) {
-              delete memory[key];
-              resultData = { success: true, message: `キー「${key}」を削除しました。` };
-  
-              if (!ephemeral) {
-                const r = await persistMemoryToIndexedDB(chatId, memory);
-                if (!r.ok) console.warn("[Function Calling] IDB persist failed:", r);
-                if (g.dbUtils?.saveChat) { try { await g.dbUtils.saveChat(); } catch (e) { console.warn("[Function Calling] saveChat failed", e); } }
-              }
-            } else {
-              resultData = { success: false, message: `キー「${key}」は見つかりませんでした。` };
-            }
-            break;
-          }
-  
-          case "list": {
-            const keys = Object.keys(memory);
-            resultData = { success: true, count: keys.length, keys };
-            break;
-          }
-  
-          default:
-            return { error: `無効なアクションです: ${action}` };
-        }
-  
-        // state へ反映（ephemeral の場合は次の通常保存でDBに落ちる）
-        state.currentPersistentMemory = memory;
-  
-        console.log(`[Function Calling] 処理完了、state.currentPersistentMemoryを更新しました:`, resultData);
-        return resultData;
-  
-      } catch (error) {
-        console.error(`[Function Calling] manage_persistent_memoryでエラーが発生しました:`, error);
-        return { error: `内部エラーが発生しました: ${error.message}` };
-      }
-    }
-  
-    // ===== Tool: calculate =====
-    async function calculate({ expression }) {
-      console.log(`[Function Calling] calculateが呼び出されました。式: ${expression}`);
-  
-      const allowedChars = /^[0-9+\-*/().\s]+$/;
-      if (typeof expression !== 'string' || !allowedChars.test(expression)) {
-        console.error("[Function Calling] calculate: 式に許可されていない文字が含まれています。");
-        return { error: "無効な式です。四則演算と括弧のみ使用できます。" };
-      }
-  
       try {
         // eslint-disable-next-line no-new-func
         const result = Function(`"use strict"; return (${expression})`)();
-        if (typeof result !== 'number' || !isFinite(result)) {
-          throw new Error("計算結果が無効です。");
+        if (Number.isFinite(result)) {
+          return {
+            name: "calculate",
+            response: { success: true, result },
+          };
         }
-        console.log(`[Function Calling] calculate: 計算結果: ${result}`);
-        return { result };
-      } catch (error) {
-        console.error(`[Function Calling] calculate: 計算エラー: ${error.message}`);
-        return { error: `計算エラー: ${error.message}` };
+        throw new Error("計算結果が有限数ではありません。");
+      } catch (e) {
+        return {
+          name: "calculate",
+          response: { success: false, message: `計算エラー: ${e.message}` },
+        };
       }
     }
   
-    // ===== Register implementations =====
-    const g = typeof window !== 'undefined' ? window : globalThis;
-    g.functionCallingTools = Object.assign({}, g.functionCallingTools, {
-      calculate,
-      manage_persistent_memory,
-    });
+    /**
+     * 重要: ここが今回の修正ポイント
+     * - chatId 未確定でも、saveChat() を一度呼び出して ID を確定させる
+     * - state.currentPersistentMemory を更新してから、必ず saveChat() で DB へ永続化
+     */
+    async function tool_manage_persistent_memory(args) {
+      const { action, key, value } = args || {};
+      console.log("[Function Calling] manage_persistent_memoryが呼び出されました。", args);
   
-    // ===== Register declarations (merge) =====
-    function mergeFunctionDeclarations(existing, incoming) {
-      const flat = [];
-      if (Array.isArray(existing)) {
-        for (const block of existing) {
-          if (block && Array.isArray(block.function_declarations)) {
-            for (const decl of block.function_declarations) {
-              if (!flat.find(d => d.name === (decl && decl.name))) flat.push(decl);
-            }
+      const state = window.state || (window.state = {});
+      if (!state.currentPersistentMemory) state.currentPersistentMemory = {};
+  
+      const mem = state.currentPersistentMemory;
+  
+      const ensureChatId = async () => {
+        // 既にIDがあるなら何もしない
+        if (state.currentChatId) return state.currentChatId;
+  
+        // まだIDがない場合：現在の state を DB へ保存して ID を払い出す
+        // saveChat は新規なら keyPath autoIncrement により ID を採番し、
+        // 保存成功時に state.currentChatId へ反映します。
+        if (window.dbUtils?.saveChat) {
+          await window.dbUtils.saveChat();
+          if (state.currentChatId) return state.currentChatId;
+        }
+        // 念のための保険：IDが取れなければ例外
+        throw new Error("chatId を確定できませんでした。");
+      };
+  
+      try {
+        switch (action) {
+          case "add": {
+            if (!key) return { name: "manage_persistent_memory", response: { success: false, message: "key が必要です。" } };
+            if (typeof value !== "string") return { name: "manage_persistent_memory", response: { success: false, message: "value は文字列で指定してください。" } };
+  
+            mem[key] = value; // まずは state を更新
+            // ここで chatId を必ず確定させてから保存
+            await ensureChatId();
+            // saveChat() は persistentMemory も含めて保存します。
+            await window.dbUtils.saveChat();
+  
+            return {
+              name: "manage_persistent_memory",
+              response: { success: true, message: `キー「${key}」に値を保存しました。` },
+            };
           }
+          case "get": {
+            if (!key) return { name: "manage_persistent_memory", response: { success: false, message: "key が必要です。" } };
+            const v = mem[key];
+            return {
+              name: "manage_persistent_memory",
+              response: { success: true, value: v ?? null, hit: v !== undefined },
+            };
+          }
+          case "delete": {
+            if (!key) return { name: "manage_persistent_memory", response: { success: false, message: "key が必要です。" } };
+            const existed = Object.prototype.hasOwnProperty.call(mem, key);
+            if (existed) delete mem[key];
+            await ensureChatId();
+            await window.dbUtils.saveChat();
+            return {
+              name: "manage_persistent_memory",
+              response: { success: true, deleted: existed },
+            };
+          }
+          case "list": {
+            return {
+              name: "manage_persistent_memory",
+              response: { success: true, keys: Object.keys(mem) },
+            };
+          }
+          default:
+            return {
+              name: "manage_persistent_memory",
+              response: { success: false, message: `未知の action: ${action}` },
+            };
         }
+      } catch (e) {
+        console.error("[Function Calling] manage_persistent_memory エラー:", e);
+        return {
+          name: "manage_persistent_memory",
+          response: { success: false, message: e?.message || String(e) },
+        };
       }
-      for (const decl of incoming) {
-        const idx = flat.findIndex(d => d.name === decl.name);
-        if (idx >= 0) flat.splice(idx, 1, decl);
-        else flat.push(decl);
-      }
-      return [{ function_declarations: flat }];
     }
   
-    const calcDecl = {
-      name: "calculate",
-      description: "ユーザーから与えられた数学的な計算式（四則演算）を評価し、その正確な結果を返します。複雑な計算や、信頼性が求められる計算の場合に必ず使用してください。",
-      parameters: {
-        type: "OBJECT",
-        properties: {
-          expression: {
-            type: "STRING",
-            description: "計算する数式。例: '2 * (3 + 5)'",
-          },
-        },
-        required: ["expression"],
-      },
+    // ---- ツールディスパッチャ --------------------------------------------------
+    window.executeToolCall = async (toolCall) => {
+      const { functionCall } = toolCall || {};
+      if (!functionCall?.name) return null;
+  
+      if (functionCall.name === "calculate") {
+        return await tool_calculate(functionCall.args || {});
+      }
+      if (functionCall.name === "manage_persistent_memory") {
+        return await tool_manage_persistent_memory(functionCall.args || {});
+      }
+      return {
+        name: functionCall.name,
+        response: { success: false, message: "未対応のツールです。" },
+      };
     };
   
-    const memDecl = {
-      name: "manage_persistent_memory",
-      description: "現在の会話セッションに限定して、重要な情報（記念日、登場人物の設定、世界の法則など）を後から参照できるように記憶・管理します。他の会話には影響しません。",
-      parameters: {
-        type: "OBJECT",
-        properties: {
-          action: {
-            type: "STRING",
-            description: "実行する操作を選択します。'add': 情報を追加/上書き, 'get': 情報を取得, 'delete': 情報を削除, 'list': 記憶している全ての情報キーを一覧表示。",
-          },
-          key: {
-            type: "STRING",
-            description: "情報を識別するための一意のキー（名前）。'add', 'get', 'delete' アクションで必須です。例: '主人公の性格', '次の目的地'",
-          },
-          value: {
-            type: "STRING",
-            description: "キーに紐付けて記憶させる情報の内容。'add' アクションで必須です。例: '冷静沈着', '東の塔'",
-          },
-        },
-        required: ["action"],
-      },
+    /**
+     * 複数ツール呼び出し（index.html 側の呼び出しに対応）
+     * - 戻り値は { role:'tool', name, response } の配列
+     */
+    window.executeToolCalls = async (toolCalls) => {
+      const results = [];
+      for (const call of toolCalls) {
+        const res = await window.executeToolCall(call);
+        if (res) {
+          results.push({
+            role: "tool",
+            name: res.name,
+            response: res.response,
+            timestamp: Date.now(),
+          });
+        }
+      }
+      return results;
     };
-  
-    g.functionDeclarations = mergeFunctionDeclarations(g.functionDeclarations, [calcDecl, memDecl]);
-  
-    console.log("[Function Calling] tools & declarations registered (v6)");
   })();
   
