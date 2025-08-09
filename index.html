@@ -2708,6 +2708,7 @@
                         const chatData = {
                             messages: messagesToSave,
                             systemPrompt: state.currentSystemPrompt, // システムプロンプトを保存
+                            persistentMemory: state.currentPersistentMemory, // ★★★ 永続メモリを保存する処理を追加 ★★★
                             updatedAt: now,
                             createdAt: existingChatData ? existingChatData.createdAt : now, // 新規なら現在時刻
                             title: title,
@@ -4723,6 +4724,7 @@
                             attachments: msg.attachments || [] // attachmentsがなければ空配列
                         })) || [];
 
+                        // ★★★ 永続メモリを読み込む処理を追加 ★★★
                         state.currentPersistentMemory = chat.persistentMemory || {};
                         console.log(`チャット ${id} の永続メモリを読み込みました:`, state.currentPersistentMemory);
 
