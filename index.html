@@ -2298,6 +2298,7 @@
             currentChatId: null,
             currentMessages: [],
             currentSystemPrompt: '',
+            currentPersistentMemory: {},
             settings: {
                 apiKey: '',
                 modelName: DEFAULT_MODEL,
@@ -4674,6 +4675,7 @@
                 state.currentMessages = []; // メッセージクリア
                 state.currentSystemPrompt = state.settings.systemPrompt; // デフォルトのシステムプロンプトを適用
                 state.pendingAttachments = []; // 保留中の添付ファイルをクリア
+                state.currentPersistentMemory = {};
                 uiUtils.updateSystemPromptUI(); // システムプロンプトUI更新
                 uiUtils.renderChatMessages(); // 表示クリア
                 uiUtils.updateChatTitle(); // タイトルを「新規チャット」に
@@ -4720,6 +4722,9 @@
                             ...msg,
                             attachments: msg.attachments || [] // attachmentsがなければ空配列
                         })) || [];
+
+                        state.currentPersistentMemory = chat.persistentMemory || {};
+                        console.log(`チャット ${id} の永続メモリを読み込みました:`, state.currentPersistentMemory);
 
                         // --- カスケード応答の isSelected を正規化 ---
                         let needsSave = false;
@@ -4828,6 +4833,7 @@
                         const newChatData = {
                             messages: duplicatedMessages,
                             systemPrompt: chat.systemPrompt || '', // システムプロンプトもコピー
+                            persistentMemory: JSON.parse(JSON.stringify(chat.persistentMemory || {})),
                             updatedAt: Date.now(), // 更新/作成日時は現在
                             createdAt: Date.now(),
                             title: newTitle
