@@ -1,5 +1,3 @@
-// function-calling.js
-
 /**
  * AIが利用可能なツール（関数）を定義するオブジェクト
  */
@@ -12,7 +10,14 @@
      */
     calculate: async function({ expression }) {
       console.log(`[Function Calling] calculateが呼び出されました。式: ${expression}`);
-  
+      
+      // ▼▼▼【ここから変更】▼▼▼
+      // デバッグのために3秒間の意図的な遅延を追加
+      console.log("[Function Calling] デバッグのため、3秒間の遅延を開始します...");
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      console.log("[Function Calling] 遅延が完了し、計算処理を再開します。");
+      // ▲▲▲【ここまで変更】▲▲▲
+
       // セキュリティのため、許可する文字を正規表現で制限
       const allowedChars = /^[0-9+\-*/().\s]+$/;
       if (!allowedChars.test(expression)) {
@@ -47,9 +52,7 @@
       "function_declarations": [
         {
           "name": "calculate",
-          // ▼▼▼【ここを変更】▼▼▼
           "description": "ユーザーから与えられた数学的な計算式（四則演算）を評価し、その正確な結果を返します。複雑な計算や、信頼性が求められる計算の場合に必ず使用してください。",
-          // ▲▲▲【ここまで変更】▲▲▲
           "parameters": {
             "type": "OBJECT",
             "properties": {
