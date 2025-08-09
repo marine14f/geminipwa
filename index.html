@@ -2873,15 +2873,13 @@
             },
             // チャットメッセージをレンダリング
             renderChatMessages() {
-                // 編集中ならキャンセル
                 if (state.editingMessageIndex !== null) {
                     const messageElement = elements.messageContainer.querySelector(`.message[data-index="${state.editingMessageIndex}"]`);
                     if(messageElement) appLogic.cancelEditMessage(state.editingMessageIndex, messageElement);
-                    else state.editingMessageIndex = null; // 要素が見つからない場合もインデックスをリセット
+                    else state.editingMessageIndex = null;
                 }
-                elements.messageContainer.innerHTML = ''; // コンテナをクリア
+                elements.messageContainer.innerHTML = '';
 
-                // メッセージをループして表示
                 let currentSiblingGroupId = null;
                 let siblingsInGroup = [];
                 let siblingIndex = 0;
@@ -2889,42 +2887,38 @@
                 for (let i = 0; i < state.currentMessages.length; i++) {
                     const msg = state.currentMessages[i];
 
+                    // ▼▼▼【ここから変更】▼▼▼
+                    // Function Callingの中間ステップは画面に表示しない
+                    if (msg.role === 'tool' || (msg.role === 'model' && msg.tool_calls)) {
+                        continue; // このメッセージのレンダリングをスキップして次のループへ
+                    }
+                    // ▲▲▲【ここまで変更】▲▲▲
+
                     if (msg.role === 'model' && msg.isCascaded && msg.siblingGroupId) {
-                        // カスケード応答グループの開始または継続
                         if (msg.siblingGroupId !== currentSiblingGroupId) {
-                            // 新しいグループの開始
                             currentSiblingGroupId = msg.siblingGroupId;
-                            // このグループに属するすべてのメッセージを取得
                             siblingsInGroup = state.currentMessages.filter(m => m.role === 'model' && m.isCascaded && m.siblingGroupId === currentSiblingGroupId);
-                            siblingIndex = 0; // グループ内のインデックスをリセット
+                            siblingIndex = 0;
                         }
 
-                        // グループ内の現在のメッセージのインデックスを見つける
                         const currentIndexInGroup = siblingsInGroup.findIndex(m => m === msg);
                         if (currentIndexInGroup !== -1) {
-                            siblingIndex = currentIndexInGroup + 1; // 1ベースのインデックス
+                            siblingIndex = currentIndexInGroup + 1;
                         }
 
-                        // isSelected が true のメッセージのみ表示
                         if (msg.isSelected) {
                             this.appendMessage(msg.role, msg.content, i, false, {
                                 currentIndex: siblingIndex,
                                 total: siblingsInGroup.length,
                                 siblingGroupId: currentSiblingGroupId
-                            }, msg.attachments); // attachments を渡す
-                        } else {
-                            // isSelected でないカスケードメッセージはDOMに追加しないか、hiddenクラスを付与
-                            // ここではDOMに追加しない方針とする
-                            console.log(`Skipping render for non-selected cascaded message index ${i}`);
+                            }, msg.attachments);
                         }
                     } else {
-                        // 通常のメッセージ (user, error, または非カスケード model)
-                        currentSiblingGroupId = null; // グループをリセット
+                        currentSiblingGroupId = null;
                         siblingsInGroup = [];
-                        this.appendMessage(msg.role, msg.content, i, false, null, msg.attachments); // attachments を渡す
+                        this.appendMessage(msg.role, msg.content, i, false, null, msg.attachments);
                     }
                 }
-                //this.scrollToBottom(); // 最下部へスクロールは削除、呼び出し元の責任で行う
             },
 
             // メッセージをコンテナに追加
