@@ -75,6 +75,13 @@
     // ===== manage_persistent_memory =====
     async function managePersistentMemory(args) {
       console.log("[Function Calling] manage_persistent_memory が呼び出されました", args);
+      // --- SAFETY GUARD: ensure global state & per-chat memory exist ---
+        const g = (typeof window !== 'undefined' ? window : globalThis);
+        if (!g.state) g.state = {};
+        if (typeof g.state.currentPersistentMemory !== "object" || g.state.currentPersistentMemory == null) {
+        g.state.currentPersistentMemory = {};
+        }
+        const state = g.state; // 以降は今まで通り state を使える
       try {
         ensureState();
       } catch (e) {
@@ -196,8 +203,9 @@
   
     // ===== Register implementations =====
     window.functionCallingTools = Object.assign({}, window.functionCallingTools, {
-      calculate,
-      manage_persistent_memory: managePersistentMemory,
+        manage_persistent_memory,
+        calculate,
+        manage_persistent_memory: managePersistentMemory,
     });
   
     // ===== Small debug helpers =====
@@ -210,3 +218,168 @@
       }
     };
   })();
+
+/*
+ * session-export-import.js — add-on
+ * Export current chat as TXT/JSON including per-chat persistentMemory.
+ * Import a bundle on another device and merge into the current chat.
+ *
+ * Assumptions:
+ * - window.state.currentChatId, window.state.currentPersistentMemory
+ * - dbUtils.getChatById(id), dbUtils.saveChat(), dbUtils.touchUI?.()
+ * - Chat shape: { id, title, messages: [...], persistentMemory: {...} }
+ *
+ * You can add buttons in index.html to call:
+ *   exportChatBundle('txt') or exportChatBundle('json')
+ *   importChatBundleFromFile()
+ */
+(function () {
+    async function getCurrentChat() {
+      const id = window.state?.currentChatId;
+      if (!id) throw new Error("No currentChatId");
+      if (!window.dbUtils || typeof window.dbUtils.getChatById !== 'function') {
+        throw new Error('dbUtils.getChatById is missing');
+      }
+      const chat = await window.dbUtils.getChatById(id);
+      // ensure in-memory PM is flushed into the chat object
+      if (chat) chat.persistentMemory = window.state.currentPersistentMemory || chat.persistentMemory || {};
+      return chat;
+    }
+  
+    function toTranscriptText(chat) {
+      const title = chat?.title || `Chat ${chat?.id ?? ''}`;
+      const lines = [];
+      lines.push(`# ${title}`);
+      lines.push("");
+      if (Array.isArray(chat?.messages)) {
+        for (const m of chat.messages) {
+          const role = m.role || m.author || 'unknown';
+          let text = '';
+          if (typeof m.text === 'string') text = m.text;
+          else if (Array.isArray(m.parts)) {
+            text = m.parts.map(p => (typeof p === 'string' ? p : (p?.text ?? ''))).join('');
+          }
+          else if (typeof m.content === 'string') text = m.content;
+          lines.push(`【${role}】`);
+          lines.push(text);
+          lines.push("");
+        }
+      }
+      lines.push("--- Persistent Memory (this chat) ---");
+      lines.push(JSON.stringify(chat?.persistentMemory || {}, null, 2));
+      lines.push("");
+      return lines.join("\n");
+    }
+  
+    function downloadBlob(filename, mime, data) {
+      const blob = new Blob([data], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+  
+    async function exportChatBundle(format = 'txt') {
+      const chat = await getCurrentChat();
+      const bundle = {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        chat: {
+          id: chat.id,
+          title: chat.title,
+          messages: chat.messages || [],
+          persistentMemory: chat.persistentMemory || {},
+        },
+      };
+  
+      if (format === 'json') {
+        const name = `chat-${chat.id}-bundle.json`;
+        downloadBlob(name, 'application/json', JSON.stringify(bundle, null, 2));
+        return;
+      }
+      const name = `chat-${chat.id}.txt`;
+      downloadBlob(name, 'text/plain', toTranscriptText(bundle.chat));
+    }
+  
+    // Merge policy: by default, replace current chat's persistentMemory and append messages
+    async function importChatBundleFromFile() {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.json,application/json';
+      input.onchange = async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        try {
+          const text = await file.text();
+          const bundle = JSON.parse(text);
+          if (!bundle?.chat) throw new Error('Invalid bundle');
+          const currentId = window.state?.currentChatId;
+          if (!currentId) throw new Error('No currentChatId to import into');
+          const chat = await window.dbUtils.getChatById(currentId);
+          chat.persistentMemory = bundle.chat.persistentMemory || {};
+          chat.messages = (chat.messages || []).concat(bundle.chat.messages || []);
+          chat.title = chat.title || bundle.chat.title;
+          // reflect into state
+          window.state.currentPersistentMemory = chat.persistentMemory;
+          // save
+          if (typeof window.dbUtils.saveChat === 'function') await window.dbUtils.saveChat(chat);
+          if (window.dbUtils.touchUI) window.dbUtils.touchUI();
+          alert('インポートが完了しました。現在のチャットにメモリとメッセージを統合しました。');
+        } catch (e) {
+          console.error(e);
+          alert('インポートに失敗しました: ' + (e?.message || e));
+        }
+      };
+      input.click();
+    }
+  
+    // Optional: share URL with payload in hash (size-limited)
+    function buildShareUrlWithPayload() {
+      const id = window.state?.currentChatId;
+      if (!id) return null;
+      return getCurrentChat().then((chat) => {
+        const payload = {
+          v: 1,
+          m: chat.persistentMemory || {},
+          t: chat.title || '',
+        };
+        const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+        const url = `${location.origin}${location.pathname}#bundle=${encoded}`;
+        return url;
+      });
+    }
+  
+    // Auto-detect payload in URL hash and suggest import
+    async function maybeImportFromHash() {
+      const hash = location.hash || '';
+      const m = hash.match(/#bundle=([A-Za-z0-9+/=]+)/);
+      if (!m) return;
+      try {
+        const json = decodeURIComponent(escape(atob(m[1])));
+        const payload = JSON.parse(json);
+        if (!payload || typeof payload !== 'object') return;
+        if (!window.state?.currentChatId) return;
+        const chat = await window.dbUtils.getChatById(window.state.currentChatId);
+        chat.persistentMemory = payload.m || {};
+        window.state.currentPersistentMemory = chat.persistentMemory;
+        await window.dbUtils.saveChat(chat);
+        console.log('[Import] URLハッシュからメモリを取り込みました');
+      } catch (e) {
+        console.warn('hash import failed', e);
+      }
+    }
+  
+    // Expose
+    window.exportChatBundle = exportChatBundle;
+    window.importChatBundleFromFile = importChatBundleFromFile;
+    window.buildShareUrlWithPayload = buildShareUrlWithPayload;
+  
+    // Run once at load
+    if (document.readyState === 'complete') maybeImportFromHash();
+    else window.addEventListener('load', maybeImportFromHash, { once: true });
+  })();
+  
