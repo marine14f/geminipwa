@@ -1,12 +1,16 @@
 /**
  * function-calling.js
- * - Gemini Function Calling 用の function_declarations と実装
- * - IndexedDB 永続メモリ (per chat) を manage_persistent_memory で扱う
- * - 依存: window.state, window.dbUtils, window.appLogic (存在すれば), window.fetch など
+ * - Gemini Function Calling: tool declarations + 実装
+ * - manage_persistent_memory は chatId 未確定でも saveChat() を使って確定→DB 保存まで行う
+ * - tools 取得関数 window.getGeminiTools() を公開（API呼び出し側はこれを使う）
+ *
+ * 注意: モデル名はユーザー指定の gemini-2.5-pro を維持します。
  */
 
  (() => {
-    // ---- ツール宣言（Gemini v1beta 形式）--------------------------------------
+    // =========================
+    // ツール宣言（declarations）
+    // =========================
     const functionDeclarations = [
       {
         name: "calculate",
@@ -51,71 +55,57 @@
       },
     ];
   
-    // グローバルへエクスポート（index.html から参照）
+    // API へ渡す正しい tools 形式を返すヘルパ
+    // これを使えば "tools: [{ function_declarations: [...] }]" で常に正しい形になる
+    function getGeminiTools() {
+      return [{ function_declarations: functionDeclarations }];
+    }
+  
+    // 外部からも参照できるように公開
     window.functionDeclarations = functionDeclarations;
+    window.getGeminiTools = getGeminiTools;
+  
     console.log("[Function Calling] tools & declarations registered (v5)");
   
-    // ---- ツール実装 ------------------------------------------------------------
+    // =========================
+    // 各ツールの実装
+    // =========================
   
     async function tool_calculate(args) {
       const { expression } = args || {};
       if (typeof expression !== "string" || !expression.trim()) {
-        return {
-          name: "calculate",
-          response: { success: false, message: "式が空です。" },
-        };
+        return { name: "calculate", response: { success: false, message: "式が空です。" } };
       }
-      // 極めて限定的な評価（四則演算と括弧のみに制限）
       if (!/^[\d+\-*/().\s]+$/.test(expression)) {
-        return {
-          name: "calculate",
-          response: { success: false, message: "不正な文字が含まれています。" },
-        };
+        return { name: "calculate", response: { success: false, message: "不正な文字が含まれています。" } };
       }
       try {
         // eslint-disable-next-line no-new-func
         const result = Function(`"use strict"; return (${expression})`)();
         if (Number.isFinite(result)) {
-          return {
-            name: "calculate",
-            response: { success: true, result },
-          };
+          return { name: "calculate", response: { success: true, result } };
         }
         throw new Error("計算結果が有限数ではありません。");
       } catch (e) {
-        return {
-          name: "calculate",
-          response: { success: false, message: `計算エラー: ${e.message}` },
-        };
+        return { name: "calculate", response: { success: false, message: `計算エラー: ${e.message}` } };
       }
     }
   
-    /**
-     * 重要: ここが今回の修正ポイント
-     * - chatId 未確定でも、saveChat() を一度呼び出して ID を確定させる
-     * - state.currentPersistentMemory を更新してから、必ず saveChat() で DB へ永続化
-     */
     async function tool_manage_persistent_memory(args) {
       const { action, key, value } = args || {};
       console.log("[Function Calling] manage_persistent_memoryが呼び出されました。", args);
   
-      const state = window.state || (window.state = {});
+      const state = (window.state = window.state || {});
       if (!state.currentPersistentMemory) state.currentPersistentMemory = {};
-  
       const mem = state.currentPersistentMemory;
   
+      // chatId を確定させる（なければ saveChat() で払い出し）
       const ensureChatId = async () => {
-        // 既にIDがあるなら何もしない
         if (state.currentChatId) return state.currentChatId;
-  
-        // まだIDがない場合：現在の state を DB へ保存して ID を払い出す
-        // saveChat は新規なら keyPath autoIncrement により ID を採番し、
-        // 保存成功時に state.currentChatId へ反映します。
         if (window.dbUtils?.saveChat) {
           await window.dbUtils.saveChat();
           if (state.currentChatId) return state.currentChatId;
         }
-        // 念のための保険：IDが取れなければ例外
         throw new Error("chatId を確定できませんでした。");
       };
   
@@ -124,25 +114,15 @@
           case "add": {
             if (!key) return { name: "manage_persistent_memory", response: { success: false, message: "key が必要です。" } };
             if (typeof value !== "string") return { name: "manage_persistent_memory", response: { success: false, message: "value は文字列で指定してください。" } };
-  
-            mem[key] = value; // まずは state を更新
-            // ここで chatId を必ず確定させてから保存
-            await ensureChatId();
-            // saveChat() は persistentMemory も含めて保存します。
-            await window.dbUtils.saveChat();
-  
-            return {
-              name: "manage_persistent_memory",
-              response: { success: true, message: `キー「${key}」に値を保存しました。` },
-            };
+            mem[key] = value;               // まず state を更新
+            await ensureChatId();           // ID 確定
+            await window.dbUtils.saveChat(); // 永続化
+            return { name: "manage_persistent_memory", response: { success: true, message: `キー「${key}」に値を保存しました。` } };
           }
           case "get": {
             if (!key) return { name: "manage_persistent_memory", response: { success: false, message: "key が必要です。" } };
             const v = mem[key];
-            return {
-              name: "manage_persistent_memory",
-              response: { success: true, value: v ?? null, hit: v !== undefined },
-            };
+            return { name: "manage_persistent_memory", response: { success: true, value: v ?? null, hit: v !== undefined } };
           }
           case "delete": {
             if (!key) return { name: "manage_persistent_memory", response: { success: false, message: "key が必要です。" } };
@@ -150,33 +130,24 @@
             if (existed) delete mem[key];
             await ensureChatId();
             await window.dbUtils.saveChat();
-            return {
-              name: "manage_persistent_memory",
-              response: { success: true, deleted: existed },
-            };
+            return { name: "manage_persistent_memory", response: { success: true, deleted: existed } };
           }
           case "list": {
-            return {
-              name: "manage_persistent_memory",
-              response: { success: true, keys: Object.keys(mem) },
-            };
+            return { name: "manage_persistent_memory", response: { success: true, keys: Object.keys(mem) } };
           }
-          default:
-            return {
-              name: "manage_persistent_memory",
-              response: { success: false, message: `未知の action: ${action}` },
-            };
+          default: {
+            return { name: "manage_persistent_memory", response: { success: false, message: `未知の action: ${action}` } };
+          }
         }
       } catch (e) {
         console.error("[Function Calling] manage_persistent_memory エラー:", e);
-        return {
-          name: "manage_persistent_memory",
-          response: { success: false, message: e?.message || String(e) },
-        };
+        return { name: "manage_persistent_memory", response: { success: false, message: e?.message || String(e) } };
       }
     }
   
-    // ---- ツールディスパッチャ --------------------------------------------------
+    // =========================
+    // ツールディスパッチャ
+    // =========================
     window.executeToolCall = async (toolCall) => {
       const { functionCall } = toolCall || {};
       if (!functionCall?.name) return null;
@@ -187,27 +158,15 @@
       if (functionCall.name === "manage_persistent_memory") {
         return await tool_manage_persistent_memory(functionCall.args || {});
       }
-      return {
-        name: functionCall.name,
-        response: { success: false, message: "未対応のツールです。" },
-      };
+      return { name: functionCall.name, response: { success: false, message: "未対応のツールです。" } };
     };
   
-    /**
-     * 複数ツール呼び出し（index.html 側の呼び出しに対応）
-     * - 戻り値は { role:'tool', name, response } の配列
-     */
     window.executeToolCalls = async (toolCalls) => {
       const results = [];
-      for (const call of toolCalls) {
+      for (const call of toolCalls || []) {
         const res = await window.executeToolCall(call);
         if (res) {
-          results.push({
-            role: "tool",
-            name: res.name,
-            response: res.response,
-            timestamp: Date.now(),
-          });
+          results.push({ role: "tool", name: res.name, response: res.response, timestamp: Date.now() });
         }
       }
       return results;

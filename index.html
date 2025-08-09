@@ -3982,26 +3982,28 @@
                         { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
                         { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
                     ]
-                };
-                
-                let finalTools = Array.isArray(window.functionDeclarations) ? window.functionDeclarations : [];
-                if (!finalTools.length && state.settings?.geminiEnableFunctionCalling) {
+                    };
+
+                    let finalTools = Array.isArray(window.functionDeclarations) ? window.functionDeclarations : [];
+                    if (!finalTools.length && state.settings?.geminiEnableFunctionCalling) {
                     // （任意）設定がONだが宣言が空のケースに備えた保険
                     finalTools = window.functionDeclarations || [];
-                }
-                if (finalTools.length > 0) {
+                    }
+                    if (finalTools.length > 0) {
                     console.log("Function Calling を有効にしてAPIを呼び出します。");
-                }
-                // 優先度2: Function Callingが無効で、Google Searchが有効になっているかチェック
-                else if (state.settings.enableGrounding) {
-                    finalTools.push({ "google_search": {} });
+                    }
+                    // 優先度2: Function Callingが無効で、Google Searchが有効になっているかチェック
+                    else if (state.settings.enableGrounding) {
                     console.log("グラウンディング (Google Search) を有効にしてAPIを呼び出します。");
-                }
+                    }
 
-                // ▼ Function Calling を送信ペイロードへ
-                if (Array.isArray(finalTools) && finalTools.length > 0) {
-                    requestBody.tools = finalTools;
-                }
+                    // ▼ Function Calling を送信ペイロードへ
+                    if (Array.isArray(finalTools) && finalTools.length > 0) {
+                      // Function Calling は必ず一段ラップして送る必要がある
+                      requestBody.tools = [{ function_declarations: finalTools }];
+                    } else if (state.settings.enableGrounding) {
+                      // Function Calling が無効で Google Search が有効なときは単独で送る
+                      requestBody.tools = [{ google_search: {} }];
 
                 console.log("Geminiへの送信データ:", JSON.stringify(requestBody, (key, value) => {
                     if (key === 'data' && typeof value === 'string' && value.length > 100) {
