@@ -4900,6 +4900,13 @@
                          });
                      }
                      // Blobを作成してダウンロードリンクを生成
+                     // --- Append per-chat persistent memory ---
+                     try {
+                         const mem = (chat.persistentMemory || window.state?.currentPersistentMemory || {});
+                         exportText += '\n--- Persistent Memory (this chat) ---\n' + JSON.stringify(mem, null, 2) + '\n';
+                     } catch (e) { console.warn('export: memory append failed', e); }
+
+
                      const blob = new Blob([exportText.trim()], { type: 'text/plain;charset=utf-8' });
                      const url = URL.createObjectURL(blob);
                      const a = document.createElement('a');
