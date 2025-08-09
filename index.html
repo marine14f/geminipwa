@@ -5768,7 +5768,8 @@
                             messagesForApi,
                             generationConfig,
                             systemInstruction,
-                            tools: window.functionDeclarations
+                            tools: window.functionDeclarations,
+                            isFunctionCallingSequence: loopCount > 1
                         });
                         
                         const useStreaming = state.settings.streamingOutput;
@@ -6585,7 +6586,8 @@
              * @throws {Error} リトライしても失敗した場合のエラー
              */
              async callApiWithRetry(apiParams) {
-                const { messagesForApi, generationConfig, systemInstruction, tools } = apiParams;
+                // isFunctionCallingSequence フラグを追加で受け取る
+                const { messagesForApi, generationConfig, systemInstruction, tools, isFunctionCallingSequence } = apiParams;
                 let lastError = null;
                 const maxHttpRetries = state.settings.enableAutoRetry ? state.settings.maxRetries : 0;
 
@@ -6595,11 +6597,21 @@
                             throw new Error("リクエストがキャンセルされました。");
                         }
 
-                        // HTTPエラーによるリトライ時のみ、ステータス表示を変更
+                        // HTTPエラーによるリトライ時
                         if (attempt > 0) {
                             const delay = INITIAL_RETRY_DELAY * Math.pow(2, attempt - 1);
-                            uiUtils.setLoadingIndicatorText(`APIエラー 再試行(${attempt}回目)... ${delay}ms待機`);
-                            console.log(`API呼び出し失敗。${delay}ms後にリトライします... (試行 ${attempt + 1}/${maxHttpRetries + 1})`);
+                            
+                            // Function Callingのシーケンス中かどうかでUI表示を分ける
+                            if (isFunctionCallingSequence) {
+                                // Function Callingの続きなので、ユーザーにはエラーに見せない
+                                console.log(`Function Callingシーケンス中のAPI呼び出しが失敗。${delay}ms後にリトライします... (試行 ${attempt + 1}/${maxHttpRetries + 1})`);
+                                // UI表示は変更せず、コンソールにのみログを出力
+                            } else {
+                                // 通常のAPIエラーなので、ユーザーにリトライ中であることを伝える
+                                uiUtils.setLoadingIndicatorText(`APIエラー 再試行(${attempt}回目)... ${delay}ms待機`);
+                                console.log(`API呼び出し失敗。${delay}ms後にリトライします... (試行 ${attempt + 1}/${maxHttpRetries + 1})`);
+                            }
+
                             await interruptibleSleep(delay, state.abortController.signal);
                             // 待機後、再度「応答中」に戻してからAPIを呼び出す
                             uiUtils.setLoadingIndicatorText('応答中...');
