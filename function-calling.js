@@ -1,158 +1,212 @@
-// function-calling.js
-
-/**
- * 現在のチャットセッションに紐づく永続メモリを管理する関数
- * @param {object} args - AIによって提供される引数オブジェクト
- * @param {string} args.action - "add", "get", "delete", "list" のいずれか
- * @param {string} [args.key] - 操作対象のキー (add, get, delete時に必須)
- * @param {string} [args.value] - 保存する値 (add時に必須)
- * @returns {Promise<object>} 操作結果を含むオブジェクトを返すPromise
+/*
+ * function-calling.js (merged)
+ * - Tools: calculate, manage_persistent_memory
+ * - Per-chat persistent memory: mutations are immediately persisted to IndexedDB
+ * - Guards: usable only after first message is saved (currentChatId must exist)
  */
- async function manage_persistent_memory({ action, key, value }) {
-    console.log(`[Function Calling] manage_persistent_memoryが呼び出されました。`, { action, key, value });
 
-    // 前提条件: チャットが保存されているか（IDが存在するか）を確認
-    // appLogicとstateはindex.htmlでグローバルに定義されている前提
-    if (!state.currentChatId) {
-        const errorMsg = "チャットがまだ保存されていません。最初のメッセージを送信してから、再度実行してください。";
-        console.error(`[Function Calling] エラー: ${errorMsg}`);
-        return { error: errorMsg };
-    }
-
-    try {
-        // ▼▼▼【重要】DBではなく、常に最新のstate.currentPersistentMemoryを操作する▼▼▼
-        const memory = state.currentPersistentMemory || {};
-        let resultData = null;
-
-        switch (action) {
-            case "add":
-                if (!key || value === undefined) {
-                    return { error: "addアクションには 'key' と 'value' が必要です。" };
-                }
-                memory[key] = value;
-                resultData = { success: true, message: `キー「${key}」に値を保存しました。` };
-                break;
-
-            case "get":
-                if (!key) {
-                    return { error: "getアクションには 'key' が必要です。" };
-                }
-                if (key in memory) {
-                    resultData = { success: true, key: key, value: memory[key] };
-                } else {
-                    resultData = { success: false, message: `キー「${key}」は見つかりませんでした。` };
-                }
-                break;
-
-            case "delete":
-                if (!key) {
-                    return { error: "deleteアクションには 'key' が必要です。" };
-                }
-                if (key in memory) {
-                    delete memory[key];
-                    resultData = { success: true, message: `キー「${key}」を削除しました。` };
-                } else {
-                    resultData = { success: false, message: `キー「${key}」は見つかりませんでした。` };
-                }
-                break;
-
-            case "list":
-                const keys = Object.keys(memory);
-                resultData = { success: true, count: keys.length, keys: keys };
-                break;
-
-            default:
-                return { error: `無効なアクションです: ${action}` };
-        }
-
-        // グローバルのstateを更新する（DBへの保存は呼び出し元のhandleSendに一任する）
-        state.currentPersistentMemory = memory;
-
-        console.log(`[Function Calling] 処理完了、state.currentPersistentMemoryを更新しました:`, resultData);
-        return resultData;
-
-    } catch (error) {
-        console.error(`[Function Calling] manage_persistent_memoryでエラーが発生しました:`, error);
-        return { error: `内部エラーが発生しました: ${error.message}` };
-    }
-}
-
-
-window.functionCallingTools = {
-    /**
-     * 文字列形式の四則演算の式を計算し、結果を返す関数
-     * @param {object} args - AIによって提供される引数オブジェクト
-     * @param {string} args.expression - 計算する数式 (例: "2 * (3 + 5)")
-     * @returns {Promise<object>} 計算結果またはエラーを含むオブジェクトを返すPromise
-     */
-    calculate: async function({ expression }) {
-      console.log(`[Function Calling] calculateが呼び出されました。式: ${expression}`);
-      await new Promise(resolve => setTimeout(resolve, 1000)); // 意図的な遅延
-
-      const allowedChars = /^[0-9+\-*/().\s]+$/;
-      if (!allowedChars.test(expression)) {
-        console.error("[Function Calling] calculate: 式に許可されていない文字が含まれています。");
-        return { error: "無効な式です。四則演算と括弧のみ使用できます。" };
-      }
-
-      try {
-        const result = new Function(`return ${expression}`)();
-        if (typeof result !== 'number' || !isFinite(result)) {
-          throw new Error("計算結果が無効です。");
-        }
-        console.log(`[Function Calling] calculate: 計算結果: ${result}`);
-        return { result: result };
-      } catch (error) {
-        console.error(`[Function Calling] calculate: 計算エラー: ${error.message}`);
-        return { error: `計算エラー: ${error.message}` };
-      }
-    },
-    // 新しい関数を登録
-    manage_persistent_memory: manage_persistent_memory
-};
-
-/**
- * AIに提供するツールの定義情報 (Tool Declaration)
- */
-window.functionDeclarations = [
-    {
-        "function_declarations": [
-            {
-                "name": "calculate",
-                "description": "ユーザーから与えられた数学的な計算式（四則演算）を評価し、その正確な結果を返します。複雑な計算や、信頼性が求められる計算の場合に必ず使用してください。",
-                "parameters": {
-                    "type": "OBJECT",
-                    "properties": {
-                        "expression": {
-                            "type": "STRING",
-                            "description": "計算する数式。例: '2 * (3 + 5)'"
-                        }
-                    },
-                    "required": ["expression"]
-                }
-            },
-            {
-                "name": "manage_persistent_memory",
-                "description": "現在の会話セッションに限定して、重要な情報（記念日、登場人物の設定、世界の法則など）を後から参照できるように記憶・管理します。他の会話には影響しません。",
-                "parameters": {
-                    "type": "OBJECT",
-                    "properties": {
-                        "action": {
-                            "type": "STRING",
-                            "description": "実行する操作を選択します。'add': 情報を追加/上書き, 'get': 情報を取得, 'delete': 情報を削除, 'list': 記憶している全ての情報キーを一覧表示。"
-                        },
-                        "key": {
-                            "type": "STRING",
-                            "description": "情報を識別するための一意のキー（名前）。'add', 'get', 'delete' アクションで必須です。例: '主人公の性格', '次の目的地'"
-                        },
-                        "value": {
-                            "type": "STRING",
-                            "description": "キーに紐付けて記憶させる情報の内容。'add' アクションで必須です。例: '冷静沈着', '東の塔'"
-                        }
-                    },
-                    "required": ["action"]
-                }
+(function () {
+    // ===== Helpers =====
+    const ok = (message, extra = {}) => ({ success: true, message, ...extra });
+    const fail = (message, extra = {}) => ({ success: false, message, ...extra });
+  
+    // Debounced saver (coalesce multiple mutations)
+    let saveTimer = null;
+    async function savePersistentMemorySoon() {
+      if (saveTimer) clearTimeout(saveTimer);
+      await new Promise((resolve) => {
+        saveTimer = setTimeout(async () => {
+          try {
+            if (window.dbUtils && typeof window.dbUtils.saveChat === "function") {
+              await window.dbUtils.saveChat();
+            } else {
+              console.warn("[Function Calling] dbUtils.saveChat が見つかりません");
             }
-        ]
+          } catch (e) {
+            console.warn("[Function Calling] 永続メモリ保存に失敗:", e);
+          } finally {
+            saveTimer = null;
+            resolve();
+          }
+        }, 50);
+      });
     }
-];
+  
+    function ensureState() {
+      if (!window.state) throw new Error("global state is missing");
+      if (!("currentPersistentMemory" in window.state)) {
+        window.state.currentPersistentMemory = {};
+      }
+    }
+  
+    function ensureUsableChat() {
+      // 要件: 最初のメッセージ送信後（= currentChatId が存在）
+      if (!window.state || !window.state.currentChatId) {
+        return fail(
+          "この関数は最初のメッセージ送信後に使用できます。先にメッセージを送信してください。"
+        );
+      }
+      return null;
+    }
+  
+    // ===== calculate (四則演算) =====
+    function calculate(args) {
+      const { expression } = args || {};
+      if (typeof expression !== "string" || expression.trim() === "") {
+        return fail("'expression' は必須の文字列です。");
+      }
+      // 許可する文字のみ（数字, + - * / . () 半角スペース）
+      const safe = /^[0-9+*/(). -]+$/;
+      if (!safe.test(expression)) {
+        return fail("使用できない文字が含まれています（四則演算と括弧のみ対応）。");
+      }
+      try {
+        // eslint-disable-next-line no-new-func
+        const result = Function("\"use strict\";return (" + expression + ")")();
+        if (typeof result !== "number" || !isFinite(result)) {
+          return fail("計算結果が数値ではありません。");
+        }
+        return ok("計算しました。", { expression, result });
+      } catch (e) {
+        return fail("式の評価に失敗しました。", { error: String((e && e.message) || e) });
+      }
+    }
+  
+    // ===== manage_persistent_memory =====
+    async function managePersistentMemory(args) {
+      console.log("[Function Calling] manage_persistent_memory が呼び出されました", args);
+      try {
+        ensureState();
+      } catch (e) {
+        return fail("内部状態が初期化されていません: " + e.message);
+      }
+  
+      const guard = ensureUsableChat();
+      if (guard) return guard; // 前提条件 NG
+  
+      const { action, key, value } = args || {};
+      const mem = window.state.currentPersistentMemory || (window.state.currentPersistentMemory = {});
+  
+      const a = String(action || "").toLowerCase();
+      if (!a || !["add", "get", "delete", "list"].includes(a)) {
+        return fail("action は 'add' | 'get' | 'delete' | 'list' のいずれかです。");
+      }
+      if ((a === "add" || a === "get" || a === "delete") && (!key || typeof key !== "string")) {
+        return fail("'key' は必須の文字列です。");
+      }
+      if (a === "add" && (value === undefined || value === null)) {
+        return fail("'value' は 'add' アクションで必須です。");
+      }
+  
+      switch (a) {
+        case "add": {
+          mem[key] = String(value);
+          await savePersistentMemorySoon();
+          return ok(`キー「${key}」に値を保存しました。`, { key, value: mem[key] });
+        }
+        case "get": {
+          if (!(key in mem)) return ok(`キー「${key}」は未登録です。`, { exists: false });
+          return ok(`キー「${key}」の値です。`, { exists: true, key, value: mem[key] });
+        }
+        case "delete": {
+          if (key in mem) {
+            delete mem[key];
+            await savePersistentMemorySoon();
+            return ok(`キー「${key}」を削除しました。`);
+          }
+          return ok(`キー「${key}」は存在しませんでした。`);
+        }
+        case "list": {
+          const keys = Object.keys(mem);
+          return ok("保存されているキーの一覧です。", { keys, count: keys.length });
+        }
+      }
+    }
+  
+    // ===== Merge function declarations safely =====
+    function mergeFunctionDeclarations(existing, incoming) {
+      const flat = [];
+      const pushDecl = (decl) => {
+        const name = decl && decl.name;
+        if (!name) return;
+        const already = flat.find((d) => d.name === name);
+        if (!already) flat.push(decl);
+      };
+  
+      // Existing
+      if (Array.isArray(existing)) {
+        for (const block of existing) {
+          if (block && Array.isArray(block.function_declarations)) {
+            for (const decl of block.function_declarations) pushDecl(decl);
+          }
+        }
+      }
+      // Incoming (wins over existing with same name by replacing)
+      for (const decl of incoming) {
+        const idx = flat.findIndex((d) => d.name === decl.name);
+        if (idx >= 0) flat.splice(idx, 1, decl); else flat.push(decl);
+      }
+      return [{ function_declarations: flat }];
+    }
+  
+    const calcDecl = {
+      name: "calculate",
+      description:
+        "ユーザーから与えられた数学的な計算式（四則演算）を評価し、その正確な結果を返します。複雑な計算や、信頼性が求められる計算の場合に必ず使用してください。",
+      parameters: {
+        type: "OBJECT",
+        properties: {
+          expression: {
+            type: "STRING",
+            description: "計算する数式。例: '2 * (3 + 5)'",
+          },
+        },
+        required: ["expression"],
+      },
+    };
+  
+    const memDecl = {
+      name: "manage_persistent_memory",
+      description:
+        "現在の会話で登場した重要な情報（例：記念日、登場人物の設定、世界の法則など）を、会話を跨いで記憶・参照・削除するための長期記憶を管理する。他の会話には影響しない。",
+      parameters: {
+        type: "OBJECT",
+        properties: {
+          action: {
+            type: "STRING",
+            description: "'add' | 'get' | 'delete' | 'list' のいずれか。",
+          },
+          key: {
+            type: "STRING",
+            description: "情報を識別するための一意の文字列 (add, get, delete時に必須)。",
+          },
+          value: {
+            type: "STRING",
+            description: "保存する情報 (add時に必須)。",
+          },
+        },
+        required: ["action"],
+      },
+    };
+  
+    window.functionDeclarations = mergeFunctionDeclarations(
+      window.functionDeclarations,
+      [calcDecl, memDecl]
+    );
+  
+    // ===== Register implementations =====
+    window.functionCallingTools = Object.assign({}, window.functionCallingTools, {
+      calculate,
+      manage_persistent_memory: managePersistentMemory,
+    });
+  
+    // ===== Small debug helpers =====
+    window.debugListPersistentMemory = function () {
+      try {
+        ensureState();
+        console.log("[Debug] currentPersistentMemory:", window.state.currentPersistentMemory);
+      } catch (e) {
+        console.warn(e);
+      }
+    };
+  })();
