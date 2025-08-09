@@ -10,12 +10,10 @@
  */
  async function manage_persistent_memory({ action, key, value }) {
     console.log(`[Function Calling] manage_persistent_memoryが呼び出されました。`, { action, key, value });
-
-    // --- SAFETY GUARD: ensure global state & per-chat memory exist ---
     const g = (typeof window !== 'undefined' ? window : globalThis);
     if (!g.state) g.state = {};
-    if (typeof g.state.currentPersistentMemory !== 'object' || g.state.currentPersistentMemory == null) {
-        g.state.currentPersistentMemory = {};
+    if (typeof g.state.currentPersistentMemory !== "object" || g.state.currentPersistentMemory == null) {
+    g.state.currentPersistentMemory = {};
     }
     const state = g.state;
 
@@ -87,7 +85,7 @@
 }
 
 
-window.functionCallingTools = {
+window.functionCallingTools = Object.assign({}, window.functionCallingTools, {
     /**
      * 文字列形式の四則演算の式を計算し、結果を返す関数
      * @param {object} args - AIによって提供される引数オブジェクト
@@ -116,9 +114,8 @@ window.functionCallingTools = {
         return { error: `計算エラー: ${error.message}` };
       }
     },
-    // 新しい関数を登録
-    manage_persistent_memory: manage_persistent_memory
-};
+    manage_persistent_memory
+});
 
 /**
  * AIに提供するツールの定義情報 (Tool Declaration)
