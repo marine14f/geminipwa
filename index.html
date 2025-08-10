@@ -3936,6 +3936,44 @@
         // --- APIユーティリティ (apiUtils) ---
         const apiUtils = {
             // Gemini APIを呼び出す
+            /**
+             * Gemini v1beta への非ストリーミング呼び出し
+             * @param {Array} messagesForApi
+             * @param {Object} generationConfig
+             * @param {Object|null} systemInstruction
+             * @param {Array|undefined} tools
+             */
+             async callGeminiApi(messagesForApi, generationConfig, systemInstruction, tools) {
+                const apiKey = state.settings.apiKey?.trim();
+                if (!apiKey) throw new Error("APIキーが設定されていません。");
+                const modelName = state.settings.modelName || "gemini-2.5-pro";
+
+                // tools 形状を v1beta 仕様に合わせる
+                let normalizedTools;
+                if (Array.isArray(tools) && tools.length > 0) {
+                    const looksLikeDeclarations = typeof tools[0]?.name === "string" || typeof tools[0]?.description === "string";
+                    normalizedTools = looksLikeDeclarations ? [{ functionDeclarations: tools }] : tools;
+                }
+
+                const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+                const requestBody = {
+                    contents: messagesForApi,
+                    generationConfig: generationConfig || undefined,
+                    safetySettings: state.settings.geminiSafetySettings || undefined,
+                    tools: normalizedTools || undefined,
+                };
+                if (systemInstruction) requestBody.systemInstruction = systemInstruction;
+
+                if (!state.abortController) state.abortController = new AbortController();
+
+                return await fetch(endpoint, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(requestBody),
+                    signal: state.abortController?.signal
+                });
+            },
 
 
 
@@ -5038,7 +5076,7 @@
                 if (state.editingMessageIndex !== null) { await uiUtils.showCustomAlert("他のメッセージを編集中です。"); return; }
                 if (state.isEditingSystemPrompt) { await uiUtils.showCustomAlert("システムプロンプトを編集中です。"); return; }
 
-                uiUtils.setSendingState(true);
+                state.abortController = new AbortController();
                 
                 try {
                     // 通常送信の場合のみ、新しいユーザーメッセージを作成
@@ -6512,6 +6550,7 @@
              * @throws {Error} リトライしても失敗した場合のエラー
              */
              async callApiWithRetry(apiParams) {
+                if (!state.abortController) state.abortController = new AbortController();
                 // isFunctionCallingSequence フラグを追加で受け取る
                 const { messagesForApi, generationConfig, systemInstruction, tools, isFunctionCallingSequence } = apiParams;
                 let lastError = null;
