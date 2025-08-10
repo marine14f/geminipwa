@@ -5150,9 +5150,19 @@
 
                     while (functionCallTurn < MAX_FC_TURNS) {
                         functionCallTurn++;
-                        uiUtils.setLoadingIndicatorText('応答中...');
-
-                        const messagesForApi = state.currentMessages.map(msg => {
+                        uiUtils.if (!state._retryCounter) state._retryCounter = 0;
+if (isRetry) {
+  state._retryCounter += 1;
+  if (state._retryCounter === 1) {
+    setLoadingIndicatorText("再送信中...");
+  } else {
+    setLoadingIndicatorText(`${state._retryCounter}回目再送信中...`);
+  }
+} else {
+  state._retryCounter = 0;
+  setLoadingIndicatorText("応答中...");
+}
+const messagesForApi = state.currentMessages.map(msg => {
                             const parts = [];
                             if (msg.content && msg.content.trim() !== '') parts.push({ text: msg.content });
                             if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
