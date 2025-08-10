@@ -5098,7 +5098,7 @@
                             messagesForApi,
                             generationConfig,
                             systemInstruction,
-                            tools: window.functionDeclarations,
+                            tools: [{ functionDeclarations: window.functionDeclarations }],
                             isFunctionCallingSequence: loopCount > 1
                         });
                         
@@ -5693,7 +5693,7 @@
                             messagesForApi,
                             generationConfig,
                             systemInstruction,
-                            tools: window.functionDeclarations,
+                            tools: [{ functionDeclarations: window.functionDeclarations }],
                             isFunctionCallingSequence: loopCount > 1
                         });
                         
