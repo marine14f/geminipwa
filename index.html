@@ -5087,6 +5087,8 @@
                 if (state.editingMessageIndex !== null) { await uiUtils.showCustomAlert("他のメッセージを編集中です。"); return; }
                 if (state.isEditingSystemPrompt) { await uiUtils.showCustomAlert("システムプロンプトを編集中です。"); return; }
 
+                // ▼▼▼【変更】送信状態の設定をループ処理の前に移動▼▼▼
+                uiUtils.setSendingState(true);
                 state.abortController = new AbortController();
                 
                 try {
@@ -5144,9 +5146,7 @@
                             messagesForApi,
                             generationConfig,
                             systemInstruction,
-                            // ▼▼▼【変更】function-calling.jsからツール定義を取得▼▼▼
                             tools: (state.settings.geminiEnableFunctionCalling && window.getGeminiTools) ? window.getGeminiTools() : undefined,
-                            // ▲▲▲【ここまで変更】▲▲▲
                             isFunctionCallingSequence: loopCount > 1
                         });
                         
@@ -5203,9 +5203,7 @@
 
                             if (toolCalls && toolCalls.length > 0) {
                                 uiUtils.setLoadingIndicatorText('関数実行中...');
-                                // ▼▼▼【変更】function-calling.jsの実行関数を呼び出す▼▼▼
                                 const toolResults = await this.executeToolCalls(toolCalls);
-                                // ▲▲▲【ここまで変更】▲▲▲
                                 state.currentMessages.push(...toolResults);
                                 await dbUtils.saveChat();
                                 uiUtils.renderChatMessages();
@@ -5242,9 +5240,7 @@
                                 uiUtils.renderChatMessages();
                                 
                                 uiUtils.setLoadingIndicatorText('関数実行中...');
-                                // ▼▼▼【変更】function-calling.jsの実行関数を呼び出す▼▼▼
                                 const toolResults = await this.executeToolCalls(toolCallParts);
-                                // ▲▲▲【ここまで変更】▲▲▲
                                 state.currentMessages.push(...toolResults);
                                 await dbUtils.saveChat();
                                 uiUtils.renderChatMessages();
