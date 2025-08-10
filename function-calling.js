@@ -1,175 +1,171 @@
+// function-calling.js
+
 /**
- * function-calling.js
- * - Gemini Function Calling: tool declarations + 実装
- * - manage_persistent_memory は chatId 未確定でも saveChat() を使って確定→DB 保存まで行う
- * - tools 取得関数 window.getGeminiTools() を公開（API呼び出し側はこれを使う）
- *
- * 注意: モデル名はユーザー指定の gemini-2.5-pro を維持します。
+ * 現在のチャットセッションに紐づく永続メモリを管理する関数
+ * @param {object} args - AIによって提供される引数オブジェクト
+ * @param {string} args.action - "add", "get", "delete", "list" のいずれか
+ * @param {string} [args.key] - 操作対象のキー (add, get, delete時に必須)
+ * @param {string} [args.value] - 保存する値 (add時に必須)
+ * @returns {Promise<object>} 操作結果を含むオブジェクトを返すPromise
  */
+ async function manage_persistent_memory({ action, key, value }) {
+  console.log(`[Function Calling] manage_persistent_memoryが呼び出されました。`, { action, key, value });
 
- (() => {
-  // =========================
-  // ツール宣言（declarations）
-  // =========================
-  const functionDeclarations = [
-    {
-      name: "calculate",
-      description:
-        "ユーザーから与えられた数学的な計算式（四則演算）を評価し、その正確な結果を返します。複雑な計算や、信頼性が求められる計算の場合に必ず使用してください。",
-      parameters: {
-        type: "OBJECT",
-        properties: {
-          expression: {
-            type: "STRING",
-            description: "計算する数式。例: '2 * (3 + 5)'",
-          },
-        },
-        required: ["expression"],
-      },
-    },
-    {
-      name: "manage_persistent_memory",
-      description:
-        "現在の会話セッションに限定して、重要な情報（記念日、登場人物の設定、世界の法則など）を後から参照できるように記憶・管理します。他の会話には影響しません。",
-      parameters: {
-        type: "OBJECT",
-        properties: {
-          action: {
-            type: "STRING",
-            description:
-              "実行する操作を選択します。'add': 情報を追加/上書き, 'get': 情報を取得, 'delete': 情報を削除, 'list': 記憶している全ての情報キーを一覧表示。",
-          },
-          key: {
-            type: "STRING",
-            description:
-              "情報を識別するための一意のキー（名前）。'add', 'get', 'delete' アクションで必須です。例: '主人公の性格', '次の目的地'",
-          },
-          value: {
-            type: "STRING",
-            description:
-              "キーに紐付けて記憶させる情報の内容。'add' アクションで必須です。例: '冷静沈着', '東の塔'",
-          },
-        },
-        required: ["action"],
-      },
-    },
-  ];
-
-  // API へ渡す正しい tools 形式を返すヘルパ
-  // これを使えば "tools: [{ function_declarations: [...] }]" で常に正しい形になる
-  function getGeminiTools() {
-    return [{ functionDeclarations: functionDeclarations }];
+  // 前提条件: チャットが保存されているか（IDが存在するか）を確認
+  if (!state.currentChatId) {
+      const errorMsg = "チャットがまだ保存されていません。最初のメッセージを送信してから、再度実行してください。";
+      console.error(`[Function Calling] エラー: ${errorMsg}`);
+      return { error: errorMsg };
   }
 
-  // 外部からも参照できるように公開
-  window.functionDeclarations = functionDeclarations;
-  window.getGeminiTools = getGeminiTools;
-
-  console.log("[Function Calling] tools & declarations registered (v5)");
-
-  // =========================
-  // 各ツールの実装
-  // =========================
-
-  async function tool_calculate(args) {
-    const { expression } = args || {};
-    if (typeof expression !== "string" || !expression.trim()) {
-      return { name: "calculate", response: { success: false, message: "式が空です。" } };
-    }
-    if (!/^[\d+\-*/().\s]+$/.test(expression)) {
-      return { name: "calculate", response: { success: false, message: "不正な文字が含まれています。" } };
-    }
-    try {
-      // eslint-disable-next-line no-new-func
-      const result = Function(`"use strict"; return (${expression})`)();
-      if (Number.isFinite(result)) {
-        return { name: "calculate", response: { success: true, result } };
+  try {
+      // 最新のチャットデータを取得
+      const chat = await dbUtils.getChat(state.currentChatId);
+      if (!chat) {
+          throw new Error(`チャットデータ (ID: ${state.currentChatId}) が見つかりません。`);
       }
-      throw new Error("計算結果が有限数ではありません。");
-    } catch (e) {
-      return { name: "calculate", response: { success: false, message: `計算エラー: ${e.message}` } };
-    }
-  }
 
-  async function tool_manage_persistent_memory(args) {
-    const { action, key, value } = args || {};
-    console.log("[Function Calling] manage_persistent_memoryが呼び出されました。", args);
-
-    const state = (window.state = window.state || {});
-    if (!state.currentPersistentMemory) state.currentPersistentMemory = {};
-    const mem = state.currentPersistentMemory;
-
-    // chatId を確定させる（なければ saveChat() で払い出し）
-    const ensureChatId = async () => {
-      if (state.currentChatId) return state.currentChatId;
-      if (window.dbUtils?.saveChat) {
-        // ▼▼▼【変更】saveChatの完了を待つようにawaitを追加▼▼▼
-        await window.dbUtils.saveChat();
-        if (state.currentChatId) return state.currentChatId;
+      // メモリ空間を初期化（存在しない場合）
+      if (!chat.persistentMemory) {
+          chat.persistentMemory = {};
       }
-      throw new Error("chatId を確定できませんでした。");
-    };
+      const memory = chat.persistentMemory;
+      let resultData = null;
 
-    try {
       switch (action) {
-        case "add": {
-          if (!key) return { name: "manage_persistent_memory", response: { success: false, message: "key が必要です。" } };
-          if (typeof value !== "string") return { name: "manage_persistent_memory", response: { success: false, message: "value は文字列で指定してください。" } };
-          mem[key] = value;               // まず state を更新
-          await ensureChatId();           // ID 確定
-          await window.dbUtils.saveChat(); // 永続化
-          return { name: "manage_persistent_memory", response: { success: true, message: `キー「${key}」に値を保存しました。` } };
-        }
-        case "get": {
-          if (!key) return { name: "manage_persistent_memory", response: { success: false, message: "key が必要です。" } };
-          const v = mem[key];
-          return { name: "manage_persistent_memory", response: { success: true, value: v ?? null, hit: v !== undefined } };
-        }
-        case "delete": {
-          if (!key) return { name: "manage_persistent_memory", response: { success: false, message: "key が必要です。" } };
-          const existed = Object.prototype.hasOwnProperty.call(mem, key);
-          if (existed) delete mem[key];
-          await ensureChatId();
-          await window.dbUtils.saveChat();
-          return { name: "manage_persistent_memory", response: { success: true, deleted: existed } };
-        }
-        case "list": {
-          return { name: "manage_persistent_memory", response: { success: true, keys: Object.keys(mem) } };
-        }
-        default: {
-          return { name: "manage_persistent_memory", response: { success: false, message: `未知の action: ${action}` } };
-        }
+          case "add":
+              if (!key || value === undefined) {
+                  return { error: "addアクションには 'key' と 'value' が必要です。" };
+              }
+              memory[key] = value;
+              resultData = { success: true, message: `キー「${key}」に値を保存しました。` };
+              break;
+
+          case "get":
+              if (!key) {
+                  return { error: "getアクションには 'key' が必要です。" };
+              }
+              if (key in memory) {
+                  resultData = { success: true, key: key, value: memory[key] };
+              } else {
+                  resultData = { success: false, message: `キー「${key}」は見つかりませんでした。` };
+              }
+              break;
+
+          case "delete":
+              if (!key) {
+                  return { error: "deleteアクションには 'key' が必要です。" };
+              }
+              if (key in memory) {
+                  delete memory[key];
+                  resultData = { success: true, message: `キー「${key}」を削除しました。` };
+              } else {
+                  resultData = { success: false, message: `キー「${key}」は見つかりませんでした。` };
+              }
+              break;
+
+          case "list":
+              const keys = Object.keys(memory);
+              resultData = { success: true, count: keys.length, keys: keys };
+              break;
+
+          default:
+              return { error: `無効なアクションです: ${action}` };
       }
-    } catch (e) {
-      console.error("[Function Calling] manage_persistent_memory エラー:", e);
-      return { name: "manage_persistent_memory", response: { success: false, message: e?.message || String(e) } };
-    }
+
+      // 変更をDBに保存
+      chat.updatedAt = Date.now(); // 更新日時を更新
+      await dbUtils.saveChat(chat.title); // タイトルは既存のものを維持
+
+      // stateにも反映
+      state.currentPersistentMemory = memory;
+
+      console.log(`[Function Calling] 処理完了:`, resultData);
+      return resultData;
+
+  } catch (error) {
+      console.error(`[Function Calling] manage_persistent_memoryでエラーが発生しました:`, error);
+      return { error: `内部エラーが発生しました: ${error.message}` };
   }
+}
 
-  // =========================
-  // ツールディスパッチャ
-  // =========================
-  window.executeToolCall = async (toolCall) => {
-    const { functionCall } = toolCall || {};
-    if (!functionCall?.name) return null;
 
-    if (functionCall.name === "calculate") {
-      return await tool_calculate(functionCall.args || {});
+window.functionCallingTools = {
+  /**
+   * 文字列形式の四則演算の式を計算し、結果を返す関数
+   * @param {object} args - AIによって提供される引数オブジェクト
+   * @param {string} args.expression - 計算する数式 (例: "2 * (3 + 5)")
+   * @returns {Promise<object>} 計算結果またはエラーを含むオブジェクトを返すPromise
+   */
+  calculate: async function({ expression }) {
+    console.log(`[Function Calling] calculateが呼び出されました。式: ${expression}`);
+    await new Promise(resolve => setTimeout(resolve, 1000)); // 意図的な遅延
+
+    const allowedChars = /^[0-9+\-*/().\s]+$/;
+    if (!allowedChars.test(expression)) {
+      console.error("[Function Calling] calculate: 式に許可されていない文字が含まれています。");
+      return { error: "無効な式です。四則演算と括弧のみ使用できます。" };
     }
-    if (functionCall.name === "manage_persistent_memory") {
-      return await tool_manage_persistent_memory(functionCall.args || {});
-    }
-    return { name: functionCall.name, response: { success: false, message: "未対応のツールです。" } };
-  };
 
-  window.executeToolCalls = async (toolCalls) => {
-    const results = [];
-    for (const call of toolCalls || []) {
-      const res = await window.executeToolCall(call);
-      if (res) {
-        results.push({ role: "tool", name: res.name, response: res.response, timestamp: Date.now() });
+    try {
+      const result = new Function(`return ${expression}`)();
+      if (typeof result !== 'number' || !isFinite(result)) {
+        throw new Error("計算結果が無効です。");
       }
+      console.log(`[Function Calling] calculate: 計算結果: ${result}`);
+      return { result: result };
+    } catch (error) {
+      console.error(`[Function Calling] calculate: 計算エラー: ${error.message}`);
+      return { error: `計算エラー: ${error.message}` };
     }
-    return results;
-  };
-})();
+  },
+  // 新しい関数を登録
+  manage_persistent_memory: manage_persistent_memory
+};
+
+/**
+* AIに提供するツールの定義情報 (Tool Declaration)
+*/
+window.functionDeclarations = [
+  {
+      "function_declarations": [
+          {
+              "name": "calculate",
+              "description": "ユーザーから与えられた数学的な計算式（四則演算）を評価し、その正確な結果を返します。複雑な計算や、信頼性が求められる計算の場合に必ず使用してください。",
+              "parameters": {
+                  "type": "OBJECT",
+                  "properties": {
+                      "expression": {
+                          "type": "STRING",
+                          "description": "計算する数式。例: '2 * (3 + 5)'"
+                      }
+                  },
+                  "required": ["expression"]
+              }
+          },
+          // 新しい関数の定義を追加
+          {
+              "name": "manage_persistent_memory",
+              "description": "現在の会話セッションに限定して、重要な情報（記念日、登場人物の設定、世界の法則など）を後から参照できるように記憶・管理します。他の会話には影響しません。",
+              "parameters": {
+                  "type": "OBJECT",
+                  "properties": {
+                      "action": {
+                          "type": "STRING",
+                          "description": "実行する操作を選択します。'add': 情報を追加/上書き, 'get': 情報を取得, 'delete': 情報を削除, 'list': 記憶している全ての情報キーを一覧表示。"
+                      },
+                      "key": {
+                          "type": "STRING",
+                          "description": "情報を識別するための一意のキー（名前）。'add', 'get', 'delete' アクションで必須です。例: '主人公の性格', '次の目的地'"
+                      },
+                      "value": {
+                          "type": "STRING",
+                          "description": "キーに紐付けて記憶させる情報の内容。'add' アクションで必須です。例: '冷静沈着', '東の塔'"
+                      }
+                  },
+                  "required": ["action"]
+              }
+          }
+      ]
+  }
+];
