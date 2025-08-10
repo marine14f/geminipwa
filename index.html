@@ -2678,18 +2678,18 @@
                         content: msg.content,
                         timestamp: msg.timestamp,
                         thoughtSummary: msg.thoughtSummary || null, // Thought Summary を保存
-                        ...(msg.finishReason && { finishReason: msg.finishReason }),
-                        ...(msg.safetyRatings && { safetyRatings: msg.safetyRatings }),
-                        ...(msg.error && { error: msg.error }),
+                        .......(msg.finishReason && { finishReason: msg.finishReason }),
+                        .....(msg.safetyRatings && { safetyRatings: msg.safetyRatings }),
+                        .....(msg.error && { error: msg.error }),
                         // 新しいフラグを追加 (存在すれば)
-                        ...(msg.isCascaded !== undefined && { isCascaded: msg.isCascaded }),
-                        ...(msg.isSelected !== undefined && { isSelected: msg.isSelected }),
-                        ...(msg.siblingGroupId !== undefined && { siblingGroupId: msg.siblingGroupId }),
-                        ...(msg.groundingMetadata && { groundingMetadata: msg.groundingMetadata }),
+                        .....(msg.isCascaded !== undefined && { isCascaded: msg.isCascaded }),
+                        .....(msg.isSelected !== undefined && { isSelected: msg.isSelected }),
+                        .....(msg.siblingGroupId !== undefined && { siblingGroupId: msg.siblingGroupId }),
+                        .....(msg.groundingMetadata && { groundingMetadata: msg.groundingMetadata }),
                         // 添付ファイル情報を追加 (存在すれば)
-                        ...(msg.attachments && msg.attachments.length > 0 && { attachments: msg.attachments }),
+                        .....(msg.attachments && msg.attachments.length > 0 && { attachments: msg.attachments }),
                         // usageMetadata を追加 (存在すれば)
-                        ...(msg.usageMetadata && { usageMetadata: msg.usageMetadata }),
+                        .....(msg.usageMetadata && { usageMetadata: msg.usageMetadata }),
                     }));
 
                     // タイトルを決定して保存を実行する内部関数
@@ -3947,8 +3947,8 @@
 
                 const requestBody = {
                     contents: messagesForApi,
-                    ...(Object.keys(finalGenerationConfig).length > 0 && { generationConfig: finalGenerationConfig }),
-                    ...(systemInstruction && systemInstruction.parts && systemInstruction.parts.length > 0 && systemInstruction.parts[0].text && { systemInstruction }),
+                    .......(Object.keys(finalGenerationConfig).length > 0 && { generationConfig: finalGenerationConfig }),
+                    .....(systemInstruction && systemInstruction.parts && systemInstruction.parts.length > 0 && systemInstruction.parts[0].text && { systemInstruction }),
                     safetySettings : [
                         { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
                         { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
@@ -5026,8 +5026,8 @@
 
                 const requestBody = {
                     contents: [{ role: 'user', parts: [{ text: textToProofread }] }],
-                    ...(Object.keys(generationConfig).length > 0 && { generationConfig }),
-                    ...(systemInstruction && { systemInstruction }),
+                    .....(Object.keys(generationConfig).length > 0 && { generationConfig }),
+                    .....(systemInstruction && { systemInstruction }),
                     safetySettings: [
                         { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
                         { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
@@ -5039,7 +5039,7 @@
                 console.log("校正APIへの送信データ:", JSON.stringify(requestBody, null, 2));
 
                 let lastError = null;
-                const maxProofreadRetries = enableAutoRetry ? maxRetries : 0;
+                const maxProofreadRetries = (enableAutoRetry ?? true) ? (Number.isInteger(maxRetries) ? maxRetries : 2) : 0;
 
                 for (let attempt = 0; attempt <= maxProofreadRetries; attempt++) {
                     try {
@@ -5056,24 +5056,7 @@
                             await interruptibleSleep(delay, state.abortController.signal);
                         } else {
                             // 初回試行時のテキスト
-                            uiUtils.
-// ---- Retry-aware status helper (minimal diff) ----
-function __setRetryAwareStatus(isRetry) {
-  if (!window.__retryCounter) window.__retryCounter = 0;
-  if (isRetry) {
-    window.__retryCounter += 1;
-    if (window.__retryCounter === 1) {
-      setLoadingIndicatorText("再送信中...");
-    } else {
-      setLoadingIndicatorText(`${window.__retryCounter}回目再送信中...`);
-    }
-  } else {
-    window.__retryCounter = 0;
-    __setRetryAwareStatus(isRetry === true);
-  }
-}
-
-setLoadingIndicatorText('校正中...');
+                            uiUtils.setLoadingIndicatorText('校正中...');
                         }
                         // ▲▲▲【ここまで変更】▲▲▲
 
@@ -5139,7 +5122,7 @@ setLoadingIndicatorText('校正中...');
                     // 通常送信の場合のみ、新しいユーザーメッセージを作成
                     if (!isRetry) {
                         const text = elements.userInput.value.trim();
-                        const attachmentsToSend = [...state.pendingAttachments];
+                        const attachmentsToSend = [..state.pendingAttachments];
                         if (!text && attachmentsToSend.length === 0) {
                             uiUtils.setSendingState(false);
                             return;
@@ -5235,7 +5218,7 @@ setLoadingIndicatorText('校正中...');
                         }
                         
                         // Function Callingの実行
-                        uiUtils.setLoadingIndicatorText('関数実行中...');
+                        uiUtils.setLoadingIndicatorText('関数実行中.....');
                         const toolResults = await this.executeToolCalls(result.toolCalls);
                         state.currentMessages.push(...toolResults);
                         await dbUtils.saveChat();
@@ -5668,7 +5651,7 @@ setLoadingIndicatorText('校正中...');
                             enterToSend: true,
                             historySortOrder: 'updatedAt',
                             // ダークモードはOS設定にフォールバック
-                            darkMode: window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false,
+                            darkMode: window.matchMedia?.....('(prefers-color-scheme: dark)').matches ?? false,
                             backgroundImageBlob: null,
                             fontFamily: '', // フォントもリセット
                             hideSystemPromptInChat: false, // SP非表示もリセット
@@ -5726,7 +5709,7 @@ setLoadingIndicatorText('校正中...');
                     // 通常送信の場合のみ、新しいユーザーメッセージを作成
                     if (!isRetry) {
                         const text = elements.userInput.value.trim();
-                        const attachmentsToSend = [...state.pendingAttachments];
+                        const attachmentsToSend = [..state.pendingAttachments];
                         if (!text && attachmentsToSend.length === 0) {
                             uiUtils.setSendingState(false);
                             return;
@@ -5833,7 +5816,7 @@ setLoadingIndicatorText('校正中...');
                             await dbUtils.saveChat();
 
                             if (toolCalls && toolCalls.length > 0) {
-                                uiUtils.setLoadingIndicatorText('関数実行中...');
+                                uiUtils.setLoadingIndicatorText('関数実行中.....');
                                 const toolResults = await this.executeToolCalls(toolCalls);
                                 state.currentMessages.push(...toolResults);
                                 await dbUtils.saveChat();
@@ -5870,7 +5853,7 @@ setLoadingIndicatorText('校正中...');
                                 await dbUtils.saveChat();
                                 uiUtils.renderChatMessages();
                                 
-                                uiUtils.setLoadingIndicatorText('関数実行中...');
+                                uiUtils.setLoadingIndicatorText('関数実行中.....');
                                 const toolResults = await this.executeToolCalls(toolCallParts);
                                 state.currentMessages.push(...toolResults);
                                 await dbUtils.saveChat();
@@ -6591,7 +6574,7 @@ setLoadingIndicatorText('校正中...');
             async callApiWithRetry(apiParams) {
                 const { messagesForApi, generationConfig, systemInstruction, tools, isFunctionCallingSequence } = apiParams;
                 let lastError = null;
-                const maxRetries = state.settings.enableAutoRetry ? state.settings.maxRetries : 0;
+                const maxRetries = (state.settings.enableAutoRetry ?? true) ? (Number.isInteger(state.settings.maxRetries) ? state.settings.maxRetries : 2) : 0;
                 const useStreaming = state.settings.streamingOutput;
 
                 for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -6640,7 +6623,7 @@ setLoadingIndicatorText('校正中...');
                                 content: fullContent, 
                                 thoughtSummary: fullThoughtSummary,
                                 toolCalls,
-                                ...finalMetadata,
+                                .....finalMetadata,
                                 retryCount: attempt 
                             };
 
