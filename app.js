@@ -218,6 +218,7 @@ const state = {
     currentScreen: 'chat',
     selectedFilesForUpload: [],
     pendingAttachments: [],
+    currentScene: null,
 };
 
 function updateMessageMaxWidthVar() {
@@ -2635,6 +2636,7 @@ const appLogic = {
         state.currentSystemPrompt = state.settings.systemPrompt; // デフォルトのシステムプロンプトを適用
         state.pendingAttachments = []; // 保留中の添付ファイルをクリア
         state.currentPersistentMemory = {}; // 永続メモリをリセット
+        state.currentScene = { scene_id: "initial", location: "不明な場所" }; // シーン情報を初期化
         uiUtils.updateSystemPromptUI(); // システムプロンプトUI更新
         uiUtils.renderChatMessages(); // 表示クリア
         uiUtils.updateChatTitle(); // タイトルを「新規チャット」に
@@ -2685,6 +2687,13 @@ const appLogic = {
                 // 永続メモリを読み込む (存在しなければ空オブジェクト)
                 state.currentPersistentMemory = chat.persistentMemory || {};
                 console.log(`チャット ${id} の永続メモリを読み込みました:`, state.currentPersistentMemory);
+                // シーン情報を読み込む (存在しない場合は初期化)
+                if (chat.persistentMemory && Array.isArray(chat.persistentMemory.scene_stack) && chat.persistentMemory.scene_stack.length > 0) {
+                    state.currentScene = chat.persistentMemory.scene_stack[chat.persistentMemory.scene_stack.length - 1];
+                } else {
+                    state.currentScene = { scene_id: "initial", location: "不明な場所" };
+                }
+                console.log(`シーン情報を読み込みました:`, state.currentScene);
 
                 // --- カスケード応答の isSelected を正規化 ---
                 let needsSave = false;
@@ -3129,7 +3138,21 @@ const appLogic = {
                 if (state.settings.maxTokens !== null) generationConfig.maxOutputTokens = state.settings.maxTokens;
                 if (state.settings.topK !== null) generationConfig.topK = state.settings.topK;
                 if (state.settings.topP !== null) generationConfig.topP = state.settings.topP;
-                const systemInstruction = state.currentSystemPrompt?.trim() ? { role: "system", parts: [{ text: state.currentSystemPrompt.trim() }] } : null;
+                let finalSystemPrompt = state.currentSystemPrompt?.trim() || '';
+                if (state.currentScene) {
+                    const sceneParts = [];
+                    if (state.currentScene.location) sceneParts.push(`場所: ${state.currentScene.location}`);
+                    if (state.currentScene.time_of_day) sceneParts.push(`時間帯: ${state.currentScene.time_of_day}`);
+                    if (state.currentScene.mood) sceneParts.push(`雰囲気: ${state.currentScene.mood}`);
+                    if (state.currentScene.pov) sceneParts.push(`視点: ${state.currentScene.pov === 'first' ? '一人称' : '三人称'}`);
+                    if (state.currentScene.notes) sceneParts.push(`補足: ${state.currentScene.notes}`);
+
+                    if (sceneParts.length > 0) {
+                        const sceneHeaderText = "\n\n--- [現在のシーン設定] ---";
+                        finalSystemPrompt += `${sceneHeaderText}\n${sceneParts.join("\n")}`;
+                    }
+                }
+                const systemInstruction = finalSystemPrompt ? { role: "system", parts: [{ text: finalSystemPrompt }] } : null;
 
                 const result = await this.callApiWithRetry({
                     messagesForApi,
