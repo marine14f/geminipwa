@@ -886,8 +886,8 @@ window.functionDeclarations = [
                         "description": "フラグやカウンターを識別するための一意の名前。例: '扉A解錠済', '街の警戒度'"
                     },
                     "value": {
-                        "type": "ANY",
-                        "description": "'set', 'increase', 'decrease' アクションで使用する値 (真偽値または数値)。"
+                        "type": "STRING", 
+                        "description": "'set', 'increase', 'decrease' アクションで使用する値 (真偽値または数値)。文字列として渡してください。"
                     },
                     "ttl_minutes": {
                         "type": "NUMBER",
