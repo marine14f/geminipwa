@@ -139,7 +139,6 @@ async function getCurrentDateTime() {
 async function rollDice({ expression }) {
     console.log(`[Function Calling] rollDiceが呼び出されました。式: ${expression}`);
 
-    // 式をパースするための正規表現 (例: 2d6+3)
     const diceRegex = /^(?<count>\d+)d(?<sides>\d+)(?:(?<modifier_op>[+-])(?<modifier_val>\d+))?$/i;
     const match = expression.trim().match(diceRegex);
 
@@ -154,7 +153,6 @@ async function rollDice({ expression }) {
     const numSides = parseInt(sides, 10);
     const numModifier = modifier_val ? parseInt(modifier_val, 10) : 0;
 
-    // バリデーション
     if (numCount < 1 || numCount > 100) {
         return { error: "ダイスの個数は1個から100個までです。" };
     }
@@ -169,7 +167,6 @@ async function rollDice({ expression }) {
         const rolls = [];
         let sum = 0;
         for (let i = 0; i < numCount; i++) {
-            // 1からnumSidesまでのランダムな整数を生成
             const roll = Math.floor(Math.random() * numSides) + 1;
             rolls.push(roll);
             sum += roll;
@@ -199,6 +196,42 @@ async function rollDice({ expression }) {
     }
 }
 
+// ▼▼▼【ここから追加】▼▼▼
+/**
+ * タイマーを管理する関数
+ * @param {object} args - AIによって提供される引数オブジェクト
+ * @param {string} args.action - "start", "check", "stop" のいずれか
+ * @param {string} args.timer_name - タイマーを識別するための一意の名前
+ * @param {number} [args.duration_minutes] - タイマーの期間（分単位）。startアクションで必須
+ * @returns {Promise<object>} 操作結果を含むオブジェクトを返すPromise
+ */
+async function manage_timer({ action, timer_name, duration_minutes }) {
+    console.log(`[Function Calling] manage_timerが呼び出されました。`, { action, timer_name, duration_minutes });
+
+    if (!timer_name) {
+        return { error: "タイマー名(timer_name)は必須です。" };
+    }
+
+    switch (action) {
+        case "start":
+            if (typeof duration_minutes !== 'number' || duration_minutes <= 0) {
+                return { error: "タイマーを開始するには、0より大きい分数(duration_minutes)が必要です。" };
+            }
+            return appLogic.timerManager.start(timer_name, duration_minutes);
+
+        case "check":
+            return appLogic.timerManager.check(timer_name);
+
+        case "stop":
+            return appLogic.timerManager.stop(timer_name);
+
+        default:
+            return { error: `無効なアクションです: ${action}` };
+    }
+}
+// ▲▲▲【ここまで追加】▲▲▲
+
+
 window.functionCallingTools = {
   calculate: async function({ expression }) {
     console.log(`[Function Calling] calculateが呼び出されました。式: ${expression}`);
@@ -224,7 +257,8 @@ window.functionCallingTools = {
   },
   manage_persistent_memory: manage_persistent_memory,
   getCurrentDateTime: getCurrentDateTime,
-  rollDice: rollDice
+  rollDice: rollDice,
+  manage_timer: manage_timer
 };
 
 /**
@@ -290,6 +324,28 @@ window.functionDeclarations = [
                     }
                 },
                 "required": ["expression"]
+            }
+          },
+          {
+            "name": "manage_timer",
+            "description": "指定した時間（分単位）でタイマーを設定、確認、停止します。時間制限のあるイベントや、一定時間後の応答をシミュレートするのに使用します。タイマーが時間切れになると、AIにその事実が通知されます。",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "action": {
+                        "type": "STRING",
+                        "description": "実行する操作。'start': タイマーを開始, 'check': 残り時間を確認, 'stop': タイマーを停止。"
+                    },
+                    "timer_name": {
+                        "type": "STRING",
+                        "description": "タイマーを識別するための一意の名前。例: '爆弾解除タイマー', '返信待ちタイマー'"
+                    },
+                    "duration_minutes": {
+                        "type": "NUMBER",
+                        "description": "'start'アクション時に設定するタイマーの期間（分単位）。例: 5"
+                    }
+                },
+                "required": ["action", "timer_name"]
             }
           }
       ]

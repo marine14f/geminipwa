@@ -2058,6 +2058,88 @@ function updateCurrentSystemPrompt() {
 
 // --- アプリケーションロジック (appLogic) ---
 const appLogic = {
+    timerManager: {
+        timers: {}, // { timer_name: { timerId: 123, endTime: 167... } }
+        
+        start(name, minutes) {
+            if (this.timers[name]) {
+                clearTimeout(this.timers[name].timerId);
+                console.log(`タイマー「${name}」は上書きされました。`);
+            }
+            
+            const durationMs = minutes * 60 * 1000;
+            const endTime = Date.now() + durationMs;
+
+            const timerId = setTimeout(() => {
+                console.log(`タイマー「${name}」が時間切れになりました。自動応答をトリガーします。`);
+                // 実行中のタイマーリストから削除
+                delete this.timers[name];
+                // 自動応答をトリガー
+                appLogic.triggerTimerExpiredResponse(name);
+            }, durationMs);
+
+            this.timers[name] = { timerId, endTime };
+            
+            const message = `タイマー「${name}」を${minutes}分で開始しました。`;
+            console.log(`[Timer] ${message}`);
+            return { success: true, message: message };
+        },
+
+        check(name) {
+            if (!this.timers[name]) {
+                return { success: false, message: `タイマー「${name}」はセットされていません。` };
+            }
+            const remainingMs = this.timers[name].endTime - Date.now();
+            if (remainingMs <= 0) {
+                return { success: true, status: "expired", message: `タイマー「${name}」は既に時間切れです。` };
+            }
+            const remainingMinutes = Math.floor(remainingMs / 60000);
+            const remainingSeconds = Math.floor((remainingMs % 60000) / 1000);
+            const message = `タイマー「${name}」の残り時間は約${remainingMinutes}分${remainingSeconds}秒です。`;
+            console.log(`[Timer] ${message}`);
+            return { success: true, status: "running", remaining_time: message };
+        },
+
+        stop(name) {
+            if (!this.timers[name]) {
+                return { success: false, message: `タイマー「${name}」はセットされていません。` };
+            }
+            clearTimeout(this.timers[name].timerId);
+            delete this.timers[name];
+            const message = `タイマー「${name}」を停止しました。`;
+            console.log(`[Timer] ${message}`);
+            return { success: true, message: message };
+        },
+    },
+
+    /**
+     * タイマー時間切れ時にAIに応答を促す関数
+     * @param {string} timerName - 時間切れになったタイマーの名前
+     */
+    async triggerTimerExpiredResponse(timerName) {
+        // 現在送信中の場合は何もしない
+        if (state.isSending) {
+            console.warn("タイマーが切れましたが、現在送信中のため自動応答をスキップします。");
+            return;
+        }
+        console.log(`タイマー「${timerName}」の時間切れ応答を生成します。`);
+
+        // ユーザーには見えない内部的な指示メッセージを作成
+        const systemInstructionForTimer = `[システムメモ]
+タイマー「${timerName}」が時間切れになりました。
+この事実を踏まえて、現在の会話の文脈に沿った自然な応答を生成してください。
+例えば、「そういえば、約束の時間だね」「時間切れだ！イベントが発生する」のように、会話を続けてください。
+このシステムメモ自体は応答に含めないでください。`;
+
+        const userMessage = { role: 'user', content: systemInstructionForTimer, timestamp: Date.now() };
+
+        // 履歴にこの内部メッセージを追加してAPIを呼び出す
+        state.currentMessages.push(userMessage);
+        
+        // UIは更新せず、裏でhandleSendを呼び出す
+        // isRetry=false, retryUserMessageIndex=-1 は通常の送信と同じ扱い
+        await this.handleSend(false, -1);
+    },
     // アプリ初期化
     async initializeApp() {
         // marked.jsの設定
