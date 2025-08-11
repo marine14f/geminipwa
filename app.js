@@ -2856,8 +2856,6 @@ const appLogic = {
         }
     },
 
-    // appLogic オブジェクト内にこの関数を追加
-
     async proofreadText(textToProofread) {
         console.log("--- 校正処理開始 ---");
         const { 
@@ -2909,12 +2907,10 @@ const appLogic = {
 
                 if (attempt > 0) {
                     const delay = INITIAL_RETRY_DELAY * Math.pow(2, attempt - 1);
-                    // リトライ時にインジケーターのテキストを更新
                     uiUtils.setLoadingIndicatorText(`校正を再試行中 (${attempt}回目)... ${delay}ms待機`);
                     console.log(`校正APIリトライ ${attempt}: ${delay}ms待機...`);
                     await interruptibleSleep(delay, state.abortController.signal);
                 } else {
-                    // 初回試行時のテキスト
                     uiUtils.setLoadingIndicatorText('校正中...');
                 }
 
@@ -2967,7 +2963,6 @@ const appLogic = {
         throw lastError;
     },
 
-    // ▼▼▼【ここから修正】▼▼▼
     async handleSend(isRetry = false, retryUserMessageIndex = -1) {
         console.log("--- handleSend: 処理開始 ---", { isRetry, retryUserMessageIndex });
 
@@ -3028,7 +3023,6 @@ const appLogic = {
                 if (state.settings.topP !== null) generationConfig.topP = state.settings.topP;
                 const systemInstruction = state.currentSystemPrompt?.trim() ? { role: "system", parts: [{ text: state.currentSystemPrompt.trim() }] } : null;
 
-                // callApiWithRetryは処理済みの結果を返す
                 const result = await this.callApiWithRetry({
                     messagesForApi,
                     generationConfig,
@@ -3036,23 +3030,19 @@ const appLogic = {
                     tools: window.functionDeclarations,
                     isFunctionCallingSequence: loopCount > 1
                 });
-
-                // --- 応答処理 ---
+                
                 const modelMessage = {
                     role: 'model',
                     content: result.content,
-                    thoughtSummary: result.thoughtSummary,
                     tool_calls: result.toolCalls,
                     timestamp: Date.now(),
                     finishReason: result.finishReason,
                     safetyRatings: result.safetyRatings,
-                    groundingMetadata: result.groundingMetadata,
                     usageMetadata: result.usageMetadata,
                     retryCount: result.retryCount
                 };
-
-                // カスケード情報を付与 (リトライ時)
-                if (isRetry && loopCount === 1) { // Function Callingループの初回のみ
+                
+                if (isRetry && loopCount === 1) {
                     const firstResponseIndexForRetry = retryUserMessageIndex + 1;
                     if (firstResponseIndexForRetry < state.currentMessages.length && state.currentMessages[firstResponseIndexForRetry].isCascaded) {
                         const originalResponse = state.currentMessages[firstResponseIndexForRetry];
@@ -3068,19 +3058,16 @@ const appLogic = {
                 uiUtils.renderChatMessages();
                 uiUtils.scrollToBottom();
 
-                // Function Callingがなければループを抜ける
                 if (!result.toolCalls || result.toolCalls.length === 0) {
                     break;
                 }
                 
-                // Function Callingの実行
                 uiUtils.setLoadingIndicatorText('関数実行中...');
                 const toolResults = await this.executeToolCalls(result.toolCalls);
                 state.currentMessages.push(...toolResults);
                 await dbUtils.saveChat();
                 uiUtils.renderChatMessages();
                 uiUtils.scrollToBottom();
-                // ループの先頭に戻り、関数の結果を含めて再度APIを呼び出す
             }
 
         } catch(error) {
@@ -3105,8 +3092,7 @@ const appLogic = {
             uiUtils.scrollToBottom();
         }
     },
-    // ▲▲▲【ここまで修正】▲▲▲
-
+    
     // APIリクエストを中断
     abortRequest() {
         if (state.abortController) {
@@ -4230,10 +4216,9 @@ const appLogic = {
         console.error("最大リトライ回数に達しました。最終的なエラーをスローします。");
         throw lastError;
     },
-
 }; // appLogic終了
 
 
 
 // --- 初期化処理 ---
-appLogic.initializeApp();
+appLogic.initializeApp();```
