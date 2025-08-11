@@ -3074,7 +3074,7 @@ const appLogic = {
         throw lastError;
     },
 
-    async handleSend(isRetry = false, retryUserMessageIndex = -1, isAutoTrigger = false) { // ← 引数を追加
+    async handleSend(isRetry = false, retryUserMessageIndex = -1, isAutoTrigger = false) {
         console.log("--- handleSend: 処理開始 ---", { isRetry, retryUserMessageIndex, isAutoTrigger });
 
         if (state.isSending) { console.warn("handleSend: 既に送信中のため処理を中断"); return; }
@@ -3084,10 +3084,7 @@ const appLogic = {
         uiUtils.setSendingState(true);
         
         try {
-            // ▼▼▼【ここから変更】▼▼▼
-            // 通常のユーザー手動送信の場合のみ、入力欄から新しいメッセージを作成
             if (!isRetry && !isAutoTrigger) {
-            // ▲▲▲【ここまで変更】▲▲▲
                 const text = elements.userInput.value.trim();
                 const attachmentsToSend = [...state.pendingAttachments];
                 if (!text && attachmentsToSend.length === 0) {
@@ -3138,6 +3135,7 @@ const appLogic = {
                 if (state.settings.maxTokens !== null) generationConfig.maxOutputTokens = state.settings.maxTokens;
                 if (state.settings.topK !== null) generationConfig.topK = state.settings.topK;
                 if (state.settings.topP !== null) generationConfig.topP = state.settings.topP;
+                
                 let finalSystemPrompt = state.currentSystemPrompt?.trim() || '';
                 if (state.currentScene) {
                     const sceneParts = [];
@@ -3224,6 +3222,14 @@ const appLogic = {
                 state.currentMessages.push(...toolResults);
                 await dbUtils.saveChat();
             }
+
+            // ▼▼▼【ここから変更】▼▼▼
+            // whileループが上限に達した場合の処理
+            if (loopCount >= MAX_LOOPS) {
+                console.error("Function Callingの最大ループ回数に達しました。処理を中断します。");
+                throw new Error("AIが同じ操作を繰り返しているようです。処理を中断しました。");
+            }
+            // ▲▲▲【ここまで変更】▲▲▲
 
         } catch(error) {
             console.error("--- handleSend: 最終catchブロックでエラー捕捉 ---", error);

@@ -354,26 +354,36 @@ async function manage_inventory({ character_name, action, item_name, quantity = 
                 message = `${character_name}は「${item_name}」を${quantity}個手に入れた。(所持数: ${newQuantityAdd})`;
                 break;
 
+            // ▼▼▼【ここから変更】▼▼▼
             case "remove":
-                if (currentQuantity < quantity) {
-                    message = `「${item_name}」が足りません。${character_name}は${currentQuantity}個しか持っていません。`;
-                    console.log(`[Function Calling] 処理失敗: ${message}`);
-                    return { success: false, message };
+                const removedAmount = Math.min(currentQuantity, quantity); // 実際に削除する個数
+                
+                if (removedAmount === 0) {
+                    message = `${character_name}は「${item_name}」を持っていないため使えなかった。`;
+                    // 処理は成功として扱い、AIに状況を正しく伝える
+                    return { success: true, message: message, removed_quantity: 0 };
                 }
-                const newQuantityRemove = currentQuantity - quantity;
+
+                const newQuantityRemove = currentQuantity - removedAmount;
                 if (newQuantityRemove > 0) {
                     characterInventory[item_name] = newQuantityRemove;
                 } else {
                     delete characterInventory[item_name]; // 0個になったら所持品リストから削除
                 }
-                message = `${character_name}は「${item_name}」を${quantity}個使った。(残り: ${newQuantityRemove})`;
+                
+                if (removedAmount < quantity) {
+                    message = `${character_name}は「${item_name}」を${removedAmount}個しか持っていなかったため、全て使った。(残り: 0)`;
+                } else {
+                    message = `${character_name}は「${item_name}」を${removedAmount}個使った。(残り: ${newQuantityRemove})`;
+                }
                 break;
+            // ▲▲▲【ここまで変更】▲▲▲
 
             case "check":
                 message = `${character_name}は「${item_name}」を${currentQuantity}個持っています。`;
                 const checkResult = { success: true, character_name, item_name, quantity: currentQuantity, message };
                 console.log(`[Function Calling] 処理完了:`, checkResult);
-                return checkResult; // checkの場合はDB保存不要
+                return checkResult;
 
             default:
                 return { error: `無効なアクションです: ${action}` };
@@ -393,7 +403,6 @@ async function manage_inventory({ character_name, action, item_name, quantity = 
     }
 }
 
-// ▼▼▼【ここから追加】▼▼▼
 /**
  * 物語のシーン（場所、時間、雰囲気など）を管理する関数
  * @param {object} args - AIによって提供される引数オブジェクト
@@ -406,83 +415,80 @@ async function manage_inventory({ character_name, action, item_name, quantity = 
  * @param {string} [args.notes] - その他のメモ
  * @returns {Promise<object>} 操作結果を含むオブジェクトを返すPromise
  */
- async function manage_scene(args) {
-  const { action, ...scene_details } = args;
-  console.log(`[Function Calling] manage_sceneが呼び出されました。`, args);
+async function manage_scene(args) {
+    const { action, ...scene_details } = args;
+    console.log(`[Function Calling] manage_sceneが呼び出されました。`, args);
 
-  if (!action) {
-      return { error: "引数 'action' は必須です。" };
-  }
+    if (!action) {
+        return { error: "引数 'action' は必須です。" };
+    }
 
-  try {
-      const chat = await dbUtils.getChat(state.currentChatId);
-      if (!chat) {
-          throw new Error(`チャットデータ (ID: ${state.currentChatId}) が見つかりません。`);
-      }
+    try {
+        const chat = await dbUtils.getChat(state.currentChatId);
+        if (!chat) {
+            throw new Error(`チャットデータ (ID: ${state.currentChatId}) が見つかりません。`);
+        }
 
-      if (!chat.persistentMemory) chat.persistentMemory = {};
-      if (!Array.isArray(chat.persistentMemory.scene_stack)) {
-          chat.persistentMemory.scene_stack = [{ scene_id: "initial", location: "不明な場所" }];
-      }
-      const scene_stack = chat.persistentMemory.scene_stack;
+        if (!chat.persistentMemory) chat.persistentMemory = {};
+        if (!Array.isArray(chat.persistentMemory.scene_stack)) {
+            chat.persistentMemory.scene_stack = [{ scene_id: "initial", location: "不明な場所" }];
+        }
+        const scene_stack = chat.persistentMemory.scene_stack;
 
-      let message;
-      let currentScene = scene_stack[scene_stack.length - 1];
+        let message;
+        let currentScene = scene_stack[scene_stack.length - 1];
 
-      switch (action) {
-          case "get":
-              message = `現在のシーン情報を取得しました。`;
-              const getResult = { success: true, current_scene: currentScene, message };
-              console.log(`[Function Calling] 処理完了:`, getResult);
-              return getResult;
+        switch (action) {
+            case "get":
+                message = `現在のシーン情報を取得しました。`;
+                const getResult = { success: true, current_scene: currentScene, message };
+                console.log(`[Function Calling] 処理完了:`, getResult);
+                return getResult;
 
-          case "set":
-              Object.keys(scene_details).forEach(key => {
-                  if (scene_details[key] !== undefined) {
-                      currentScene[key] = scene_details[key];
-                  }
-              });
-              message = `シーン情報を更新しました。現在の場所: ${currentScene.location || '未設定'}`;
-              break;
+            case "set":
+                Object.keys(scene_details).forEach(key => {
+                    if (scene_details[key] !== undefined) {
+                        currentScene[key] = scene_details[key];
+                    }
+                });
+                message = `シーン情報を更新しました。現在の場所: ${currentScene.location || '未設定'}`;
+                break;
 
-          case "push":
-              const newScene = { ...currentScene, ...scene_details };
-              scene_stack.push(newScene);
-              message = `新しいシーン「${newScene.location || '新しい場所'}」に移行しました。`;
-              break;
-          
-          case "pop":
-              if (scene_stack.length <= 1) {
-                  return { error: "これ以上前のシーンに戻ることはできません。" };
-              }
-              const poppedScene = scene_stack.pop();
-              currentScene = scene_stack[scene_stack.length - 1];
-              message = `シーン「${poppedScene.location || '前の場所'}」から「${currentScene.location || '現在の場所'}」に戻りました。`;
-              break;
+            case "push":
+                const newScene = { ...currentScene, ...scene_details };
+                scene_stack.push(newScene);
+                message = `新しいシーン「${newScene.location || '新しい場所'}」に移行しました。`;
+                break;
+            
+            case "pop":
+                if (scene_stack.length <= 1) {
+                    return { error: "これ以上前のシーンに戻ることはできません。" };
+                }
+                const poppedScene = scene_stack.pop();
+                currentScene = scene_stack[scene_stack.length - 1];
+                message = `シーン「${poppedScene.location || '前の場所'}」から「${currentScene.location || '現在の場所'}」に戻りました。`;
+                break;
 
-          default:
-              return { error: `無効なアクションです: ${action}` };
-      }
-      
-      // ▼▼▼【ここから変更】▼▼▼
-      const finalCurrentScene = scene_stack[scene_stack.length - 1];
-      
-      chat.updatedAt = Date.now();
-      await dbUtils.saveChat(chat.title);
+            default:
+                return { error: `無効なアクションです: ${action}` };
+        }
+        
+        const finalCurrentScene = scene_stack[scene_stack.length - 1];
+        
+        chat.updatedAt = Date.now();
+        await dbUtils.saveChat(chat.title);
 
-      // stateにも反映
-      state.currentPersistentMemory = chat.persistentMemory;
-      state.currentScene = finalCurrentScene; // state.currentScene を更新
+        state.currentPersistentMemory = chat.persistentMemory;
+        state.currentScene = finalCurrentScene;
 
-      const result = { success: true, current_scene: finalCurrentScene, message };
-      console.log(`[Function Calling] 処理完了:`, result);
-      return result;
-      // ▲▲▲【ここまで変更】▲▲▲
+        const result = { success: true, current_scene: finalCurrentScene, message };
+        console.log(`[Function Calling] 処理完了:`, result);
+        return result;
 
-  } catch (error) {
-      console.error(`[Function Calling] manage_sceneでエラーが発生しました:`, error);
-      return { error: `内部エラーが発生しました: ${error.message}` };
-  }
+    } catch (error) {
+        console.error(`[Function Calling] manage_sceneでエラーが発生しました:`, error);
+        return { error: `内部エラーが発生しました: ${error.message}` };
+    }
 }
 
 
@@ -515,9 +521,7 @@ window.functionCallingTools = {
   manage_timer: manage_timer,
   manage_character_status: manage_character_status,
   manage_inventory: manage_inventory,
-  // ▼▼▼【ここから追加】▼▼▼
   manage_scene: manage_scene
-  // ▲▲▲【ここまで追加】▲▲▲
 };
 
 /**
