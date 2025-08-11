@@ -5129,7 +5129,7 @@
                         }
                         const userMessage = { role: 'user', content: text, timestamp: Date.now(), attachments: attachmentsToSend };
                         state.currentMessages.push(userMessage);
-                        uiUtils.appendMessage(userMessage.role, userMessage.content, state.currentMessages.length - 1, false, null, userMessage.attachments);
+                        uiUtils.appendMessage(userMessage, state.currentMessages.length - 1, false, null, userMessage.attachments);
                         elements.userInput.value = '';
                         state.pendingAttachments = [];
                         uiUtils.updateAttachmentBadgeVisibility();
@@ -5737,7 +5737,7 @@ if (isRetry === true) {
                         }
                         const userMessage = { role: 'user', content: text, timestamp: Date.now(), attachments: attachmentsToSend };
                         state.currentMessages.push(userMessage);
-                        uiUtils.appendMessage(userMessage.role, userMessage.content, state.currentMessages.length - 1, false, null, userMessage.attachments);
+                        uiUtils.appendMessage(userMessage, state.currentMessages.length - 1, false, null, userMessage.attachments);
                         elements.userInput.value = '';
                         state.pendingAttachments = [];
                         uiUtils.updateAttachmentBadgeVisibility();
