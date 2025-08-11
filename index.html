@@ -5056,24 +5056,7 @@
                             await interruptibleSleep(delay, state.abortController.signal);
                         } else {
                             // 初回試行時のテキスト
-                            uiUtils.
-// ---- Retry-aware status helper (minimal diff) ----
-function __setRetryAwareStatus(isRetry) {
-  if (!window.__retryCounter) window.__retryCounter = 0;
-  if (isRetry) {
-    window.__retryCounter += 1;
-    if (window.__retryCounter === 1) {
-      setLoadingIndicatorText("再送信中...");
-    } else {
-      setLoadingIndicatorText(`${window.__retryCounter}回目再送信中...`);
-    }
-  } else {
-    window.__retryCounter = 0;
-    __setRetryAwareStatus(isRetry === true);
-  }
-}
-
-setLoadingIndicatorText('校正中...');
+                            uiUtils.setLoadingIndicatorText('校正中...');
                         }
                         // ▲▲▲【ここまで変更】▲▲▲
 
@@ -5167,7 +5150,19 @@ setLoadingIndicatorText('校正中...');
 
                     while (functionCallTurn < MAX_FC_TURNS) {
                         functionCallTurn++;
-                        uiUtils.setLoadingIndicatorText('応答中...');
+                        uiUtils.if (!state._retryCounter) state._retryCounter = 0;
+if (isRetry === true) {
+  state._retryCounter += 1;
+  if (state._retryCounter === 1) {
+    setLoadingIndicatorText("再送信中...");
+  } else {
+    setLoadingIndicatorText(`${state._retryCounter}回目再送信中...`);
+  }
+} else {
+  state._retryCounter = 0;
+  setLoadingIndicatorText("応答中...");
+}
+
 
                         const messagesForApi = state.currentMessages.map(msg => {
                             const parts = [];
