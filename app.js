@@ -2131,7 +2131,14 @@ const appLogic = {
     例えば、「そういえば、約束の時間だね」「時間切れだ！イベントが発生する」のように、会話を続けてください。
     このシステムメモ自体は応答に含めないでください。`;
     
-            const userMessage = { role: 'user', content: systemInstructionForTimer, timestamp: Date.now() };
+            // ▼▼▼【ここから変更】▼▼▼
+            const userMessage = { 
+                role: 'user', 
+                content: systemInstructionForTimer, 
+                timestamp: Date.now(),
+                attachments: [] // attachmentsプロパティを必ず初期化する
+            };
+            // ▲▲▲【ここまで変更】▲▲▲
     
             // 履歴にこの内部メッセージを追加
             state.currentMessages.push(userMessage);
@@ -2141,10 +2148,7 @@ const appLogic = {
             uiUtils.appendMessage(userMessage.role, userMessage.content, messageIndex);
             const messageElement = elements.messageContainer.querySelector(`.message[data-index="${messageIndex}"]`);
             if (messageElement) {
-                // ▼▼▼【ここから変更】▼▼▼
-                // hiddenクラスではなく、styleを直接操作して確実に非表示にする
                 messageElement.style.display = 'none';
-                // ▲▲▲【ここまで変更】▲▲▲
             }
     
             // 裏でhandleSendを呼び出す (第3引数 isAutoTrigger を true に設定)
