@@ -4150,19 +4150,23 @@ const appLogic = {
                     throw new Error("リクエストがキャンセルされました。");
                 }
 
+                // リトライ時に待機処理（初回は待機しない）
                 if (attempt > 0) {
                     const delay = INITIAL_RETRY_DELAY * Math.pow(2, attempt - 1);
                     
+                    // ユーザーにリトライ中であることを通知
                     uiUtils.setLoadingIndicatorText(`APIエラー 再試行(${attempt}回目)... ${delay}ms待機`);
                     console.log(`API呼び出し失敗。${delay}ms後にリトライします... (試行 ${attempt + 1}/${maxRetries + 1})`);
                     
                     await interruptibleSleep(delay, state.abortController.signal);
-                    uiUtils.setLoadingIndicatorText('応答中...');
+                    uiUtils.setLoadingIndicatorText('応答中...'); // 待機後、インジケーターを戻す
                 }
 
                 const response = await apiUtils.callGeminiApi(messagesForApi, generationConfig, systemInstruction, tools);
 
+                // --- レスポンス内容のチェック ---
                 if (useStreaming) {
+                    // ストリーミングの場合、チャンクを処理しながらエラーを検知
                     let fullContent = '';
                     let fullThoughtSummary = '';
                     let toolCalls = null;
@@ -4170,6 +4174,7 @@ const appLogic = {
 
                     for await (const chunk of apiUtils.handleStreamingResponse(response)) {
                         if (chunk.type === 'error') {
+                            // ストリーム内のエラーを検知したら、リトライ対象のエラーとしてスロー
                             throw new Error(chunk.message || 'ストリーム内でエラーが発生しました');
                         }
                         if (chunk.type === 'chunk') {
@@ -4180,6 +4185,15 @@ const appLogic = {
                             finalMetadata = chunk;
                         }
                     }
+
+                    // ▼▼▼【ここから変更】▼▼▼
+                    // 空応答（テキストもツール呼び出しもない）の場合、リトライ対象のエラーとして扱う
+                    if (!fullContent && !toolCalls) {
+                        throw new Error("APIから空の応答が返されました。");
+                    }
+                    // ▲▲▲【ここまで変更】▲▲▲
+
+                     // ストリーミングが正常に完了した場合の戻り値
                     return { 
                         content: fullContent, 
                         thoughtSummary: fullThoughtSummary,
@@ -4189,12 +4203,15 @@ const appLogic = {
                     };
 
                 } else {
+                    // 非ストリーミングの場合、レスポンスボディをパースしてチェック
                     const responseData = await response.json();
                     
+                    // コンテンツブロックを検知
                     if (responseData.promptFeedback) {
                         const blockReason = responseData.promptFeedback.blockReason || 'SAFETY';
                         throw new Error(`APIが応答をブロックしました (理由: ${blockReason})`);
                     }
+                    // 候補がない場合もエラーとして扱う
                     if (!responseData.candidates || responseData.candidates.length === 0) {
                         throw new Error("API応答に有効な候補が含まれていません。");
                     }
@@ -4204,6 +4221,14 @@ const appLogic = {
                     const textPart = parts.find(p => p.text);
                     const toolCallParts = parts.filter(p => p.functionCall);
 
+                    // ▼▼▼【ここから変更】▼▼▼
+                    // 空応答（テキストもツール呼び出しもない）の場合、リトライ対象のエラーとして扱う
+                    if (!textPart && toolCallParts.length === 0) {
+                        throw new Error("APIから空の応答が返されました。");
+                    }
+                    // ▲▲▲【ここまで変更】▲▲▲
+
+                    // 正常な応答の戻り値
                     return {
                         content: textPart?.text || '',
                         toolCalls: toolCallParts.length > 0 ? toolCallParts : null,
@@ -4218,18 +4243,19 @@ const appLogic = {
                 lastError = error;
                 if (error.name === 'AbortError') {
                     console.error("待機中に中断されました。リトライを中止します。", error);
-                    throw error;
+                    throw error; // 中断エラーは即座にスロー
                 }
+                // 4xx系のクライアントエラーはリトライしない
                 if (error.status && error.status >= 400 && error.status < 500) {
                     console.error(`リトライ不可のエラー (ステータス: ${error.status})。リトライを中止します。`, error);
                     throw error;
                 }
                 console.warn(`API呼び出し/処理試行 ${attempt + 1} が失敗しました。`, error);
             }
-        }
+        } // forループ終了
 
         console.error("最大リトライ回数に達しました。最終的なエラーをスローします。");
-        throw lastError;
+        throw lastError; // 最終的なエラーをスロー
     },
 }; // appLogic終了
 
