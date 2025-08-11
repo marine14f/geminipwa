@@ -196,7 +196,6 @@ async function rollDice({ expression }) {
     }
 }
 
-// ▼▼▼【ここから追加】▼▼▼
 /**
  * タイマーを管理する関数
  * @param {object} args - AIによって提供される引数オブジェクト
@@ -229,6 +228,93 @@ async function manage_timer({ action, timer_name, duration_minutes }) {
             return { error: `無効なアクションです: ${action}` };
     }
 }
+
+// ▼▼▼【ここから追加】▼▼▼
+/**
+ * キャラクターのステータス（HP, MP, 好感度など）を管理する関数
+ * @param {object} args - AIによって提供される引数オブジェクト
+ * @param {string} args.character_name - 操作対象のキャラクター名
+ * @param {string} args.action - "set", "increase", "decrease", "get" のいずれか
+ * @param {string} args.status_key - 操作対象のステータス名 (例: "HP", "好感度")
+ * @param {number} [args.value] - "set", "increase", "decrease" アクションで使用する数値
+ * @returns {Promise<object>} 操作結果を含むオブジェクトを返すPromise
+ */
+async function manage_character_status({ character_name, action, status_key, value }) {
+    console.log(`[Function Calling] manage_character_statusが呼び出されました。`, { character_name, action, status_key, value });
+
+    if (!character_name || !action || !status_key) {
+        return { error: "引数 'character_name', 'action', 'status_key' は必須です。" };
+    }
+
+    // valueを必要とするアクションでvalueが数値でない場合はエラー
+    if (["set", "increase", "decrease"].includes(action) && typeof value !== 'number') {
+        return { error: `アクション '${action}' には数値型の 'value' が必要です。` };
+    }
+
+    try {
+        const chat = await dbUtils.getChat(state.currentChatId);
+        if (!chat) {
+            throw new Error(`チャットデータ (ID: ${state.currentChatId}) が見つかりません。`);
+        }
+
+        if (!chat.persistentMemory) chat.persistentMemory = {};
+        
+        // キャラクターデータ用の領域を確保
+        const memoryKey = `character_${character_name}`;
+        if (!chat.persistentMemory[memoryKey]) {
+            chat.persistentMemory[memoryKey] = {};
+        }
+        const characterStatus = chat.persistentMemory[memoryKey];
+
+        let currentValue = characterStatus[status_key] || 0; // 未設定の場合は0を初期値とする
+        let newValue;
+        let message;
+
+        switch (action) {
+            case "set":
+                newValue = value;
+                message = `${character_name}の${status_key}を${newValue}に設定しました。`;
+                break;
+            
+            case "increase":
+                newValue = currentValue + value;
+                message = `${character_name}の${status_key}が${value}上昇し、${newValue}になりました。`;
+                break;
+
+            case "decrease":
+                newValue = currentValue - value;
+                message = `${character_name}の${status_key}が${value}減少し、${newValue}になりました。`;
+                break;
+
+            case "get":
+                message = `${character_name}の現在の${status_key}は${currentValue}です。`;
+                const getResult = { success: true, character_name, status_key, value: currentValue, message };
+                console.log(`[Function Calling] 処理完了:`, getResult);
+                return getResult; // getの場合はDB保存不要なのでここで終了
+
+            default:
+                return { error: `無効なアクションです: ${action}` };
+        }
+
+        // 計算結果を保存
+        characterStatus[status_key] = newValue;
+        
+        // 変更をDBに保存
+        chat.updatedAt = Date.now();
+        await dbUtils.saveChat(chat.title);
+
+        // stateにも反映
+        state.currentPersistentMemory = chat.persistentMemory;
+
+        const result = { success: true, character_name, status_key, old_value: currentValue, new_value: newValue, message };
+        console.log(`[Function Calling] 処理完了:`, result);
+        return result;
+
+    } catch (error) {
+        console.error(`[Function Calling] manage_character_statusでエラーが発生しました:`, error);
+        return { error: `内部エラーが発生しました: ${error.message}` };
+    }
+}
 // ▲▲▲【ここまで追加】▲▲▲
 
 
@@ -258,7 +344,10 @@ window.functionCallingTools = {
   manage_persistent_memory: manage_persistent_memory,
   getCurrentDateTime: getCurrentDateTime,
   rollDice: rollDice,
-  manage_timer: manage_timer
+  manage_timer: manage_timer,
+  // ▼▼▼【ここから追加】▼▼▼
+  manage_character_status: manage_character_status
+  // ▲▲▲【ここまで追加】▲▲▲
 };
 
 /**
@@ -346,6 +435,32 @@ window.functionDeclarations = [
                     }
                 },
                 "required": ["action", "timer_name"]
+            }
+          },
+          {
+            "name": "manage_character_status",
+            "description": "ロールプレイングゲームや物語に登場するキャラクターのステータス（HP, MP, 好感度, 疲労度など）を設定、増減、または確認します。キャラクターのパラメータが変動するイベントが発生した場合に使用します。",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "character_name": {
+                        "type": "STRING",
+                        "description": "操作対象のキャラクターの名前。例: '主人公', 'ヒロインA'"
+                    },
+                    "action": {
+                        "type": "STRING",
+                        "description": "実行する操作。'set': 値を直接設定, 'increase': 値を増加, 'decrease': 値を減少, 'get': 現在の値を確認。"
+                    },
+                    "status_key": {
+                        "type": "STRING",
+                        "description": "操作対象のステータスの種類。例: 'HP', 'MP', '好感度', '疲労度'"
+                    },
+                    "value": {
+                        "type": "NUMBER",
+                        "description": "'set', 'increase', 'decrease' アクションで使用する数値。例: 10"
+                    }
+                },
+                "required": ["character_name", "action", "status_key"]
             }
           }
       ]
