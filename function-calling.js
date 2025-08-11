@@ -229,7 +229,6 @@ async function manage_timer({ action, timer_name, duration_minutes }) {
     }
 }
 
-// ▼▼▼【ここから追加】▼▼▼
 /**
  * キャラクターのステータス（HP, MP, 好感度など）を管理する関数
  * @param {object} args - AIによって提供される引数オブジェクト
@@ -246,7 +245,6 @@ async function manage_character_status({ character_name, action, status_key, val
         return { error: "引数 'character_name', 'action', 'status_key' は必須です。" };
     }
 
-    // valueを必要とするアクションでvalueが数値でない場合はエラー
     if (["set", "increase", "decrease"].includes(action) && typeof value !== 'number') {
         return { error: `アクション '${action}' には数値型の 'value' が必要です。` };
     }
@@ -259,14 +257,13 @@ async function manage_character_status({ character_name, action, status_key, val
 
         if (!chat.persistentMemory) chat.persistentMemory = {};
         
-        // キャラクターデータ用の領域を確保
         const memoryKey = `character_${character_name}`;
         if (!chat.persistentMemory[memoryKey]) {
             chat.persistentMemory[memoryKey] = {};
         }
         const characterStatus = chat.persistentMemory[memoryKey];
 
-        let currentValue = characterStatus[status_key] || 0; // 未設定の場合は0を初期値とする
+        let currentValue = characterStatus[status_key] || 0;
         let newValue;
         let message;
 
@@ -290,20 +287,17 @@ async function manage_character_status({ character_name, action, status_key, val
                 message = `${character_name}の現在の${status_key}は${currentValue}です。`;
                 const getResult = { success: true, character_name, status_key, value: currentValue, message };
                 console.log(`[Function Calling] 処理完了:`, getResult);
-                return getResult; // getの場合はDB保存不要なのでここで終了
+                return getResult;
 
             default:
                 return { error: `無効なアクションです: ${action}` };
         }
 
-        // 計算結果を保存
         characterStatus[status_key] = newValue;
         
-        // 変更をDBに保存
         chat.updatedAt = Date.now();
         await dbUtils.saveChat(chat.title);
 
-        // stateにも反映
         state.currentPersistentMemory = chat.persistentMemory;
 
         const result = { success: true, character_name, status_key, old_value: currentValue, new_value: newValue, message };
@@ -312,6 +306,90 @@ async function manage_character_status({ character_name, action, status_key, val
 
     } catch (error) {
         console.error(`[Function Calling] manage_character_statusでエラーが発生しました:`, error);
+        return { error: `内部エラーが発生しました: ${error.message}` };
+    }
+}
+
+// ▼▼▼【ここから追加】▼▼▼
+/**
+ * キャラクターの所持品を管理する関数
+ * @param {object} args - AIによって提供される引数オブジェクト
+ * @param {string} args.character_name - 操作対象のキャラクター名
+ * @param {string} args.action - "add", "remove", "check" のいずれか
+ * @param {string} args.item_name - 操作対象のアイテム名
+ * @param {number} [args.quantity=1] - "add", "remove" アクションで使用する個数 (デフォルト1)
+ * @returns {Promise<object>} 操作結果を含むオブジェクトを返すPromise
+ */
+async function manage_inventory({ character_name, action, item_name, quantity = 1 }) {
+    console.log(`[Function Calling] manage_inventoryが呼び出されました。`, { character_name, action, item_name, quantity });
+
+    if (!character_name || !action || !item_name) {
+        return { error: "引数 'character_name', 'action', 'item_name' は必須です。" };
+    }
+    if (["add", "remove"].includes(action) && (typeof quantity !== 'number' || quantity <= 0)) {
+        return { error: `アクション '${action}' には1以上の数値型の 'quantity' が必要です。` };
+    }
+
+    try {
+        const chat = await dbUtils.getChat(state.currentChatId);
+        if (!chat) {
+            throw new Error(`チャットデータ (ID: ${state.currentChatId}) が見つかりません。`);
+        }
+
+        if (!chat.persistentMemory) chat.persistentMemory = {};
+        if (!chat.persistentMemory.inventories) chat.persistentMemory.inventories = {};
+        
+        const inventories = chat.persistentMemory.inventories;
+        if (!inventories[character_name]) {
+            inventories[character_name] = {};
+        }
+        const characterInventory = inventories[character_name];
+        
+        const currentQuantity = characterInventory[item_name] || 0;
+        let message;
+
+        switch (action) {
+            case "add":
+                const newQuantityAdd = currentQuantity + quantity;
+                characterInventory[item_name] = newQuantityAdd;
+                message = `${character_name}は「${item_name}」を${quantity}個手に入れた。(所持数: ${newQuantityAdd})`;
+                break;
+
+            case "remove":
+                if (currentQuantity < quantity) {
+                    message = `「${item_name}」が足りません。${character_name}は${currentQuantity}個しか持っていません。`;
+                    console.log(`[Function Calling] 処理失敗: ${message}`);
+                    return { success: false, message };
+                }
+                const newQuantityRemove = currentQuantity - quantity;
+                if (newQuantityRemove > 0) {
+                    characterInventory[item_name] = newQuantityRemove;
+                } else {
+                    delete characterInventory[item_name]; // 0個になったら所持品リストから削除
+                }
+                message = `${character_name}は「${item_name}」を${quantity}個使った。(残り: ${newQuantityRemove})`;
+                break;
+
+            case "check":
+                message = `${character_name}は「${item_name}」を${currentQuantity}個持っています。`;
+                const checkResult = { success: true, character_name, item_name, quantity: currentQuantity, message };
+                console.log(`[Function Calling] 処理完了:`, checkResult);
+                return checkResult; // checkの場合はDB保存不要
+
+            default:
+                return { error: `無効なアクションです: ${action}` };
+        }
+        
+        chat.updatedAt = Date.now();
+        await dbUtils.saveChat(chat.title);
+        state.currentPersistentMemory = chat.persistentMemory;
+
+        const result = { success: true, message };
+        console.log(`[Function Calling] 処理完了:`, result);
+        return result;
+
+    } catch (error) {
+        console.error(`[Function Calling] manage_inventoryでエラーが発生しました:`, error);
         return { error: `内部エラーが発生しました: ${error.message}` };
     }
 }
@@ -345,9 +423,8 @@ window.functionCallingTools = {
   getCurrentDateTime: getCurrentDateTime,
   rollDice: rollDice,
   manage_timer: manage_timer,
-  // ▼▼▼【ここから追加】▼▼▼
-  manage_character_status: manage_character_status
-  // ▲▲▲【ここまで追加】▲▲▲
+  manage_character_status: manage_character_status,
+  manage_inventory: manage_inventory
 };
 
 /**
@@ -461,6 +538,32 @@ window.functionDeclarations = [
                     }
                 },
                 "required": ["character_name", "action", "status_key"]
+            }
+          },
+          {
+            "name": "manage_inventory",
+            "description": "キャラクターの所持品（アイテム）を管理します。アイテムの追加、削除、所持確認ができます。物語の中でキャラクターがアイテムを手に入れたり、使ったりした場合に使用してください。",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "character_name": {
+                        "type": "STRING",
+                        "description": "操作対象のキャラクターの名前。例: '主人公'"
+                    },
+                    "action": {
+                        "type": "STRING",
+                        "description": "実行する操作。'add': アイテムを追加, 'remove': アイテムを削除/消費, 'check': 所持数を確認。"
+                    },
+                    "item_name": {
+                        "type": "STRING",
+                        "description": "操作対象のアイテムの名前。例: '薬草', 'ポーション'"
+                    },
+                    "quantity": {
+                        "type": "NUMBER",
+                        "description": "'add'または'remove'アクションで使用するアイテムの個数。指定がない場合は1として扱われます。"
+                    }
+                },
+                "required": ["character_name", "action", "item_name"]
             }
           }
       ]
