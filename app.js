@@ -564,7 +564,9 @@ const dbUtils = {
                 ...(msg.groundingMetadata && { groundingMetadata: msg.groundingMetadata }),
                 ...(msg.attachments && msg.attachments.length > 0 && { attachments: msg.attachments }),
                 ...(msg.usageMetadata && { usageMetadata: msg.usageMetadata }),
-                ...(msg.executedFunctions && { executedFunctions: msg.executedFunctions })
+                ...(msg.executedFunctions && { executedFunctions: msg.executedFunctions }),
+                ...(msg.isHidden === true && { isHidden: true }),
+                ...(msg.isAutoTrigger === true && { isAutoTrigger: true })
             }));
 
             // タイトルを決定して保存を実行する内部関数
@@ -575,7 +577,7 @@ const dbUtils = {
                 } else if (existingChatData && existingChatData.title) { // 既存データにタイトルがあればそれを使う
                     title = existingChatData.title;
                 } else { // それ以外は最初のユーザーメッセージから生成
-                    const firstUserMessage = state.currentMessages.find(m => m.role === 'user');
+                    const firstUserMessage = state.currentMessages.find(m => m.role === 'user' && !m.isHidden);
                     title = firstUserMessage ? firstUserMessage.content.substring(0, 50) : "無題のチャット";
                 }
 
@@ -766,6 +768,8 @@ const uiUtils = {
 
         for (let i = 0; i < state.currentMessages.length; i++) {
             const msg = state.currentMessages[i];
+
+            if (msg && msg.isHidden === true) continue;
 
             // Function Callingの中間ステップ（toolロール、またはtool_callsを持つmodelロール）は画面に表示しない
             // 古いデータ形式（空のmodelロール + toolロール）にも対応
@@ -1245,7 +1249,7 @@ const uiUtils = {
             if (definitiveTitle !== null) { // 引数でタイトルが指定されていればそれを使う
                 baseTitle = definitiveTitle;
             } else { // 指定がなければメッセージから推測 (ユーザーメッセージ優先)
-                const firstUserMessage = state.currentMessages.find(m => m.role === 'user');
+                const firstUserMessage = state.currentMessages.find(m => m.role === 'user' && !m.isHidden);
                 if (firstUserMessage) {
                     baseTitle = firstUserMessage.content;
                 } else if (state.currentMessages.length > 0) { // ユーザーメッセージ以外でもメッセージがあれば
@@ -2131,14 +2135,14 @@ const appLogic = {
     例えば、「そういえば、約束の時間だね」「時間切れだ！イベントが発生する」のように、会話を続けてください。
     このシステムメモ自体は応答に含めないでください。`;
     
-            // ▼▼▼【ここから変更】▼▼▼
             const userMessage = { 
                 role: 'user', 
                 content: systemInstructionForTimer, 
                 timestamp: Date.now(),
-                attachments: [] // attachmentsプロパティを必ず初期化する
+                attachments: [],
+                isHidden: true,
+                isAutoTrigger: true
             };
-            // ▲▲▲【ここまで変更】▲▲▲
     
             // 履歴にこの内部メッセージを追加
             state.currentMessages.push(userMessage);
