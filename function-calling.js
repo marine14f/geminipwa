@@ -354,13 +354,11 @@ async function manage_inventory({ character_name, action, item_name, quantity = 
                 message = `${character_name}は「${item_name}」を${quantity}個手に入れた。(所持数: ${newQuantityAdd})`;
                 break;
 
-            // ▼▼▼【ここから変更】▼▼▼
             case "remove":
-                const removedAmount = Math.min(currentQuantity, quantity); // 実際に削除する個数
+                const removedAmount = Math.min(currentQuantity, quantity);
                 
                 if (removedAmount === 0) {
                     message = `${character_name}は「${item_name}」を持っていないため使えなかった。`;
-                    // 処理は成功として扱い、AIに状況を正しく伝える
                     return { success: true, message: message, removed_quantity: 0 };
                 }
 
@@ -368,7 +366,7 @@ async function manage_inventory({ character_name, action, item_name, quantity = 
                 if (newQuantityRemove > 0) {
                     characterInventory[item_name] = newQuantityRemove;
                 } else {
-                    delete characterInventory[item_name]; // 0個になったら所持品リストから削除
+                    delete characterInventory[item_name];
                 }
                 
                 if (removedAmount < quantity) {
@@ -377,7 +375,6 @@ async function manage_inventory({ character_name, action, item_name, quantity = 
                     message = `${character_name}は「${item_name}」を${removedAmount}個使った。(残り: ${newQuantityRemove})`;
                 }
                 break;
-            // ▲▲▲【ここまで変更】▲▲▲
 
             case "check":
                 message = `${character_name}は「${item_name}」を${currentQuantity}個持っています。`;
@@ -491,6 +488,175 @@ async function manage_scene(args) {
     }
 }
 
+/**
+ * 物語のフラグやカウンターを管理する関数
+ * @param {object} args - AIによって提供される引数オブジェクト
+ * @param {string} args.action - "set", "get", "toggle", "increase", "decrease", "delete" のいずれか
+ * @param {string} args.key - フラグを識別するための一意のキー
+ * @param {boolean|number} [args.value] - "set", "increase", "decrease" で使用する値
+ * @param {number} [args.ttl_minutes] - フラグが自動的に消滅するまでの時間（分単位）
+ * @returns {Promise<object>} 操作結果を含むオブジェクトを返すPromise
+ */
+async function manage_flags({ action, key, value, ttl_minutes }) {
+    console.log(`[Function Calling] manage_flagsが呼び出されました。`, { action, key, value, ttl_minutes });
+
+    if (!key || !action) {
+        return { error: "引数 'key' と 'action' は必須です。" };
+    }
+
+    try {
+        const chat = await dbUtils.getChat(state.currentChatId);
+        if (!chat) throw new Error(`チャットデータ (ID: ${state.currentChatId}) が見つかりません。`);
+
+        if (!chat.persistentMemory) chat.persistentMemory = {};
+        
+        const memory = chat.persistentMemory;
+        let currentValue = memory[key];
+        let newValue;
+        let message;
+
+        switch (action) {
+            case "set":
+                if (value === undefined) return { error: "アクション 'set' には 'value' が必要です。" };
+                newValue = value;
+                message = `フラグ「${key}」を「${newValue}」に設定しました。`;
+                break;
+
+            case "get":
+                message = currentValue !== undefined ? `フラグ「${key}」の現在の値は「${currentValue}」です。` : `フラグ「${key}」は設定されていません。`;
+                return { success: true, key, value: currentValue, message };
+
+            case "toggle":
+                newValue = !(currentValue === true);
+                message = `フラグ「${key}」を「${newValue}」に切り替えました。`;
+                break;
+
+            case "increase":
+                if (typeof value !== 'number') return { error: "アクション 'increase' には数値型の 'value' が必要です。" };
+                currentValue = typeof currentValue === 'number' ? currentValue : 0;
+                newValue = currentValue + value;
+                message = `カウンター「${key}」が${value}増加し、「${newValue}」になりました。`;
+                break;
+
+            case "decrease":
+                if (typeof value !== 'number') return { error: "アクション 'decrease' には数値型の 'value' が必要です。" };
+                currentValue = typeof currentValue === 'number' ? currentValue : 0;
+                newValue = currentValue - value;
+                message = `カウンター「${key}」が${value}減少し、「${newValue}」になりました。`;
+                break;
+
+            case "delete":
+                if (key in memory) {
+                    delete memory[key];
+                    message = `フラグ「${key}」を削除しました。`;
+                } else {
+                    return { success: false, message: `フラグ「${key}」は存在しません。` };
+                }
+                break;
+
+            default:
+                return { error: `無効なアクションです: ${action}` };
+        }
+
+        if (newValue !== undefined) {
+            memory[key] = newValue;
+        }
+
+        if (typeof ttl_minutes === 'number' && ttl_minutes > 0) {
+            setTimeout(() => {
+                console.log(`[TTL] フラグ「${key}」が${ttl_minutes}分の期限切れにより自動削除されました。`);
+                dbUtils.getChat(state.currentChatId).then(latestChat => {
+                    if (latestChat && latestChat.persistentMemory && latestChat.persistentMemory[key] !== undefined) {
+                        delete latestChat.persistentMemory[key];
+                        dbUtils.saveChat(latestChat.title);
+                        if (state.currentChatId === latestChat.id) {
+                            state.currentPersistentMemory = latestChat.persistentMemory;
+                        }
+                    }
+                });
+            }, ttl_minutes * 60 * 1000);
+            message += ` (${ttl_minutes}分後に自動消滅します)`;
+        }
+
+        chat.updatedAt = Date.now();
+        await dbUtils.saveChat(chat.title);
+        state.currentPersistentMemory = chat.persistentMemory;
+
+        const result = { success: true, key, old_value: currentValue, new_value: newValue, message };
+        console.log(`[Function Calling] 処理完了:`, result);
+        return result;
+
+    } catch (error) {
+        console.error(`[Function Calling] manage_flagsでエラーが発生しました:`, error);
+        return { error: `内部エラーが発生しました: ${error.message}` };
+    }
+}
+
+// ▼▼▼【ここから追加】▼▼▼
+/**
+ * ゲーム内の経過日数を管理する関数
+ * @param {object} args - AIによって提供される引数オブジェクト
+ * @param {string} args.action - "pass_days", "get_current_day" のいずれか
+ * @param {number} [args.days=1] - "pass_days" アクションで経過させる日数 (デフォルト1)
+ * @returns {Promise<object>} 操作結果を含むオブジェクトを返すPromise
+ */
+async function manage_game_date({ action, days = 1 }) {
+    console.log(`[Function Calling] manage_game_dateが呼び出されました。`, { action, days });
+
+    if (!action) {
+        return { error: "引数 'action' は必須です。" };
+    }
+
+    try {
+        const chat = await dbUtils.getChat(state.currentChatId);
+        if (!chat) {
+            throw new Error(`チャットデータ (ID: ${state.currentChatId}) が見つかりません。`);
+        }
+
+        if (!chat.persistentMemory) chat.persistentMemory = {};
+        
+        if (typeof chat.persistentMemory.game_day !== 'number') {
+            chat.persistentMemory.game_day = 1;
+        }
+        
+        let currentDay = chat.persistentMemory.game_day;
+        let message;
+
+        switch (action) {
+            case "pass_days":
+                if (typeof days !== 'number' || days < 1 || !Number.isInteger(days)) {
+                    return { error: "経過させる日数(days)は1以上の整数である必要があります。" };
+                }
+                currentDay += days;
+                chat.persistentMemory.game_day = currentDay;
+                message = `${days}日が経過し、${currentDay}日目になりました。`;
+                break;
+
+            case "get_current_day":
+                message = `現在は${currentDay}日目です。`;
+                const getResult = { success: true, current_day: currentDay, message };
+                console.log(`[Function Calling] 処理完了:`, getResult);
+                return getResult;
+
+            default:
+                return { error: `無効なアクションです: ${action}` };
+        }
+        
+        chat.updatedAt = Date.now();
+        await dbUtils.saveChat(chat.title);
+        state.currentPersistentMemory = chat.persistentMemory;
+
+        const result = { success: true, current_day: currentDay, message };
+        console.log(`[Function Calling] 処理完了:`, result);
+        return result;
+
+    } catch (error) {
+        console.error(`[Function Calling] manage_game_dateでエラーが発生しました:`, error);
+        return { error: `内部エラーが発生しました: ${error.message}` };
+    }
+}
+// ▲▲▲【ここまで追加】▲▲▲
+
 
 window.functionCallingTools = {
   calculate: async function({ expression }) {
@@ -521,7 +687,11 @@ window.functionCallingTools = {
   manage_timer: manage_timer,
   manage_character_status: manage_character_status,
   manage_inventory: manage_inventory,
-  manage_scene: manage_scene
+  manage_scene: manage_scene,
+  manage_flags: manage_flags,
+  // ▼▼▼【ここから追加】▼▼▼
+  manage_game_date: manage_game_date
+  // ▲▲▲【ここまで追加】▲▲▲
 };
 
 /**
@@ -696,6 +866,50 @@ window.functionDeclarations = [
                     "notes": {
                         "type": "STRING",
                         "description": "シーンに関するその他の補足情報。例: '外は土砂降りの雨が降っている'"
+                    }
+                },
+                "required": ["action"]
+            }
+          },
+          {
+            "name": "manage_flags",
+            "description": "物語の進行状況や世界の状況を示すフラグ（真偽値）やカウンター（数値）を管理します。キャラクターの行動結果やイベントの発生を記録し、後の会話の分岐条件として使用します。",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "action": {
+                        "type": "STRING",
+                        "description": "実行する操作。'set': 値を直接設定。'get': 現在の値を取得。'toggle': 真偽値を反転させる。'increase': 数値を増やす。'decrease': 数値を減らす。'delete': フラグ自体を削除。"
+                    },
+                    "key": {
+                        "type": "STRING",
+                        "description": "フラグやカウンターを識別するための一意の名前。例: '扉A解錠済', '街の警戒度'"
+                    },
+                    "value": {
+                        "type": "ANY",
+                        "description": "'set', 'increase', 'decrease' アクションで使用する値 (真偽値または数値)。"
+                    },
+                    "ttl_minutes": {
+                        "type": "NUMBER",
+                        "description": "フラグが自動的に削除されるまでの時間（分単位）。一時的な状態を表現するのに使います。"
+                    }
+                },
+                "required": ["action", "key"]
+            }
+          },
+          {
+            "name": "manage_game_date",
+            "description": "物語やゲーム内の経過日数を管理します。日付を進めたり、現在の日付を確認したりする場合に使用します。",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "action": {
+                        "type": "STRING",
+                        "description": "実行する操作。'pass_days': 指定した日数だけ日付を進める。'get_current_day': 現在の日付を確認する。"
+                    },
+                    "days": {
+                        "type": "NUMBER",
+                        "description": "'pass_days'アクションで使用する経過日数。指定がない場合は1として扱われます。"
                     }
                 },
                 "required": ["action"]
