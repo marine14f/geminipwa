@@ -767,12 +767,14 @@ const uiUtils = {
         for (let i = 0; i < state.currentMessages.length; i++) {
             const msg = state.currentMessages[i];
 
-            // ▼▼▼【ここから変更】▼▼▼
-            // Function Callingの中間ステップは画面に表示しない
-            if (msg.role === 'tool' || (msg.role === 'model' && msg.tool_calls)) {
+            // Function Callingの中間ステップ（toolロール、またはtool_callsを持つmodelロール）は画面に表示しない
+            // 古いデータ形式（空のmodelロール + toolロール）にも対応
+            const nextMsg = state.currentMessages[i + 1];
+            const isOldIntermediateMessage = msg.role === 'model' && !msg.content && nextMsg && nextMsg.role === 'tool';
+
+            if (msg.role === 'tool' || (msg.role === 'model' && msg.tool_calls) || isOldIntermediateMessage) {
                 continue; // このメッセージのレンダリングをスキップして次のループへ
             }
-            // ▲▲▲【ここまで変更】▲▲▲
 
             if (msg.role === 'model' && msg.isCascaded && msg.siblingGroupId) {
                 if (msg.siblingGroupId !== currentSiblingGroupId) {
