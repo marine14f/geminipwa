@@ -2975,11 +2975,11 @@ const appLogic = {
 
     async handleSend(isRetry = false, retryUserMessageIndex = -1) {
         console.log("--- handleSend: 処理開始 ---", { isRetry, retryUserMessageIndex });
-    
+
         if (state.isSending) { console.warn("handleSend: 既に送信中のため処理を中断"); return; }
         if (state.editingMessageIndex !== null) { await uiUtils.showCustomAlert("他のメッセージを編集中です。"); return; }
         if (state.isEditingSystemPrompt) { await uiUtils.showCustomAlert("システムプロンプトを編集中です。"); return; }
-    
+
         uiUtils.setSendingState(true);
         
         try {
@@ -3000,16 +3000,16 @@ const appLogic = {
                 uiUtils.adjustTextareaHeight();
                 uiUtils.scrollToBottom();
             }
-    
+
             await dbUtils.saveChat();
             
             let loopCount = 0;
-            const MAX_LOOPS = 10; // Function Calling/Toolの最大ループ回数
-    
+            const MAX_LOOPS = 10; // Function Callingの最大ループ回数
+
             while (loopCount < MAX_LOOPS) {
                 loopCount++;
-                uiUtils.setLoadingIndicatorText('応答中...');
-    
+                uiUtils.setLoadingIndicatorText('応答中...'); // ループ開始時にインジケーターをリセット
+
                 const messagesForApi = state.currentMessages.map(msg => {
                     const parts = [];
                     if (msg.content && msg.content.trim() !== '') parts.push({ text: msg.content });
@@ -3022,16 +3022,17 @@ const appLogic = {
                     if (msg.role === 'tool') {
                         parts.push({ functionResponse: { name: msg.name, response: msg.response } });
                     }
+                    // APIに送る形式に整形
                     return { role: msg.role === 'tool' ? 'tool' : (msg.role === 'model' ? 'model' : 'user'), parts };
-                }).filter(c => c.parts.length > 0 && (c.role === 'user' || c.role === 'model' || c.role === 'tool'));
-    
+                }).filter(c => c.parts.length > 0 && (c.role === 'user' || c.role === 'model' || c.role === 'tool')); // APIが受け付けるロールのみ
+
                 const generationConfig = {};
                 if (state.settings.temperature !== null) generationConfig.temperature = state.settings.temperature;
                 if (state.settings.maxTokens !== null) generationConfig.maxOutputTokens = state.settings.maxTokens;
                 if (state.settings.topK !== null) generationConfig.topK = state.settings.topK;
                 if (state.settings.topP !== null) generationConfig.topP = state.settings.topP;
                 const systemInstruction = state.currentSystemPrompt?.trim() ? { role: "system", parts: [{ text: state.currentSystemPrompt.trim() }] } : null;
-    
+
                 const result = await this.callApiWithRetry({
                     messagesForApi,
                     generationConfig,
@@ -3040,9 +3041,25 @@ const appLogic = {
                     isFunctionCallingSequence: loopCount > 1
                 });
                 
+                // ▼▼▼【ここから変更】▼▼▼
+                let finalContent = result.content;
+
+                // --- 校正処理 ---
+                if (state.settings.enableProofreading && finalContent && finalContent.trim() !== '') {
+                    try {
+                        const proofreadContent = await this.proofreadText(finalContent);
+                        console.log("校正適用完了。");
+                        finalContent = proofreadContent; // 校正後のテキストで上書き
+                    } catch (proofreadError) {
+                        console.error("校正処理中にエラーが発生しました。元のテキストを使用します。", proofreadError);
+                        // 校正失敗は致命的エラーではないため、アラートは出さずにコンソール出力に留める
+                    }
+                }
+
+                // --- 応答処理 ---
                 const modelMessage = {
                     role: 'model',
-                    content: result.content,
+                    content: finalContent, // 校正済み(かもしれない)テキストを使用
                     thoughtSummary: result.thoughtSummary,
                     tool_calls: result.toolCalls,
                     timestamp: Date.now(),
@@ -3052,8 +3069,10 @@ const appLogic = {
                     usageMetadata: result.usageMetadata,
                     retryCount: result.retryCount
                 };
+                // ▲▲▲【ここまで変更】▲▲▲
                 
-                if (isRetry && loopCount === 1) {
+                // カスケード情報を付与 (リトライ時)
+                if (isRetry && loopCount === 1) { // Function Callingループの初回のみ
                     const firstResponseIndexForRetry = retryUserMessageIndex + 1;
                     if (firstResponseIndexForRetry < state.currentMessages.length && state.currentMessages[firstResponseIndexForRetry].isCascaded) {
                         const originalResponse = state.currentMessages[firstResponseIndexForRetry];
@@ -3063,38 +3082,27 @@ const appLogic = {
                         originalResponse.isSelected = false;
                     }
                 }
-                
-                // ツールコールがある場合、contentが空でも処理を続行
-                if (result.toolCalls && result.toolCalls.length > 0) {
-                    state.currentMessages.push(modelMessage);
-                    await dbUtils.saveChat();
-                    uiUtils.renderChatMessages();
-                    uiUtils.scrollToBottom();
-    
-                    uiUtils.setLoadingIndicatorText('関数実行中...');
-                    const toolResults = await this.executeToolCalls(result.toolCalls);
-                    state.currentMessages.push(...toolResults);
-                    await dbUtils.saveChat();
-                    uiUtils.renderChatMessages();
-                    uiUtils.scrollToBottom();
-                    continue; // 次のループへ
-                }
-    
-                // ツールコールがなく、テキストコンテンツも空の場合、エラーとして扱う
-                if (!result.content || result.content.trim() === '') {
-                    console.error("APIからツールコールもテキストも含まれない空の応答を受け取りました。", result);
-                    throw new Error("モデルから空の応答が返されました。ネットワークの問題か、モデルが応答を生成できなかった可能性があります。");
-                }
-    
-                // 正常なテキスト応答があった場合
+
                 state.currentMessages.push(modelMessage);
                 await dbUtils.saveChat();
                 uiUtils.renderChatMessages();
                 uiUtils.scrollToBottom();
-    
-                break; // ループを終了
+
+                // Function Callingがなければループを抜ける
+                if (!result.toolCalls || result.toolCalls.length === 0) {
+                    break;
+                }
+                
+                // Function Callingの実行
+                uiUtils.setLoadingIndicatorText('関数実行中...');
+                const toolResults = await this.executeToolCalls(result.toolCalls);
+                state.currentMessages.push(...toolResults);
+                await dbUtils.saveChat();
+                uiUtils.renderChatMessages();
+                uiUtils.scrollToBottom();
+                // ループの先頭に戻り、関数の結果を含めて再度APIを呼び出す
             }
-    
+
         } catch(error) {
             console.error("--- handleSend: 最終catchブロックでエラー捕捉 ---", error);
             if (error.name !== 'AbortError') {
