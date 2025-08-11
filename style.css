@@ -1,1706 +1,1711 @@
-/* --- CSS変数 --- */
-:root {
-    /* ライトモード (デフォルト) */
-    --bg-primary: #ffffff;
-    --bg-secondary: #f0f2f5;
-    --bg-tertiary: #fdfdfd;
-    --bg-input: #ffffff;
-    --bg-user-message: #dcf8c6;
-    --bg-model-message: #e5e5ea;
-    --bg-system-message: #f0f8ff; /* システムプロンプト用 */
-    --bg-error-message: #ffebee;
-    --bg-button: #4a90e2;
-    --bg-button-hover: #357abd;
-    --bg-button-disabled: #a0c3e8;
-    --bg-button-action: #777777;
-    --bg-button-action-hover: #555555;
-    --bg-button-delete: #e53935;
-    --bg-button-delete-hover: #c62828;
-    --bg-button-retry: #43a047;
-    --bg-button-retry-hover: #2e7d32;
-    --bg-button-edit: #ff9800;
-    --bg-button-edit-hover: #f57c00;
-    --bg-button-duplicate: #546e7a;
-    --bg-button-duplicate-hover: #37474f;
-    --bg-button-export: #1e88e5;
-    --bg-button-export-hover: #1565c0;
-    --bg-button-save: #30d158;
-    --bg-button-save-hover: #24a345;
-    --bg-button-cancel: #f44336;
-    --bg-button-cancel-hover: #d32f2f;
-    --bg-button-update: #1976d2;
-    --bg-button-update-hover: #115293;
-    --bg-header: #4a90e2;
-    --bg-message-actions: rgba(255, 255, 255, 0.8);
-    --bg-overlay-light: rgba(255, 255, 255, 0.65); /* ライトモード用オーバーレイ */
-    /* カスケードコントロール用 */
-    --bg-cascade-button: var(--bg-button-action);
-    --bg-cascade-button-hover: var(--bg-button-action-hover);
-    --bg-cascade-delete-button: var(--bg-button-delete);
-    --bg-cascade-delete-button-hover: var(--bg-button-delete-hover);
-    --text-cascade-indicator: var(--text-secondary);
 
-    --text-primary: #333333;
-    --text-secondary: #777777;
-    --text-light: #ffffff;
-    --text-disabled: #e0e0e0;
-    --text-error: #c62828;
-    --text-link: #4a90e2;
-    --text-placeholder: #999999;
-    --text-system: #555; /* システムプロンプト用 */
+        /* --- CSS変数 --- */
+        :root {
+            /* ライトモード (デフォルト) */
+            --bg-primary: #ffffff;
+            --bg-secondary: #f0f2f5;
+            --bg-tertiary: #fdfdfd;
+            --bg-input: #ffffff;
+            --bg-user-message: #dcf8c6;
+            --bg-model-message: #e5e5ea;
+            --bg-system-message: #f0f8ff; /* システムプロンプト用 */
+            --bg-error-message: #ffebee;
+            --bg-button: #4a90e2;
+            --bg-button-hover: #357abd;
+            --bg-button-disabled: #a0c3e8;
+            --bg-button-action: #777777;
+            --bg-button-action-hover: #555555;
+            --bg-button-delete: #e53935;
+            --bg-button-delete-hover: #c62828;
+            --bg-button-retry: #43a047;
+            --bg-button-retry-hover: #2e7d32;
+            --bg-button-edit: #ff9800;
+            --bg-button-edit-hover: #f57c00;
+            --bg-button-duplicate: #546e7a;
+            --bg-button-duplicate-hover: #37474f;
+            --bg-button-export: #1e88e5;
+            --bg-button-export-hover: #1565c0;
+            --bg-button-save: #30d158;
+            --bg-button-save-hover: #24a345;
+            --bg-button-cancel: #f44336;
+            --bg-button-cancel-hover: #d32f2f;
+            --bg-button-update: #1976d2;
+            --bg-button-update-hover: #115293;
+            --bg-header: #4a90e2;
+            --bg-message-actions: rgba(255, 255, 255, 0.8);
+            --bg-overlay-light: rgba(255, 255, 255, 0.65); /* ライトモード用オーバーレイ */
+            /* カスケードコントロール用 */
+            --bg-cascade-button: var(--bg-button-action);
+            --bg-cascade-button-hover: var(--bg-button-action-hover);
+            --bg-cascade-delete-button: var(--bg-button-delete);
+            --bg-cascade-delete-button-hover: var(--bg-button-delete-hover);
+            --text-cascade-indicator: var(--text-secondary);
 
-    --border-primary: #cccccc;
-    --border-secondary: #dddddd;
-    --border-tertiary: #eeeeee;
-    --border-danger: #ffcdd2;
-    --border-system: #add8e6; /* システムプロンプト用 */
+            --text-primary: #333333;
+            --text-secondary: #777777;
+            --text-light: #ffffff;
+            --text-disabled: #e0e0e0;
+            --text-error: #c62828;
+            --text-link: #4a90e2;
+            --text-placeholder: #999999;
+            --text-system: #555; /* システムプロンプト用 */
 
-    --shadow-primary: rgba(0, 0, 0, 0.1);
-    --shadow-secondary: rgba(0,0,0,0.1);
+            --border-primary: #cccccc;
+            --border-secondary: #dddddd;
+            --border-tertiary: #eeeeee;
+            --border-danger: #ffcdd2;
+            --border-system: #add8e6; /* システムプロンプト用 */
 
-    --message-max-width: 85%;
+            --shadow-primary: rgba(0, 0, 0, 0.1);
+            --shadow-secondary: rgba(0,0,0,0.1);
 
-    --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            --message-max-width: 85%;
 
-    --chat-background-image: none; /* チャット背景画像 (デフォルトなし) */
+            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+            --chat-background-image: none; /* チャット背景画像 (デフォルトなし) */
+            
+            /* ファイルアップロードダイアログ用 */
+            --bg-dialog-file-item: var(--bg-tertiary);
+            --border-dialog-file-item: var(--border-secondary);
+            --text-dialog-file-name: var(--text-primary);
+            --text-dialog-file-size: var(--text-secondary);
+            --bg-dialog-button-select: var(--bg-button-action);
+            --bg-dialog-button-select-hover: var(--bg-button-action-hover);
+            --bg-dialog-button-confirm: var(--bg-button-save);
+            --bg-dialog-button-confirm-hover: var(--bg-button-save-hover);
+            --bg-dialog-button-cancel: var(--bg-button-cancel);
+            --bg-dialog-button-cancel-hover: var(--bg-button-cancel-hover);
+
+            /* 添付ファイル表示用 */
+            --bg-attachment-details: rgba(0, 0, 0, 0.03);
+            --border-attachment-details: var(--border-tertiary);
+            --text-attachment-summary: var(--text-secondary);
+            --text-attachment-filename: var(--text-primary);
+            
+            --badge-color: #ffcc00; /* バッジの色 (黄色系) */
+            --badge-size: 12px;      /* バッジのサイズ */
+        }
+
+        body.dark-mode {
+            /* ダークモード時の上書き */
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #101010;
+            --bg-tertiary: #252525;
+            --bg-input: #303030;
+            --bg-user-message: #056162;
+            --bg-model-message: #3a3a3c;
+            --bg-system-message: #2a3a4a; /* システムプロンプト用 */
+            --bg-error-message: #5c1c1c;
+            --bg-button: #007aff;
+            --bg-button-hover: #005ecb;
+            --bg-button-disabled: #4a5a70;
+            --bg-button-action: #666666;
+            --bg-button-action-hover: #888888;
+            --bg-button-delete: #ff3b30;
+            --bg-button-delete-hover: #d12c23;
+            --bg-button-retry: #34c759;
+            --bg-button-retry-hover: #249a41;
+            --bg-button-edit: #ff9500;
+            --bg-button-edit-hover: #d17d00;
+            --bg-button-duplicate: #8e8e93;
+            --bg-button-duplicate-hover: #6b6b70;
+            --bg-button-export: #0a84ff;
+            --bg-button-export-hover: #0069d1;
+            --bg-button-save: #30d158;
+            --bg-button-save-hover: #24a345;
+            --bg-button-cancel: #ff453a;
+            --bg-button-cancel-hover: #d1332b;
+            --bg-button-update: #0a84ff;
+            --bg-button-update-hover: #0069d1;
+            --bg-header: #007aff;
+            --bg-message-actions: rgba(50, 50, 50, 0.8);
+            --bg-overlay-dark: rgba(30, 30, 30, 0.55); /* ダークモード用オーバーレイ */
+            /* カスケードコントロール用 (ダーク) */
+            --bg-cascade-button: var(--bg-button-action);
+            --bg-cascade-button-hover: var(--bg-button-action-hover);
+            --bg-cascade-delete-button: var(--bg-button-delete);
+            --bg-cascade-delete-button-hover: var(--bg-button-delete-hover);
+            --text-cascade-indicator: var(--text-secondary);
+
+            --text-primary: #e0e0e0;
+            --text-secondary: #aaaaaa;
+            --text-light: #ffffff;
+            --text-disabled: #666666;
+            --text-error: #ff8a80;
+            --text-link: #00aaff;
+            --text-placeholder: #777777;
+            --text-system: #ccc; /* システムプロンプト用 */
+
+            --border-primary: #444444;
+            --border-secondary: #555555;
+            --border-tertiary: #333333;
+            --border-danger: #7a2e35;
+            --border-system: #4682b4; /* システムプロンプト用 */
+
+            --shadow-primary: rgba(255, 255, 255, 0.1);
+            --shadow-secondary: rgba(0, 0, 0, 0.5);
+            
+            /* ファイルアップロードダイアログ用 (ダーク) */
+            --bg-dialog-file-item: var(--bg-secondary);
+            --border-dialog-file-item: var(--border-primary);
+            --text-dialog-file-name: var(--text-primary);
+            --text-dialog-file-size: var(--text-secondary);
+            --bg-dialog-button-select: var(--bg-button-action);
+            --bg-dialog-button-select-hover: var(--bg-button-action-hover);
+            --bg-dialog-button-confirm: var(--bg-button-save);
+            --bg-dialog-button-confirm-hover: var(--bg-button-save-hover);
+            --bg-dialog-button-cancel: var(--bg-button-cancel);
+            --bg-dialog-button-cancel-hover: var(--bg-button-cancel-hover);
+
+            /* 添付ファイル表示用 (ダーク) */
+            --bg-attachment-details: rgba(255, 255, 255, 0.05);
+            --border-attachment-details: var(--border-primary);
+            --text-attachment-summary: var(--text-secondary);
+            --text-attachment-filename: var(--text-primary);
+        }
+
+        /* --- リセットと基本スタイル --- */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        html, body {
+            height: 100%;
+            font-family: var(--font-family);
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
+            overscroll-behavior-y: contain; /* iOSでの過剰なスクロールを抑制 */
+            transition: background-color 0.3s ease, color 0.3s ease;
+            overflow: hidden; /* bodyでのスクロールを禁止 */
+        }
+        button {
+            cursor: pointer;
+            padding: 8px 15px;
+            border-radius: 5px;
+            border: none;
+            font-size: 14px;
+            background-color: var(--bg-button);
+            color: var(--text-light);
+            transition: background-color 0.2s ease, color 0.2s ease;
+            line-height: 1.4;
+        }
+        button:hover:not(:disabled) {
+            background-color: var(--bg-button-hover);
+        }
+        button:disabled {
+            background-color: var(--bg-button-disabled);
+            cursor: not-allowed;
+            color: var(--text-disabled);
+        }
+        input[type="text"],
+        input[type="password"],
+        input[type="number"],
+        select,
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border-primary);
+            border-radius: 5px;
+            font-size: 14px;
+            margin-bottom: 10px;
+            background-color: var(--bg-input);
+            color: var(--text-primary);
+            transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+        }
+        textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            font-size: 14px;
+            color: var(--text-primary);
+        }
+        ::placeholder { color: var(--text-placeholder); opacity: 1; }
+        :-ms-input-placeholder { color: var(--text-placeholder); }
+        ::-ms-input-placeholder { color: var(--text-placeholder); }
+        .hidden { display: none !important; }
+
+        /* --- アプリ構造 --- */
+        .app-container {
+            display: flex; /* 子要素(.screen)を配置するため */
+            position: relative; /* 子要素のabsolute配置の基準 */
+            height: 100%;
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: var(--bg-primary);
+            box-shadow: 0 0 10px var(--shadow-secondary);
+            overflow: hidden; /* スワイプアニメーションのため */
+            transition: background-color 0.3s ease;
+        }
+
+        /* --- ヘッダー --- */
+        .app-header {
+            display: flex;
+            align-items: center;
+            padding: 10px 15px;
+            background-color: var(--bg-header);
+            color: var(--text-light);
+            flex-shrink: 0;
+            position: sticky; /* 画面上部に固定 */
+            top: 0;
+            z-index: 10; /* コンテンツより手前 */
+            transition: background-color 0.3s ease;
+            gap: 10px;
+        }
+        .app-header h1 {
+            font-size: 18px;
+            font-weight: bold;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            text-align: left;
+            margin: 0;
+            margin-right: auto; /* 後続要素を右に寄せる */
+        }
+        .header-button {
+            background: none;
+            border: none;
+            color: var(--text-light);
+            font-size: 20px;
+            padding: 5px;
+            line-height: 1;
+            min-width: 30px;
+            flex-shrink: 0;
+        }
+        /* 履歴画面ヘッダーのレイアウト調整 */
+        #history-screen .app-header {
+            flex-direction: row-reverse; /* 右から配置: [戻る] [タイトル] [インポート] */
+            justify-content: flex-start; /* 左寄せにする */
+        }
+        #history-screen .app-header h1#history-title {
+            margin-right: 0;
+            margin-left: auto;
+            text-align: right;
+        }
+        #history-screen .app-header #back-to-chat-from-history {
+            order: 1; /* 戻るボタンを一番右に */
+        }
+        #history-screen .app-header #history-title {
+            order: 2; /* タイトルを中央に */
+        }
+        #history-screen .app-header #import-history-btn {
+            order: 3; /* インポートボタンを一番左に */
+            margin-right: 0; /* 右マージン削除 */
+        }
+
+        .header-save-button {
+            padding: 4px 12px;
+            font-size: 13px;
+            background-color: var(--bg-button-save);
+            color: var(--text-light);
+            border-radius: 5px;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            flex-shrink: 0;
+        }
+        .header-save-button:hover:not(:disabled) {
+            background-color: var(--bg-button-save-hover);
+        }
+        body.dark-mode .header-save-button {
+             background-color: var(--bg-button-save);
+        }
+        body.dark-mode .header-save-button:hover:not(:disabled) {
+             background-color: var(--bg-button-save-hover);
+        }
+        .header-notice {
+            font-size: 11px;
+            font-weight: normal;
+            color: rgba(255, 255, 255, 0.8);
+            text-align: right;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        body.dark-mode .header-notice {
+            color: rgba(255, 255, 255, 0.7);
+        }
+        .new-chat-button {
+            font-size: 14px;
+            padding: 5px 10px;
+            background-color: var(--bg-button-save);
+            color: var(--text-light);
+            flex-shrink: 0;
+            border-radius: 5px;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+        .new-chat-button:hover {
+            background-color: var(--bg-button-save-hover);
+        }
+        body.dark-mode .new-chat-button {
+            background-color: var(--bg-button-save);
+        }
+        body.dark-mode .new-chat-button:hover {
+            background-color: var(--bg-button-save-hover);
+        }
+
+        /* --- メインコンテンツエリア --- */
+        .main-content {
+            flex-grow: 1;
+            overflow-y: auto; /* デフォルトは縦スクロール */
+            padding: 15px;
+            position: relative; /* 必要に応じて内部要素の配置基準に */
+            z-index: 1; /* オーバーレイより手前 */
+            touch-action: pan-y; /* デフォルトは縦方向のパン操作を許可 */
+        }
+
+        /* --- 画面共通スタイル (スワイプアニメーション用) --- */
+        .screen {
+            position: absolute; /* スワイプアニメーションのため */
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.3s ease-in-out; /* スワイプアニメーション */
+            background-color: var(--bg-primary); /* デフォルト背景 */
+            z-index: 0; /* 非アクティブ画面は背面に */
+        }
+        .screen.active {
+            transform: translateX(0);
+            z-index: 1; /* アクティブ画面を最前面に */
+        }
+        /* 初期位置と非表示時の位置 (修正後) */
+        #chat-screen { transform: translateX(0); }
+        #history-screen { transform: translateX(-100%); } /* 左に配置 */
+        #settings-screen { transform: translateX(100%); } /* 右に配置 */
+
+
+        /* --- チャット画面 --- */
+        #chat-screen {
+            position: relative; /* 疑似要素のため */
+            z-index: 0; /* ベースレイヤー */
+            background-image: var(--chat-background-image);
+            background-size: cover;
+            background-position: center center;
+            background-repeat: no-repeat;
+            transition: background-image 0.3s ease, transform 0.3s ease-in-out;
+        }
+
+        /* チャット画面用オーバーレイ */
+        #chat-screen::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--bg-overlay-light); /* CSS変数を使用 */
+            z-index: 0; /* コンテンツの後ろ、背景画像の前 */
+            transition: background-color 0.3s ease;
+            pointer-events: none; /* クリックを透過させる */
+        }
+        /* ダークモード用オーバーレイ */
+        body.dark-mode #chat-screen::before {
+            background-color: var(--bg-overlay-dark);
+        }
+
+        #chat-screen .main-content {
+            /*padding-bottom: 80px;/* /* 入力エリアのスペース */
+            z-index: 1; /* チャットコンテンツをオーバーレイより手前に */
+            background-color: transparent; /* オーバーレイ/背景画像が見えるように */
+            overflow-y: scroll; /* 縦スクロールバーを常に表示 */
+            overflow-x: auto;
+            touch-action: pan-x pan-y pinch-zoom; /* 水平・垂直パン・ピンチズームを許可 */
+            flex-grow: 1;
+        }
+        /* ヘッダーとフッターはオーバーレイより手前 */
+        #chat-screen .app-header { z-index: 2; }
+        #chat-screen .chat-input-area {
+            z-index: 2;
+            background-color: var(--bg-secondary); /* 入力エリアの背景は不透明 */
+        }
+        /* 履歴画面と設定画面のメインコンテンツでピンチズームを抑制 */
+        #history-screen .main-content,
+        #settings-screen .main-content {
+            touch-action: pan-y; /* 縦スクロールのみ許可 */
+        }
+
+
+        /* --- システムプロンプト表示エリア --- */
+        .system-prompt-area {
+            padding: 10px 15px;
+            margin-bottom: 15px;
+            border: 1px solid var(--border-system);
+            border-radius: 8px;
+            background-color: var(--bg-system-message);
+            color: var(--text-system);
+            transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, opacity 0.3s ease, visibility 0.3s ease, max-height 0.3s ease; /* transition追加 */
+            position: relative;
+            z-index: 1; /* メッセージより手前 */
+            overflow: hidden; /* hiddenクラスでのアニメーション用 */
+            max-height: 500px; /* 通常時の最大高さ (アニメーション用) */
+        }
+        .system-prompt-area.hidden {
+            padding-top: 0;
+            padding-bottom: 0;
+            margin-bottom: 0;
+            border-width: 0;
+            max-height: 0; /* 非表示時の高さ */
+            opacity: 0;
+            visibility: hidden;
+        }
+        .system-prompt-area details {
+            width: 100%;
+        }
+        .system-prompt-area summary {
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 13px;
+            color: var(--text-primary); /* summaryは通常テキスト色 */
+            list-style: none; /* マーカーを消す */
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            user-select: none; /* テキスト選択不可 */
+            -webkit-user-select: none; /* Safari用 */
+            -moz-user-select: none; /* Firefox用 */
+            -ms-user-select: none; /* IE/Edge用 */
+            outline: none; /* フォーカス時のアウトラインを消す */
+            -webkit-tap-highlight-color: transparent; /* モバイルタップ時のハイライトを消す */
+        }
+        .system-prompt-area summary::-webkit-details-marker { display: none; } /* Chrome/Safari */
+        .system-prompt-area summary::marker { display: none; } /* Firefox */
+        .system-prompt-area summary::after {
+            content: '▼'; /* 閉じた状態のアイコン */
+            font-size: 10px;
+            margin-left: 5px;
+            transition: transform 0.2s ease;
+        }
+        .system-prompt-area details[open] summary::after {
+            transform: rotate(180deg); /* 開いた状態のアイコン */
+        }
+        .system-prompt-content {
+            margin-top: 10px;
+        }
+        .system-prompt-content textarea {
+            width: 100%;
+            min-height: 60px;
+            max-height: 200px; /* 最大高さを設定 */
+            margin-bottom: 8px;
+            font-size: 13px;
+            background-color: var(--bg-input);
+            color: var(--text-primary);
+            border-color: var(--border-primary);
+        }
+        .system-prompt-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+        .system-prompt-actions button {
+            padding: 4px 10px;
+            font-size: 12px;
+        }
+        .system-prompt-actions .save-system-prompt-btn { background-color: var(--bg-button-save); }
+        .system-prompt-actions .save-system-prompt-btn:hover { background-color: var(--bg-button-save-hover); }
+        .system-prompt-actions .cancel-system-prompt-btn { background-color: var(--bg-button-cancel); }
+        .system-prompt-actions .cancel-system-prompt-btn:hover { background-color: var(--bg-button-cancel-hover); }
+        /* ------------------------------------ */
+
+        .message-container {
+            display: flex;
+            flex-direction: column;
+            /* gap: 35px; */ /* gapを削除し、messageのmarginで調整 */
+            position: relative;
+            z-index: 1; /* メッセージをオーバーレイより手前に */
+        }
+        .message {
+            padding: 10px 15px;
+            border-radius: 15px;
+            max-width: var(--message-max-width);
+            min-width: 30%;
+            min-height: 40px;
+            position: relative;
+            word-wrap: break-word;
+            /* margin-bottom: 35px; */ /* 下ボタン用スペース */
+            margin-top: 35px; /* 上ボタン用スペース */
+            margin-bottom: 35px; /* 下ボタン用スペース */
+            color: var(--text-primary);
+            transition: background-color 0.3s ease, color 0.3s ease;
+            z-index: 1; /* メッセージバブル自体を手前に */
+            box-shadow: 0 1px 2px var(--shadow-primary); /* 視認性向上のための影 */
+        }
+        /* 最初のメッセージの上マージンは不要 */
+        .message:first-child {
+            margin-top: 0;
+        }
+        .message pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: inherit;
+            font-size: 14px;
+            margin: 0;
+            color: inherit;
+            transition: opacity 0.2s ease;
+        }
+        .message.user {
+            background-color: var(--bg-user-message);
+            align-self: flex-end;
+            border-bottom-right-radius: 5px;
+            body:not(.dark-mode) & { color: #333; }
+            body.dark-mode & { color: #e0e0e0; }
+        }
+        .message.model {
+            background-color: var(--bg-model-message);
+            align-self: flex-start;
+            border-bottom-left-radius: 5px;
+            max-width: 90%;
+        }
+        .message.error {
+            background-color: var(--bg-error-message);
+            color: var(--text-error);
+            align-self: flex-start;
+            border-bottom-left-radius: 5px;
+            margin-top: 10px; /* エラーメッセージのマージン調整 */
+            margin-bottom: 10px;
+        }
+
+        /* メッセージアクション (ホバーボタン - 下) */
+        .message-actions {
+            position: absolute;
+            bottom: -35px; /* 下に配置 */
+            display: none; /* ホバーで表示 */
+            flex-wrap: nowrap;
+            gap: 5px;
+            background: var(--bg-message-actions);
+            /* padding: 5px 8px; */ /* 元のpadding */
+            padding: 10px 8px 5px 8px; /* 上方向のホバー領域を増やす (top, right, bottom, left) */
+            border-radius: 5px;
+            box-shadow: 0 1px 3px var(--shadow-primary);
+            z-index: 2; /* アクションをメッセージバブルより手前に */
+            transition: opacity 0.2s ease, background-color 0.3s ease;
+        }
+        .message:hover .message-actions {
+            display: flex;
+        }
+        .message.user .message-actions {
+            right: 0;
+            left: auto;
+            justify-content: flex-end;
+        }
+        .message.model .message-actions {
+            left: 0;
+            right: auto;
+            justify-content: flex-start;
+        }
+        .message-actions button {
+            background-color: var(--bg-button-action);
+            color: var(--text-light);
+            padding: 4px 10px;
+            font-size: 12px;
+            border-radius: 4px;
+            white-space: nowrap;
+            line-height: 1.5;
+        }
+        .message-actions button:hover {
+            background-color: var(--bg-button-action-hover);
+        }
+        .message-actions .js-edit-btn { background-color: var(--bg-button-edit); }
+        .message-actions .js-edit-btn:hover { background-color: var(--bg-button-edit-hover); }
+        .message-actions .js-delete-btn { background-color: var(--bg-button-delete); }
+        .message-actions .js-delete-btn:hover { background-color: var(--bg-button-delete-hover); }
+        .message-actions .js-retry-btn { background-color: var(--bg-button-retry); }
+        .message-actions .js-retry-btn:hover { background-color: var(--bg-button-retry-hover); }
+
+        /* カスケードコントロール (ホバーボタン - 上) */
+        .message-cascade-controls {
+            position: absolute;
+            top: -35px; /* 上に配置 */
+            left: 0;
+            display: none; /* ホバーで表示 */
+            align-items: center;
+            flex-wrap: nowrap;
+            gap: 5px;
+            background: var(--bg-message-actions);
+            /* padding: 5px 8px; */ /* 元のpadding */
+            padding: 5px 8px 10px 8px; /* 下方向のホバー領域を増やす (top, right, bottom, left) */
+            border-radius: 5px;
+            box-shadow: 0 -1px 3px var(--shadow-primary); /* 上方向の影 */
+            z-index: 2;
+            transition: opacity 0.2s ease, background-color 0.3s ease;
+        }
+        .message.model:hover .message-cascade-controls {
+            display: flex;
+        }
+        .message-cascade-controls button {
+            background-color: var(--bg-cascade-button);
+            color: var(--text-light);
+            padding: 4px 8px; /* 少し小さめ */
+            font-size: 14px; /* アイコン想定 */
+            border-radius: 4px;
+            line-height: 1;
+            min-width: 25px;
+        }
+        .message-cascade-controls button:hover:not(:disabled) {
+            background-color: var(--bg-cascade-button-hover);
+        }
+        .message-cascade-controls button:disabled {
+            background-color: var(--bg-button-disabled);
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+        .message-cascade-controls .cascade-indicator {
+            font-size: 11px;
+            color: var(--text-cascade-indicator);
+            padding: 0 5px;
+            white-space: nowrap;
+            font-weight: 500;
+        }
+        .message-cascade-controls .cascade-delete-btn {
+            background-color: var(--bg-cascade-delete-button);
+            margin-left: 5px; /* 削除ボタンを少し離す */
+        }
+        .message-cascade-controls .cascade-delete-btn:hover {
+            background-color: var(--bg-cascade-delete-button-hover);
+        }
+
+        /* インライン編集スタイル */
+        .message.editing pre {
+            opacity: 0;
+            height: 0;
+            overflow: hidden;
+            pointer-events: none;
+        }
+        .message.editing .message-actions,
+        .message.editing .message-cascade-controls { /* 編集中は上下のコントロールも非表示 */
+             opacity: 0;
+             pointer-events: none;
+             display: none !important; /* 確実に非表示 */
+        }
+        .message-edit-area {
+            margin-top: 5px;
+        }
+        .message-edit-area textarea {
+            min-height: 60px;
+            margin-bottom: 5px;
+            width: 100%; /* 幅を親要素に合わせる */
+        }
+        .message-edit-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 5px;
+        }
+        .message-edit-actions button {
+            padding: 4px 10px;
+            font-size: 12px;
+        }
+        .message-edit-actions .save-edit-btn { background-color: var(--bg-button-save); }
+        .message-edit-actions .save-edit-btn:hover { background-color: var(--bg-button-save-hover); }
+        .message-edit-actions .cancel-edit-btn { background-color: var(--bg-button-cancel); }
+        .message-edit-actions .cancel-edit-btn:hover { background-color: var(--bg-button-cancel-hover); }
+
+        /* チャット入力エリア */
+        .chat-input-area {
+            display: flex;
+            align-items: flex-end;
+            padding: 10px 15px;
+            border-top: 1px solid var(--border-primary);
+            /* background-color は #chat-screen セレクタで指定 */
+            flex-shrink: 0;
+            /* position: fixed; */ /* ← 削除 */
+            /* bottom: 0; */ /* ← 削除 */
+            /* left: 0; */ /* ← 削除 */
+            /* right: 0; */ /* ← 削除 */
+            /* max-width: 800px; */ /* ← .app-container で制御されるため不要かも */
+            /* margin: 0 auto; */ /* ← 削除 */
+            box-sizing: border-box;
+            /* z-index は #chat-screen セレクタで指定 */
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+            gap: 10px; /* ボタン間のスペース */
+        }
+        /* 添付ファイルボタン */
+        .chat-input-area button#attach-file-btn {
+            height: 40px;
+            width: 40px;
+            padding: 0;
+            font-size: 20px;
+            font-weight: bold;
+            flex-shrink: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: var(--bg-button-action); /* アクションボタンの色を使用 */
+            position: relative; /* バッジを配置するため */
+        }
+        /* 添付ファイルバッジのスタイル */
+        .attachment-badge {
+            position: absolute;
+            top: -4px; /* 上からの位置 */
+            right: -4px; /* 右からの位置 */
+            width: var(--badge-size);
+            height: var(--badge-size);
+            background-color: var(--badge-color);
+            border-radius: 50%;
+            border: 1px solid var(--bg-primary); /* 背景色で縁取り */
+            display: none; /* 初期状態は非表示 */
+            pointer-events: none; /* クリックを透過 */
+        }
+        /* 添付ファイルがある場合にバッジを表示 */
+        .chat-input-area button#attach-file-btn.has-attachments .attachment-badge {
+            display: block;
+        }
+        .chat-input-area textarea {
+            flex-grow: 1;
+            min-height: 40px;
+            max-height: 120px;
+            height: 40px;
+            resize: none;
+            /* margin-right: 10px; gapで管理するため削除 */
+            margin-bottom: 0;
+            padding: 8px 10px;
+            overflow-y: auto;
+        }
+        .chat-input-area button#send-button {
+            height: 40px;
+            width: 40px;
+            padding: 0;
+            font-size: 18px;
+            font-weight: bold;
+            flex-shrink: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .chat-input-area button#send-button.sending {
+            background-color: #ffc107;
+            color: #333;
+        }
+        .chat-input-area button#send-button.sending:hover {
+            background-color: #ffa000;
+        }
+        body.dark-mode .chat-input-area button#send-button.sending {
+            background-color: #ffd60a;
+            color: #1a1a1a;
+        }
+        body.dark-mode .chat-input-area button#send-button.sending:hover {
+            background-color: #ffca28;
+        }
+
+        /* ローディングインジケーター */
+        #loading-indicator {
+            position: fixed; /* 画面に固定 */
+            bottom: 65px;    /* 入力エリアの上あたり (入力エリア高さ約40px + パディング10px*2 + 余白5px) */
+            right: 20px;     /* 右端からの距離 */
+            background-color: var(--bg-tertiary); /* 背景色 */
+            color: var(--text-secondary);      /* テキスト色 */
+            padding: 6px 12px; /* パディング調整 */
+            border-radius: 15px; /* より丸みのある角 */
+            font-size: 11px; /* フォントサイズ調整 */
+            font-style: normal; /* イタリック解除 */
+            font-weight: 500;
+            z-index: 3;      /* 入力エリア(z-index: 2)より手前 */
+            box-shadow: 0 2px 5px var(--shadow-primary); /* 少し目立つ影 */
+            /* フェードイン/アウトのためのトランジション */
+            transition: opacity 0.3s ease, transform 0.3s ease, visibility 0.3s ease;
+            opacity: 0; /* 初期状態は非表示 (透明) */
+            visibility: hidden; /* 初期状態は非表示 (レイアウトに影響しない) */
+            transform: translateY(10px); /* 少し下から登場するアニメーション */
+            pointer-events: none; /* クリックを透過 */
+        }
+        /* hiddenクラスがついていない場合に表示 */
+        #loading-indicator:not(.hidden) {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0); /* 元の位置に戻る */
+        }
+
+        /* ダークモード固有のスタイル（必要に応じて微調整） */
+        body.dark-mode #loading-indicator {
+            background-color: var(--bg-input); /* ダークモードでは入力欄に近い背景色 */
+            color: var(--text-secondary);
+            box-shadow: 0 2px 6px var(--shadow-secondary);
+        }
+
+        /* --- 履歴画面 --- */
+        /* 履歴画面自体は背景画像なし */
+        #history-screen {
+             background-color: var(--bg-primary); /* 自身の背景色を確保 */
+             transition: transform 0.3s ease-in-out; /* スワイプアニメーション */
+        }
+        #history-screen .main-content {
+             background-color: transparent; /* screenの背景色が見えるように */
+             /* touch-action: pan-y; */ /* 上部で指定済み */
+        }
+
+        .history-list {
+            list-style: none;
+            padding: 0;
+        }
+        .history-item {
+            padding: 12px;
+            border: 1px solid var(--border-secondary);
+            border-radius: 8px;
+            margin-bottom: 10px;
+            background-color: var(--bg-primary);
+            transition: background-color 0.2s ease, border-color 0.3s ease;
+            cursor: pointer;
+        }
+        .history-item:hover {
+            background-color: var(--bg-tertiary);
+        }
+        .history-item-details {
+            overflow: hidden;
+            min-width: 0;
+            width: 100%;
+            margin-bottom: 8px;
+        }
+        .history-item-title {
+            font-size: 15px;
+            font-weight: bold;
+            margin-bottom: 0px;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            display: block;
+            color: var(--text-primary);
+        }
+        .history-item-bottom-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+        }
+        .history-item-dates {
+            font-size: 9px;
+            color: var(--text-secondary);
+            flex-shrink: 0;
+            line-height: 1.3;
+            text-align: left;
+        }
+        .history-item-dates span {
+            display: block;
+            white-space: nowrap;
+        }
+        .history-item-actions {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+            flex-wrap: nowrap;
+            cursor: default; /* ボタン以外はクリックを透過 */
+        }
+        .history-item-actions button {
+             cursor: pointer;
+        }
+        .history-item-actions .js-edit-title-btn {
+            background-color: var(--bg-button-edit);
+            font-size: 16px;
+            padding: 6px 8px;
+        }
+        .history-item-actions .js-edit-title-btn:hover { background-color: var(--bg-button-edit-hover); }
+        .history-item-actions .js-delete-btn { background-color: var(--bg-button-delete); }
+        .history-item-actions .js-delete-btn:hover { background-color: var(--bg-button-delete-hover); }
+        .history-item-actions .js-duplicate-btn { background-color: var(--bg-button-duplicate); }
+        .history-item-actions .js-duplicate-btn:hover { background-color: var(--bg-button-duplicate-hover); }
+        .history-item-actions .js-export-btn { background-color: var(--bg-button-export); }
+        .history-item-actions .js-export-btn:hover { background-color: var(--bg-button-export-hover); }
+
+        .js-history-item-template {
+             display: none !important; /* テンプレートは非表示 */
+        }
+        #no-history-message {
+            text-align: center;
+            color: var(--text-secondary);
+            margin-top: 20px;
+        }
+
+        /* --- 設定画面 --- */
+        /* 設定画面自体は背景画像なし */
+        #settings-screen {
+             background-color: var(--bg-primary); /* 自身の背景色を確保 */
+             transition: transform 0.3s ease-in-out; /* スワイプアニメーション */
+        }
+         #settings-screen .main-content {
+             background-color: transparent; /* screenの背景色が見えるように */
+             /* touch-action: pan-y; */ /* 上部で指定済み */
+        }
+
+        .settings-group {
+            margin-bottom: 25px;
+            padding: 15px;
+            border: 1px solid var(--border-tertiary);
+            border-radius: 8px;
+            background-color: var(--bg-tertiary);
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+        }
+        .settings-group h3 {
+            margin-bottom: 15px;
+            font-size: 16px;
+            color: var(--text-link);
+            border-bottom: 1px solid var(--border-tertiary);
+            padding-bottom: 5px;
+            transition: color 0.3s ease, border-color 0.3s ease;
+        }
+        .settings-actions {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-tertiary);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .settings-actions.bottom {
+            margin-bottom: 20px;
+        }
+        .settings-actions button {
+            width: 100%;
+        }
+        .danger-zone {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 2px solid var(--border-danger);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .danger-zone button {
+            width: 100%;
+        }
+        #update-app-btn {
+            background-color: var(--bg-button-update);
+        }
+        #update-app-btn:hover {
+            background-color: var(--bg-button-update-hover);
+        }
+        #clear-data-btn {
+            background-color: var(--bg-button-delete);
+        }
+        #clear-data-btn:hover {
+            background-color: var(--bg-button-delete-hover);
+        }
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            color: var(--text-primary);
+        }
+        .checkbox-label input[type="checkbox"] {
+            width: auto;
+            margin-bottom: 0;
+            cursor: pointer;
+        }
+        .param-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 15px;
+        }
+
+        /* 設定画面: 画像コントロール */
+        .image-upload-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        /* アクションボタンスタイルをアップロードボタンに適用 */
+        .settings-action-button {
+            background-color: var(--bg-button-action);
+            padding: 8px 15px;
+            border-radius: 5px;
+            border: none;
+            font-size: 14px;
+            color: var(--text-light);
+            cursor: pointer;
+        }
+        .settings-action-button:hover {
+            background-color: var(--bg-button-action-hover);
+        }
+        /* 削除ボタンスタイル */
+        .settings-delete-button {
+            background-color: var(--bg-button-delete);
+            padding: 8px 15px; /* 他のボタンと一貫性のあるパディング */
+            border-radius: 5px;
+            border: none;
+            font-size: 14px;
+            color: var(--text-light);
+            cursor: pointer;
+            margin-left: auto; /* 削除ボタンを右端に寄せる */
+        }
+        .settings-delete-button:hover {
+            background-color: var(--bg-button-delete-hover);
+        }
+        .background-thumbnail {
+            max-width: 100px;
+            max-height: 60px;
+            border-radius: 4px;
+            border: 1px solid var(--border-tertiary);
+            object-fit: cover;
+            vertical-align: middle;
+        }
+        /* ========================================== */
+
+        /* --- OSのカラースキームを優先 --- */
+        @media (prefers-color-scheme: dark) {
+          body:not(.light-mode-forced) {
+            /* デフォルトでダークモード変数を適用 */
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #101010;
+            --bg-tertiary: #252525;
+            --bg-input: #303030;
+            --bg-user-message: #056162;
+            --bg-model-message: #3a3a3c;
+            --bg-system-message: #2a3a4a; /* システムプロンプト用 */
+            --bg-error-message: #5c1c1c;
+            --bg-button: #007aff;
+            --bg-button-hover: #005ecb;
+            --bg-button-disabled: #4a5a70;
+            --bg-button-action: #666666;
+            --bg-button-action-hover: #888888;
+            --bg-button-delete: #ff3b30;
+            --bg-button-delete-hover: #d12c23;
+            --bg-button-retry: #34c759;
+            --bg-button-retry-hover: #249a41;
+            --bg-button-edit: #ff9500;
+            --bg-button-edit-hover: #d17d00;
+            --bg-button-duplicate: #8e8e93;
+            --bg-button-duplicate-hover: #6b6b70;
+            --bg-button-export: #0a84ff;
+            --bg-button-export-hover: #0069d1;
+            --bg-button-save: #30d158;
+            --bg-button-save-hover: #24a345;
+            --bg-button-cancel: #ff453a;
+            --bg-button-cancel-hover: #d1332b;
+            --bg-button-update: #0a84ff;
+            --bg-button-update-hover: #0069d1;
+            --bg-header: #007aff;
+            --bg-message-actions: rgba(50, 50, 50, 0.8);
+            /* --bg-overlay-dark は body.dark-mode で定義済み */
+            /* カスケードコントロール用 (ダーク) */
+            --bg-cascade-button: var(--bg-button-action);
+            --bg-cascade-button-hover: var(--bg-button-action-hover);
+            --bg-cascade-delete-button: var(--bg-button-delete);
+            --bg-cascade-delete-button-hover: var(--bg-button-delete-hover);
+            --text-cascade-indicator: var(--text-secondary);
+
+            --text-primary: #e0e0e0;
+            --text-secondary: #aaaaaa;
+            --text-light: #ffffff;
+            --text-disabled: #666666;
+            --text-error: #ff8a80;
+            --text-link: #00aaff;
+            --text-placeholder: #777777;
+            --text-system: #ccc; /* システムプロンプト用 */
+
+            --border-primary: #444444;
+            --border-secondary: #555555;
+            --border-tertiary: #333333;
+            --border-danger: #7a2e35;
+            --border-system: #4682b4; /* システムプロンプト用 */
+
+            --shadow-primary: rgba(255, 255, 255, 0.1);
+            --shadow-secondary: rgba(0, 0, 0, 0.5);
+          }
+        }
+
+        /* --- Markdown固有スタイル --- */
+        .message-content {
+            font-size: 14px;
+            line-height: 1.6;
+            color: inherit;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            position: relative; /* コンテンツがメッセージフロー内にあることを保証 */
+            z-index: 1; /* オーバーレイより手前 */
+        }
+        .message-content > *:first-child { margin-top: 0; }
+        .message-content > *:last-child { margin-bottom: 0; }
+        .message-content h1, .message-content h2, .message-content h3, .message-content h4, .message-content h5, .message-content h6 {
+            margin-top: 1.2em;
+            margin-bottom: 0.6em;
+            font-weight: bold;
+            line-height: 1.3;
+            color: inherit;
+        }
+        .message-content h1 { font-size: 1.8em; }
+        .message-content h2 { font-size: 1.5em; }
+        .message-content h3 { font-size: 1.3em; }
+        .message-content h4 { font-size: 1.1em; }
+        .message-content p {
+            margin-bottom: 0.8em;
+        }
+        .message-content ul, .message-content ol {
+            margin-bottom: 0.8em;
+            padding-left: 2em;
+        }
+        .message-content li {
+            margin-bottom: 0.3em;
+        }
+        .message-content li > ul, .message-content li > ol {
+             margin-top: 0.3em;
+             margin-bottom: 0.3em;
+        }
+        .message-content pre {
+            background-color: var(--bg-secondary);
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 1em 0;
+            font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+            font-size: 13px;
+            border: 1px solid var(--border-tertiary);
+            color: var(--text-secondary);
+        }
+        /* ユーザーメッセージの<pre>は背景色透過が必要 */
+        .message.user .message-content pre {
+             background-color: transparent;
+             padding: 0;
+             margin: 0;
+             border: none;
+             border-radius: 0;
+             color: inherit;
+             font-family: inherit;
+             font-size: inherit;
+             line-height: inherit;
+             white-space: pre-wrap;
+             word-wrap: break-word;
+             overflow-x: visible;
+        }
+        .message-content code:not(pre > code) { /* インラインコード */
+            background-color: var(--bg-secondary);
+            padding: 0.2em 0.4em;
+            border-radius: 3px;
+            font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+            font-size: 0.9em;
+            border: 1px solid var(--border-tertiary);
+            color: var(--text-secondary);
+        }
+        .message-content blockquote {
+            margin: 1em 0;
+            padding-left: 1em;
+            border-left: 4px solid var(--border-primary);
+            color: var(--text-secondary);
+        }
+        .message-content blockquote > *:first-child { margin-top: 0; }
+        .message-content blockquote > *:last-child { margin-bottom: 0; }
+        .message-content a {
+            color: var(--text-link);
+            text-decoration: underline;
+        }
+        .message-content strong {
+            font-weight: bold;
+        }
+        .message-content em {
+            font-style: italic;
+        }
+        .message-content table {
+            border-collapse: collapse;
+            margin: 1em 0;
+            width: auto;
+            border: 1px solid var(--border-secondary);
+        }
+        .message-content th, .message-content td {
+            border: 1px solid var(--border-secondary);
+            padding: 6px 10px;
+            text-align: left;
+        }
+        .message-content th {
+            background-color: var(--bg-tertiary);
+            font-weight: bold;
+        }
+        .message-content hr {
+            border: none;
+            border-top: 1px solid var(--border-secondary);
+            margin: 1.5em 0;
+        }
+
+        /* :hover または .show-actions クラスで操作ボックスを表示 */
+        .message:hover .message-actions,
+        .message.show-actions .message-actions,
+        .message:hover .message-cascade-controls,
+        .message.show-actions .message-cascade-controls {
+            display: flex; /* または block など、元の表示プロパティに合わせる */
+            /* 必要であれば他のスタイルも調整 */
+        }
+
+        /* 編集中はクリックによる表示も抑制する (既存ルールと合わせる) */
+        .message.editing.show-actions .message-actions,
+        .message.editing.show-actions .message-cascade-controls {
+            display: none !important; /* 編集時は確実に非表示 */
+        }
+        /* リトライ中の非表示スタイル */
+        .message.retrying-hidden {
+            display: none !important;
+        }
+        /* ダークモードでのMarkdown調整 */
+        body.dark-mode .message-content pre {
+            background-color: var(--bg-tertiary);
+            border-color: var(--border-primary);
+            color: var(--text-secondary);
+        }
+         body.dark-mode .message-content code:not(pre > code) {
+            background-color: var(--bg-tertiary);
+            border-color: var(--border-primary);
+            color: var(--text-secondary);
+        }
+        body.dark-mode .message-content blockquote {
+            border-left-color: var(--border-primary);
+            color: var(--text-secondary);
+        }
+         body.dark-mode .message-content a {
+            color: var(--text-link);
+         }
+        body.dark-mode .message-content table,
+        body.dark-mode .message-content th,
+        body.dark-mode .message-content td {
+            border-color: var(--border-primary);
+        }
+        body.dark-mode .message-content th {
+            background-color: var(--bg-secondary);
+        }
+        body.dark-mode .message-content hr {
+            border-top-color: var(--border-primary);
+        }
+        
+        /* メッセージアクション領域のトークン数表示 */
+        .message-actions .token-count-display {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            /*margin-left: 4px;*/
+            vertical-align: middle;
+            line-height: 1.5;
+            white-space: nowrap;
+        }
+        
+        /* --- カスタムダイアログスタイル --- */
+        .custom-dialog {
+            border: 1px solid var(--border-secondary);
+            border-radius: 8px;
+            padding: 25px;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            box-shadow: 0 5px 20px var(--shadow-secondary);
+            min-width: 280px;
+            max-width: 500px;
+            width: fit-content;
+            box-sizing: border-box;
+            margin-left: auto;
+            margin-right: auto;
+            transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+            position: relative; /* ダイアログがページコンテンツより上に来るように */
+            z-index: 100; /* ダイアログ用の高いz-index */
+        }
+        .custom-dialog::backdrop {
+            background-color: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(3px);
+            transition: background-color 0.3s ease;
+            z-index: 99; /* バックドロップはダイアログの後ろ */
+        }
+
+        body.dark-mode .custom-dialog::backdrop {
+            background-color: rgba(30, 30, 30, 0.7);
+        }
+        .custom-dialog[open] {
+            animation: dialog-fade-in 0.3s ease forwards;
+        }
+        @keyframes dialog-fade-in {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .custom-dialog .dialog-message {
+            margin: 0 0 20px 0;
+            font-size: 15px;
+            line-height: 1.6;
+            display: block;
+            text-align: left;
+        }
+        .custom-dialog .dialog-input {
+            width: 100%;
+            padding: 8px 10px;
+            margin-bottom: 20px;
+            border: 1px solid var(--border-primary);
+            border-radius: 4px;
+            font-size: 14px;
+            background-color: var(--bg-input);
+            color: var(--text-primary);
+        }
+        .custom-dialog .dialog-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .custom-dialog button {
+            padding: 8px 18px;
+            font-weight: 500;
+            min-width: 80px;
+        }
+        .custom-dialog .dialog-ok-btn {
+            background-color: var(--bg-button);
+            color: var(--text-light);
+        }
+        .custom-dialog .dialog-ok-btn:hover:not(:disabled) {
+            background-color: var(--bg-button-hover);
+        }
+         .custom-dialog .dialog-cancel-btn {
+            background-color: var(--bg-button-action);
+            color: var(--text-light);
+        }
+        .custom-dialog .dialog-cancel-btn:hover:not(:disabled) {
+            background-color: var(--bg-button-action-hover);
+        }
+        /* Thought Summary表示スタイル */
+        .thought-summary-details {
+            margin-bottom: 10px; /* 本文との間隔 */
+            font-size: 13px;
+            border: 1px solid var(--border-tertiary);
+            border-radius: 5px;
+            background-color: var(--bg-tertiary);
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+        }
+        .thought-summary-details summary {
+            cursor: pointer;
+            font-weight: 500; /* 少し太字に */
+            color: var(--text-secondary);
+            list-style: none;
+            padding: 6px 10px;
+            outline: none;
+            -webkit-tap-highlight-color: transparent;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            user-select: none;
+        }
+        .thought-summary-details summary::-webkit-details-marker { display: none; }
+        .thought-summary-details summary::marker { display: none; }
+        .thought-summary-details summary::before { /* アイコン追加 */
+            content: '🧠'; /* 脳の絵文字など */
+            font-size: 14px;
+            display: inline-block;
+        }
+        .thought-summary-details[open] summary {
+            border-bottom: 1px solid var(--border-tertiary);
+        }
+        .thought-summary-content {
+            padding: 8px 10px;
+            font-size: 13px; /* 本文より少し小さめ */
+            line-height: 1.5;
+            color: var(--text-primary);
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+        .thought-summary-content > *:first-child { margin-top: 0; }
+        .thought-summary-content > *:last-child { margin-bottom: 0; }
+        .thought-summary-content ul,
+        .thought-summary-content ol { margin-left: 1em;}
+        /* ダークモード用 */
+        body.dark-mode .thought-summary-details {
+            border-color: var(--border-primary);
+            background-color: var(--bg-secondary);
+        }
+        body.dark-mode .thought-summary-details summary {
+            color: var(--text-secondary);
+        }
+        body.dark-mode .thought-summary-details[open] summary {
+            border-bottom-color: var(--border-primary);
+        }
+        body.dark-mode .thought-summary-content {
+            color: var(--text-primary);
+        }
+        /* MarkdownスタイルをThought Summaryにも適用 (一部抜粋) */
+        .thought-summary-content pre {
+            background-color: var(--bg-secondary); /* 通常のpreより少し明るいかも */
+            padding: 8px;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin: 0.8em 0;
+            font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+            font-size: 12px;
+            border: 1px solid var(--border-tertiary);
+            color: var(--text-secondary);
+        }
+        body.dark-mode .thought-summary-content pre {
+            background-color: var(--bg-tertiary); /* ダークモードでは通常preと同じでも良いかも */
+            border-color: var(--border-primary);
+            color: var(--text-secondary);
+        }
+        .thought-summary-content code:not(pre > code) {
+            background-color: var(--bg-secondary);
+            padding: 0.1em 0.3em;
+            border-radius: 3px;
+            font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+            font-size: 0.85em;
+            border: 1px solid var(--border-tertiary);
+            color: var(--text-secondary);
+        }
+        body.dark-mode .thought-summary-content code:not(pre > code) {
+            background-color: var(--bg-tertiary);
+            border-color: var(--border-primary);
+            color: var(--text-secondary);
+        }
+        /* --- 引用元表示スタイル --- */
+        .citation-details {
+            margin-top: 10px; /* 少し詰める */
+            font-size: 12px;
+            border-top: 1px dashed var(--border-secondary); /* 区切り線 */
+            padding-top: 8px;
+        }
+        .citation-details summary {
+            cursor: pointer;
+            font-weight: normal;
+            color: var(--text-secondary);
+            list-style: none; /* マーカーを消す */
+            display: inline-block; /* summaryの幅を内容に合わせる */
+            outline: none; /* フォーカス時のアウトラインを消す */
+            -webkit-tap-highlight-color: transparent; /* モバイルタップ時のハイライトを消す */
+        }
+        .citation-details summary::-webkit-details-marker { display: none; } /* Chrome/Safari */
+        .citation-details summary::marker { display: none; } /* Firefox */
+        .citation-details summary:hover {
+            text-decoration: underline;
+        }
+        .citation-list {
+            list-style: none;
+            padding-left: 0; /* 左のパディングを削除 */
+            margin-top: 8px;
+            margin-bottom: 0;
+        }
+        .citation-list li {
+            margin-bottom: 5px;
+            overflow-wrap: break-word; /* 長いURLやタイトルを折り返す */
+        }
+        .citation-list li a {
+            color: var(--text-link);
+            text-decoration: none; /* 下線はホバー時のみなど、お好みで */
+            display: block; /* リンク領域を広げる */
+        }
+        .citation-list li a:hover {
+            text-decoration: underline;
+        }
+        /* ダークモード用 */
+        body.dark-mode .citation-details {
+            border-top-color: var(--border-primary);
+        }
+        body.dark-mode .citation-details summary {
+            color: var(--text-secondary);
+        }
+        body.dark-mode .citation-list li a {
+            color: var(--text-link);
+        }
+        /* --- 添付ファイル表示スタイル (ユーザーメッセージ内) --- */
+        .attachment-details {
+            margin-top: 10px;
+            font-size: 12px;
+            border: 1px solid var(--border-attachment-details);
+            border-radius: 5px;
+            background-color: var(--bg-attachment-details);
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+        }
+        .attachment-details summary {
+            cursor: pointer;
+            font-weight: normal;
+            color: var(--text-attachment-summary);
+            list-style: none;
+            padding: 5px 10px;
+            outline: none;
+            -webkit-tap-highlight-color: transparent;
+            display: flex; /* アイコン表示用 */
+            align-items: center; /* アイコン垂直中央揃え */
+            gap: 5px; /* アイコンとテキストの間隔 */
+        }
+        .attachment-details summary::-webkit-details-marker { display: none; }
+        .attachment-details summary::marker { display: none; }
+        .attachment-details summary::before { /* アイコン追加 */
+            content: '📎'; /* クリップアイコン */
+            font-size: 14px;
+            display: inline-block;
+        }
+        .attachment-details[open] summary {
+            border-bottom: 1px solid var(--border-attachment-details);
+        }
+        .attachment-list {
+            list-style: none;
+            padding: 8px 10px 5px 10px; /* 内側のパディング */
+            margin: 0;
+        }
+        .attachment-list li {
+            margin-bottom: 4px;
+            font-size: 10px;
+            color: var(--text-attachment-filename);
+            overflow-wrap: break-word;
+            white-space: nowrap; /* ファイル名は折り返さない */
+            overflow: hidden; /* はみ出した部分は隠す */
+            text-overflow: ellipsis; /* 省略記号 */
+            line-height: 1.4;
+        }
+
+        /* ファイルアップロードダイアログ固有スタイル */
+        #fileUploadDialog {
+            min-width: 320px;
+            max-width: 600px; /* 少し広め */
+            width: 90%;
+        }
+        .dialog-content { /* ダイアログ内の主要コンテンツエリア */
+            margin-bottom: 20px;
+        }
+        .file-upload-area {
+            margin-bottom: 15px;
+            text-align: center; /* ボタンを中央寄せ */
+        }
+        .file-upload-area .dialog-button { /* ダイアログ内のボタン共通スタイル */
+            padding: 10px 20px;
+            font-size: 14px;
+        }
+        .file-upload-area #select-files-btn {
+            background-color: var(--bg-dialog-button-select);
+        }
+        .file-upload-area #select-files-btn:hover {
+            background-color: var(--bg-dialog-button-select-hover);
+        }
+        #selected-files-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            max-height: 200px; /* スクロール可能にする */
+            overflow-y: auto;
+            border: 1px solid var(--border-secondary);
+            border-radius: 5px;
+            background-color: var(--bg-secondary); /* リスト背景 */
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+        }
+        .selected-file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--border-dialog-file-item);
+            background-color: var(--bg-dialog-file-item);
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+        }
+        .selected-file-item:last-child {
+            border-bottom: none;
+        }
+        .selected-file-info {
+            flex-grow: 1;
+            overflow: hidden; /* ファイル名が長い場合のため */
+            margin-right: 10px;
+        }
+        .selected-file-name {
+            display: block;
+            font-size: 14px;
+            color: var(--text-dialog-file-name);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .selected-file-size {
+            display: block;
+            font-size: 11px;
+            color: var(--text-dialog-file-size);
+        }
+        .remove-file-btn {
+            background-color: var(--bg-button-delete);
+            color: var(--text-light);
+            border: none;
+            border-radius: 15%; /* 丸ボタン */
+            width: 22px;
+            height: 22px;
+            min-width: 0 !important;
+            font-size: 14px;
+            line-height: 1;
+            padding: 0;
+            cursor: pointer;
+            flex-shrink: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .remove-file-btn:hover {
+            background-color: var(--bg-button-delete-hover);
+        }
+        #file-upload-notice {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 10px;
+            text-align: center;
+        }
+        /* ダイアログのアクションボタン */
+        #fileUploadDialog .dialog-actions {
+            margin-top: 20px; /* コンテンツとの間隔 */
+        }
+        #fileUploadDialog .dialog-actions #confirm-attach-btn {
+            background-color: var(--bg-dialog-button-confirm);
+        }
+        #fileUploadDialog .dialog-actions #confirm-attach-btn:hover:not(:disabled) {
+            background-color: var(--bg-dialog-button-confirm-hover);
+        }
+        #fileUploadDialog .dialog-actions #cancel-attach-btn {
+            background-color: var(--bg-dialog-button-cancel);
+        }
+        #fileUploadDialog .dialog-actions #cancel-attach-btn:hover:not(:disabled) {
+            background-color: var(--bg-dialog-button-cancel-hover);
+        }
+
+        /* --- 画像サムネイル表示調整 --- */
+        .message-content img {
+            max-width: 100%; /* ★表示崩れを防ぐための最も重要な設定 */
+            height: auto;    /* 画像の縦横比を維持 */
+            border-radius: 8px; /* 画像の角を少し丸める */
+            cursor: pointer;    /* クリックできることを示すカーソル */
+            transition: opacity 0.2s ease;
+            display: block; /* 画像下の余分なスペースを削除 */
+            margin-top: 5px;
+            margin-bottom: 5px;
+        }
+        .message-content img:hover {
+            opacity: 0.8; /* ホバー時に少し透明にする */
+        }
+
+        /* --- 画像拡大モーダル --- */
+        #image-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.85);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000; /* 他の要素より最前面に表示 */
+            cursor: pointer;
+            animation: fadeIn 0.3s ease;
+        }
+        #image-modal-overlay.hidden {
+            display: none; /* 初期状態は非表示 */
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        #image-modal-img {
+            max-width: 90vw;  /* 画面幅の90%を最大幅とする */
+            max-height: 90vh; /* 画面高さの90%を最大高とする */
+            object-fit: contain; /* アスペクト比を維持してコンテナに収める */
+            box-shadow: 0 0 25px rgba(0,0,0,0.5);
+            cursor: default; /* 画像上では通常のカーソル */
+        }
+        #image-modal-close {
+            position: absolute;
+            top: 20px;
+            right: 35px;
+            color: #fff;
+            font-size: 40px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: color 0.2s ease;
+            line-height: 1;
+        }
+        #image-modal-close:hover {
+            color: #bbb;
+        }
     
-    /* ファイルアップロードダイアログ用 */
-    --bg-dialog-file-item: var(--bg-tertiary);
-    --border-dialog-file-item: var(--border-secondary);
-    --text-dialog-file-name: var(--text-primary);
-    --text-dialog-file-size: var(--text-secondary);
-    --bg-dialog-button-select: var(--bg-button-action);
-    --bg-dialog-button-select-hover: var(--bg-button-action-hover);
-    --bg-dialog-button-confirm: var(--bg-button-save);
-    --bg-dialog-button-confirm-hover: var(--bg-button-save-hover);
-    --bg-dialog-button-cancel: var(--bg-button-cancel);
-    --bg-dialog-button-cancel-hover: var(--bg-button-cancel-hover);
-
-    /* 添付ファイル表示用 */
-    --bg-attachment-details: rgba(0, 0, 0, 0.03);
-    --border-attachment-details: var(--border-tertiary);
-    --text-attachment-summary: var(--text-secondary);
-    --text-attachment-filename: var(--text-primary);
-    
-    --badge-color: #ffcc00; /* バッジの色 (黄色系) */
-    --badge-size: 12px;      /* バッジのサイズ */
-}
-
-body.dark-mode {
-    /* ダークモード時の上書き */
-    --bg-primary: #1a1a1a;
-    --bg-secondary: #101010;
-    --bg-tertiary: #252525;
-    --bg-input: #303030;
-    --bg-user-message: #056162;
-    --bg-model-message: #3a3a3c;
-    --bg-system-message: #2a3a4a; /* システムプロンプト用 */
-    --bg-error-message: #5c1c1c;
-    --bg-button: #007aff;
-    --bg-button-hover: #005ecb;
-    --bg-button-disabled: #4a5a70;
-    --bg-button-action: #666666;
-    --bg-button-action-hover: #888888;
-    --bg-button-delete: #ff3b30;
-    --bg-button-delete-hover: #d12c23;
-    --bg-button-retry: #34c759;
-    --bg-button-retry-hover: #249a41;
-    --bg-button-edit: #ff9500;
-    --bg-button-edit-hover: #d17d00;
-    --bg-button-duplicate: #8e8e93;
-    --bg-button-duplicate-hover: #6b6b70;
-    --bg-button-export: #0a84ff;
-    --bg-button-export-hover: #0069d1;
-    --bg-button-save: #30d158;
-    --bg-button-save-hover: #24a345;
-    --bg-button-cancel: #ff453a;
-    --bg-button-cancel-hover: #d1332b;
-    --bg-button-update: #0a84ff;
-    --bg-button-update-hover: #0069d1;
-    --bg-header: #007aff;
-    --bg-message-actions: rgba(50, 50, 50, 0.8);
-    --bg-overlay-dark: rgba(30, 30, 30, 0.55); /* ダークモード用オーバーレイ */
-    /* カスケードコントロール用 (ダーク) */
-    --bg-cascade-button: var(--bg-button-action);
-    --bg-cascade-button-hover: var(--bg-button-action-hover);
-    --bg-cascade-delete-button: var(--bg-button-delete);
-    --bg-cascade-delete-button-hover: var(--bg-button-delete-hover);
-    --text-cascade-indicator: var(--text-secondary);
-
-    --text-primary: #e0e0e0;
-    --text-secondary: #aaaaaa;
-    --text-light: #ffffff;
-    --text-disabled: #666666;
-    --text-error: #ff8a80;
-    --text-link: #00aaff;
-    --text-placeholder: #777777;
-    --text-system: #ccc; /* システムプロンプト用 */
-
-    --border-primary: #444444;
-    --border-secondary: #555555;
-    --border-tertiary: #333333;
-    --border-danger: #7a2e35;
-    --border-system: #4682b4; /* システムプロンプト用 */
-
-    --shadow-primary: rgba(255, 255, 255, 0.1);
-    --shadow-secondary: rgba(0, 0, 0, 0.5);
-    
-    /* ファイルアップロードダイアログ用 (ダーク) */
-    --bg-dialog-file-item: var(--bg-secondary);
-    --border-dialog-file-item: var(--border-primary);
-    --text-dialog-file-name: var(--text-primary);
-    --text-dialog-file-size: var(--text-secondary);
-    --bg-dialog-button-select: var(--bg-button-action);
-    --bg-dialog-button-select-hover: var(--bg-button-action-hover);
-    --bg-dialog-button-confirm: var(--bg-button-save);
-    --bg-dialog-button-confirm-hover: var(--bg-button-save-hover);
-    --bg-dialog-button-cancel: var(--bg-button-cancel);
-    --bg-dialog-button-cancel-hover: var(--bg-button-cancel-hover);
-
-    /* 添付ファイル表示用 (ダーク) */
-    --bg-attachment-details: rgba(255, 255, 255, 0.05);
-    --border-attachment-details: var(--border-primary);
-    --text-attachment-summary: var(--text-secondary);
-    --text-attachment-filename: var(--text-primary);
-}
-
-/* --- リセットと基本スタイル --- */
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-html, body {
-    height: 100%;
-    font-family: var(--font-family);
-    background-color: var(--bg-secondary);
-    color: var(--text-primary);
-    overscroll-behavior-y: contain; /* iOSでの過剰なスクロールを抑制 */
-    transition: background-color 0.3s ease, color 0.3s ease;
-    overflow: hidden; /* bodyでのスクロールを禁止 */
-}
-button {
-    cursor: pointer;
-    padding: 8px 15px;
-    border-radius: 5px;
-    border: none;
-    font-size: 14px;
-    background-color: var(--bg-button);
-    color: var(--text-light);
-    transition: background-color 0.2s ease, color 0.2s ease;
-    line-height: 1.4;
-}
-button:hover:not(:disabled) {
-    background-color: var(--bg-button-hover);
-}
-button:disabled {
-    background-color: var(--bg-button-disabled);
-    cursor: not-allowed;
-    color: var(--text-disabled);
-}
-input[type="text"],
-input[type="password"],
-input[type="number"],
-select,
-textarea {
-    width: 100%;
-    padding: 10px;
-    border: 1px solid var(--border-primary);
-    border-radius: 5px;
-    font-size: 14px;
-    margin-bottom: 10px;
-    background-color: var(--bg-input);
-    color: var(--text-primary);
-    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
-}
-textarea {
-    min-height: 80px;
-    resize: vertical;
-}
-label {
-    display: block;
-    margin-bottom: 5px;
-    font-weight: bold;
-    font-size: 14px;
-    color: var(--text-primary);
-}
-::placeholder { color: var(--text-placeholder); opacity: 1; }
-:-ms-input-placeholder { color: var(--text-placeholder); }
-::-ms-input-placeholder { color: var(--text-placeholder); }
-.hidden { display: none !important; }
-
-/* --- アプリ構造 --- */
-.app-container {
-    display: flex; /* 子要素(.screen)を配置するため */
-    position: relative; /* 子要素のabsolute配置の基準 */
-    height: 100%;
-    max-width: 800px;
-    margin: 0 auto;
-    background-color: var(--bg-primary);
-    box-shadow: 0 0 10px var(--shadow-secondary);
-    overflow: hidden; /* スワイプアニメーションのため */
-    transition: background-color 0.3s ease;
-}
-
-/* --- ヘッダー --- */
-.app-header {
-    display: flex;
-    align-items: center;
-    padding: 10px 15px;
-    background-color: var(--bg-header);
-    color: var(--text-light);
-    flex-shrink: 0;
-    position: sticky; /* 画面上部に固定 */
-    top: 0;
-    z-index: 10; /* コンテンツより手前 */
-    transition: background-color 0.3s ease;
-    gap: 10px;
-}
-.app-header h1 {
-    font-size: 18px;
-    font-weight: bold;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    text-align: left;
-    margin: 0;
-    margin-right: auto; /* 後続要素を右に寄せる */
-}
-.header-button {
-    background: none;
-    border: none;
-    color: var(--text-light);
-    font-size: 20px;
-    padding: 5px;
-    line-height: 1;
-    min-width: 30px;
-    flex-shrink: 0;
-}
-/* 履歴画面ヘッダーのレイアウト調整 */
-#history-screen .app-header {
-    flex-direction: row-reverse; /* 右から配置: [戻る] [タイトル] [インポート] */
-    justify-content: flex-start; /* 左寄せにする */
-}
-#history-screen .app-header h1#history-title {
-    margin-right: 0;
-    margin-left: auto;
-    text-align: right;
-}
-#history-screen .app-header #back-to-chat-from-history {
-    order: 1; /* 戻るボタンを一番右に */
-}
-#history-screen .app-header #history-title {
-    order: 2; /* タイトルを中央に */
-}
-#history-screen .app-header #import-history-btn {
-    order: 3; /* インポートボタンを一番左に */
-    margin-right: 0; /* 右マージン削除 */
-}
-
-.header-save-button {
-    padding: 4px 12px;
-    font-size: 13px;
-    background-color: var(--bg-button-save);
-    color: var(--text-light);
-    border-radius: 5px;
-    border: none;
-    cursor: pointer;
-    transition: background-color 0.2s ease;
-    flex-shrink: 0;
-}
-.header-save-button:hover:not(:disabled) {
-    background-color: var(--bg-button-save-hover);
-}
-body.dark-mode .header-save-button {
-     background-color: var(--bg-button-save);
-}
-body.dark-mode .header-save-button:hover:not(:disabled) {
-     background-color: var(--bg-button-save-hover);
-}
-.header-notice {
-    font-size: 11px;
-    font-weight: normal;
-    color: rgba(255, 255, 255, 0.8);
-    text-align: right;
-    white-space: nowrap;
-    flex-shrink: 0;
-}
-body.dark-mode .header-notice {
-    color: rgba(255, 255, 255, 0.7);
-}
-.new-chat-button {
-    font-size: 14px;
-    padding: 5px 10px;
-    background-color: var(--bg-button-save);
-    color: var(--text-light);
-    flex-shrink: 0;
-    border-radius: 5px;
-    border: none;
-    cursor: pointer;
-    transition: background-color 0.2s ease;
-}
-.new-chat-button:hover {
-    background-color: var(--bg-button-save-hover);
-}
-body.dark-mode .new-chat-button {
-    background-color: var(--bg-button-save);
-}
-body.dark-mode .new-chat-button:hover {
-    background-color: var(--bg-button-save-hover);
-}
-
-/* --- メインコンテンツエリア --- */
-.main-content {
-    flex-grow: 1;
-    overflow-y: auto; /* デフォルトは縦スクロール */
-    padding: 15px;
-    position: relative; /* 必要に応じて内部要素の配置基準に */
-    z-index: 1; /* オーバーレイより手前 */
-    touch-action: pan-y; /* デフォルトは縦方向のパン操作を許可 */
-}
-
-/* --- 画面共通スタイル (スワイプアニメーション用) --- */
-.screen {
-    position: absolute; /* スワイプアニメーションのため */
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    transition: transform 0.3s ease-in-out; /* スワイプアニメーション */
-    background-color: var(--bg-primary); /* デフォルト背景 */
-    z-index: 0; /* 非アクティブ画面は背面に */
-}
-.screen.active {
-    transform: translateX(0);
-    z-index: 1; /* アクティブ画面を最前面に */
-}
-/* 初期位置と非表示時の位置 (修正後) */
-#chat-screen { transform: translateX(0); }
-#history-screen { transform: translateX(-100%); } /* 左に配置 */
-#settings-screen { transform: translateX(100%); } /* 右に配置 */
-
-
-/* --- チャット画面 --- */
-#chat-screen {
-    position: relative; /* 疑似要素のため */
-    z-index: 0; /* ベースレイヤー */
-    background-image: var(--chat-background-image);
-    background-size: cover;
-    background-position: center center;
-    background-repeat: no-repeat;
-    transition: background-image 0.3s ease, transform 0.3s ease-in-out;
-}
-
-/* チャット画面用オーバーレイ */
-#chat-screen::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: var(--bg-overlay-light); /* CSS変数を使用 */
-    z-index: 0; /* コンテンツの後ろ、背景画像の前 */
-    transition: background-color 0.3s ease;
-    pointer-events: none; /* クリックを透過させる */
-}
-/* ダークモード用オーバーレイ */
-body.dark-mode #chat-screen::before {
-    background-color: var(--bg-overlay-dark);
-}
-
-#chat-screen .main-content {
-    /*padding-bottom: 80px;/* /* 入力エリアのスペース */
-    z-index: 1; /* チャットコンテンツをオーバーレイより手前に */
-    background-color: transparent; /* オーバーレイ/背景画像が見えるように */
-    overflow-y: scroll; /* 縦スクロールバーを常に表示 */
-    overflow-x: auto;
-    touch-action: pan-x pan-y pinch-zoom; /* 水平・垂直パン・ピンチズームを許可 */
-    flex-grow: 1;
-}
-/* ヘッダーとフッターはオーバーレイより手前 */
-#chat-screen .app-header { z-index: 2; }
-#chat-screen .chat-input-area {
-    z-index: 2;
-    background-color: var(--bg-secondary); /* 入力エリアの背景は不透明 */
-}
-/* 履歴画面と設定画面のメインコンテンツでピンチズームを抑制 */
-#history-screen .main-content,
-#settings-screen .main-content {
-    touch-action: pan-y; /* 縦スクロールのみ許可 */
-}
-
-
-/* --- システムプロンプト表示エリア --- */
-.system-prompt-area {
-    padding: 10px 15px;
-    margin-bottom: 15px;
-    border: 1px solid var(--border-system);
-    border-radius: 8px;
-    background-color: var(--bg-system-message);
-    color: var(--text-system);
-    transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, opacity 0.3s ease, visibility 0.3s ease, max-height 0.3s ease; /* transition追加 */
-    position: relative;
-    z-index: 1; /* メッセージより手前 */
-    overflow: hidden; /* hiddenクラスでのアニメーション用 */
-    max-height: 500px; /* 通常時の最大高さ (アニメーション用) */
-}
-.system-prompt-area.hidden {
-    padding-top: 0;
-    padding-bottom: 0;
-    margin-bottom: 0;
-    border-width: 0;
-    max-height: 0; /* 非表示時の高さ */
-    opacity: 0;
-    visibility: hidden;
-}
-.system-prompt-area details {
-    width: 100%;
-}
-.system-prompt-area summary {
-    font-weight: bold;
-    cursor: pointer;
-    font-size: 13px;
-    color: var(--text-primary); /* summaryは通常テキスト色 */
-    list-style: none; /* マーカーを消す */
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    user-select: none; /* テキスト選択不可 */
-    -webkit-user-select: none; /* Safari用 */
-    -moz-user-select: none; /* Firefox用 */
-    -ms-user-select: none; /* IE/Edge用 */
-    outline: none; /* フォーカス時のアウトラインを消す */
-    -webkit-tap-highlight-color: transparent; /* モバイルタップ時のハイライトを消す */
-}
-.system-prompt-area summary::-webkit-details-marker { display: none; } /* Chrome/Safari */
-.system-prompt-area summary::marker { display: none; } /* Firefox */
-.system-prompt-area summary::after {
-    content: '▼'; /* 閉じた状態のアイコン */
-    font-size: 10px;
-    margin-left: 5px;
-    transition: transform 0.2s ease;
-}
-.system-prompt-area details[open] summary::after {
-    transform: rotate(180deg); /* 開いた状態のアイコン */
-}
-.system-prompt-content {
-    margin-top: 10px;
-}
-.system-prompt-content textarea {
-    width: 100%;
-    min-height: 60px;
-    max-height: 200px; /* 最大高さを設定 */
-    margin-bottom: 8px;
-    font-size: 13px;
-    background-color: var(--bg-input);
-    color: var(--text-primary);
-    border-color: var(--border-primary);
-}
-.system-prompt-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-}
-.system-prompt-actions button {
-    padding: 4px 10px;
-    font-size: 12px;
-}
-.system-prompt-actions .save-system-prompt-btn { background-color: var(--bg-button-save); }
-.system-prompt-actions .save-system-prompt-btn:hover { background-color: var(--bg-button-save-hover); }
-.system-prompt-actions .cancel-system-prompt-btn { background-color: var(--bg-button-cancel); }
-.system-prompt-actions .cancel-system-prompt-btn:hover { background-color: var(--bg-button-cancel-hover); }
-/* ------------------------------------ */
-
-.message-container {
-    display: flex;
-    flex-direction: column;
-    /* gap: 35px; */ /* gapを削除し、messageのmarginで調整 */
-    position: relative;
-    z-index: 1; /* メッセージをオーバーレイより手前に */
-}
-.message {
-    padding: 10px 15px;
-    border-radius: 15px;
-    max-width: var(--message-max-width);
-    min-width: 30%;
-    min-height: 40px;
-    position: relative;
-    word-wrap: break-word;
-    /* margin-bottom: 35px; */ /* 下ボタン用スペース */
-    margin-top: 35px; /* 上ボタン用スペース */
-    margin-bottom: 35px; /* 下ボタン用スペース */
-    color: var(--text-primary);
-    transition: background-color 0.3s ease, color 0.3s ease;
-    z-index: 1; /* メッセージバブル自体を手前に */
-    box-shadow: 0 1px 2px var(--shadow-primary); /* 視認性向上のための影 */
-}
-/* 最初のメッセージの上マージンは不要 */
-.message:first-child {
-    margin-top: 0;
-}
-.message pre {
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    font-family: inherit;
-    font-size: 14px;
-    margin: 0;
-    color: inherit;
-    transition: opacity 0.2s ease;
-}
-.message.user {
-    background-color: var(--bg-user-message);
-    align-self: flex-end;
-    border-bottom-right-radius: 5px;
-}
-/* ▼▼▼【ここから修正】▼▼▼ */
-body:not(.dark-mode) .message.user {
-    color: #333;
-}
-body.dark-mode .message.user {
-    color: #e0e0e0;
-}
-/* ▲▲▲【ここまで修正】▲▲▲ */
-.message.model {
-    background-color: var(--bg-model-message);
-    align-self: flex-start;
-    border-bottom-left-radius: 5px;
-    max-width: 90%;
-}
-.message.error {
-    background-color: var(--bg-error-message);
-    color: var(--text-error);
-    align-self: flex-start;
-    border-bottom-left-radius: 5px;
-    margin-top: 10px; /* エラーメッセージのマージン調整 */
-    margin-bottom: 10px;
-}
-
-/* メッセージアクション (ホバーボタン - 下) */
-.message-actions {
-    position: absolute;
-    bottom: -35px; /* 下に配置 */
-    display: none; /* ホバーで表示 */
-    flex-wrap: nowrap;
-    gap: 5px;
-    background: var(--bg-message-actions);
-    /* padding: 5px 8px; */ /* 元のpadding */
-    padding: 10px 8px 5px 8px; /* 上方向のホバー領域を増やす (top, right, bottom, left) */
-    border-radius: 5px;
-    box-shadow: 0 1px 3px var(--shadow-primary);
-    z-index: 2; /* アクションをメッセージバブルより手前に */
-    transition: opacity 0.2s ease, background-color 0.3s ease;
-}
-.message:hover .message-actions {
-    display: flex;
-}
-.message.user .message-actions {
-    right: 0;
-    left: auto;
-    justify-content: flex-end;
-}
-.message.model .message-actions {
-    left: 0;
-    right: auto;
-    justify-content: flex-start;
-}
-.message-actions button {
-    background-color: var(--bg-button-action);
-    color: var(--text-light);
-    padding: 4px 10px;
-    font-size: 12px;
-    border-radius: 4px;
-    white-space: nowrap;
-    line-height: 1.5;
-}
-.message-actions button:hover {
-    background-color: var(--bg-button-action-hover);
-}
-.message-actions .js-edit-btn { background-color: var(--bg-button-edit); }
-.message-actions .js-edit-btn:hover { background-color: var(--bg-button-edit-hover); }
-.message-actions .js-delete-btn { background-color: var(--bg-button-delete); }
-.message-actions .js-delete-btn:hover { background-color: var(--bg-button-delete-hover); }
-.message-actions .js-retry-btn { background-color: var(--bg-button-retry); }
-.message-actions .js-retry-btn:hover { background-color: var(--bg-button-retry-hover); }
-
-/* カスケードコントロール (ホバーボタン - 上) */
-.message-cascade-controls {
-    position: absolute;
-    top: -35px; /* 上に配置 */
-    left: 0;
-    display: none; /* ホバーで表示 */
-    align-items: center;
-    flex-wrap: nowrap;
-    gap: 5px;
-    background: var(--bg-message-actions);
-    /* padding: 5px 8px; */ /* 元のpadding */
-    padding: 5px 8px 10px 8px; /* 下方向のホバー領域を増やす (top, right, bottom, left) */
-    border-radius: 5px;
-    box-shadow: 0 -1px 3px var(--shadow-primary); /* 上方向の影 */
-    z-index: 2;
-    transition: opacity 0.2s ease, background-color 0.3s ease;
-}
-.message.model:hover .message-cascade-controls {
-    display: flex;
-}
-.message-cascade-controls button {
-    background-color: var(--bg-cascade-button);
-    color: var(--text-light);
-    padding: 4px 8px; /* 少し小さめ */
-    font-size: 14px; /* アイコン想定 */
-    border-radius: 4px;
-    line-height: 1;
-    min-width: 25px;
-}
-.message-cascade-controls button:hover:not(:disabled) {
-    background-color: var(--bg-cascade-button-hover);
-}
-.message-cascade-controls button:disabled {
-    background-color: var(--bg-button-disabled);
-    cursor: not-allowed;
-    opacity: 0.5;
-}
-.message-cascade-controls .cascade-indicator {
-    font-size: 11px;
-    color: var(--text-cascade-indicator);
-    padding: 0 5px;
-    white-space: nowrap;
-    font-weight: 500;
-}
-.message-cascade-controls .cascade-delete-btn {
-    background-color: var(--bg-cascade-delete-button);
-    margin-left: 5px; /* 削除ボタンを少し離す */
-}
-.message-cascade-controls .cascade-delete-btn:hover {
-    background-color: var(--bg-cascade-delete-button-hover);
-}
-
-/* インライン編集スタイル */
-.message.editing pre {
-    opacity: 0;
-    height: 0;
-    overflow: hidden;
-    pointer-events: none;
-}
-.message.editing .message-actions,
-.message.editing .message-cascade-controls { /* 編集中は上下のコントロールも非表示 */
-     opacity: 0;
-     pointer-events: none;
-     display: none !important; /* 確実に非表示 */
-}
-.message-edit-area {
-    margin-top: 5px;
-}
-.message-edit-area textarea {
-    min-height: 60px;
-    margin-bottom: 5px;
-    width: 100%; /* 幅を親要素に合わせる */
-}
-.message-edit-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    margin-top: 5px;
-}
-.message-edit-actions button {
-    padding: 4px 10px;
-    font-size: 12px;
-}
-.message-edit-actions .save-edit-btn { background-color: var(--bg-button-save); }
-.message-edit-actions .save-edit-btn:hover { background-color: var(--bg-button-save-hover); }
-.message-edit-actions .cancel-edit-btn { background-color: var(--bg-button-cancel); }
-.message-edit-actions .cancel-edit-btn:hover { background-color: var(--bg-button-cancel-hover); }
-
-/* チャット入力エリア */
-.chat-input-area {
-    display: flex;
-    align-items: flex-end;
-    padding: 10px 15px;
-    border-top: 1px solid var(--border-primary);
-    /* background-color は #chat-screen セレクタで指定 */
-    flex-shrink: 0;
-    box-sizing: border-box;
-    /* z-index は #chat-screen セレクタで指定 */
-    transition: background-color 0.3s ease, border-color 0.3s ease;
-    gap: 10px; /* ボタン間のスペース */
-}
-/* 添付ファイルボタン */
-.chat-input-area button#attach-file-btn {
-    height: 40px;
-    width: 40px;
-    padding: 0;
-    font-size: 20px;
-    font-weight: bold;
-    flex-shrink: 0;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    background-color: var(--bg-button-action); /* アクションボタンの色を使用 */
-    position: relative; /* バッジを配置するため */
-}
-/* 添付ファイルバッジのスタイル */
-.attachment-badge {
-    position: absolute;
-    top: -4px; /* 上からの位置 */
-    right: -4px; /* 右からの位置 */
-    width: var(--badge-size);
-    height: var(--badge-size);
-    background-color: var(--badge-color);
-    border-radius: 50%;
-    border: 1px solid var(--bg-primary); /* 背景色で縁取り */
-    display: none; /* 初期状態は非表示 */
-    pointer-events: none; /* クリックを透過 */
-}
-/* 添付ファイルがある場合にバッジを表示 */
-.chat-input-area button#attach-file-btn.has-attachments .attachment-badge {
-    display: block;
-}
-.chat-input-area textarea {
-    flex-grow: 1;
-    min-height: 40px;
-    max-height: 120px;
-    height: 40px;
-    resize: none;
-    margin-bottom: 0;
-    padding: 8px 10px;
-    overflow-y: auto;
-}
-.chat-input-area button#send-button {
-    height: 40px;
-    width: 40px;
-    padding: 0;
-    font-size: 18px;
-    font-weight: bold;
-    flex-shrink: 0;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-.chat-input-area button#send-button.sending {
-    background-color: #ffc107;
-    color: #333;
-}
-.chat-input-area button#send-button.sending:hover {
-    background-color: #ffa000;
-}
-body.dark-mode .chat-input-area button#send-button.sending {
-    background-color: #ffd60a;
-    color: #1a1a1a;
-}
-body.dark-mode .chat-input-area button#send-button.sending:hover {
-    background-color: #ffca28;
-}
-
-/* ローディングインジケーター */
-#loading-indicator {
-    position: fixed; /* 画面に固定 */
-    bottom: 65px;    /* 入力エリアの上あたり (入力エリア高さ約40px + パディング10px*2 + 余白5px) */
-    right: 20px;     /* 右端からの距離 */
-    background-color: var(--bg-tertiary); /* 背景色 */
-    color: var(--text-secondary);      /* テキスト色 */
-    padding: 6px 12px; /* パディング調整 */
-    border-radius: 15px; /* より丸みのある角 */
-    font-size: 11px; /* フォントサイズ調整 */
-    font-style: normal; /* イタリック解除 */
-    font-weight: 500;
-    z-index: 3;      /* 入力エリア(z-index: 2)より手前 */
-    box-shadow: 0 2px 5px var(--shadow-primary); /* 少し目立つ影 */
-    /* フェードイン/アウトのためのトランジション */
-    transition: opacity 0.3s ease, transform 0.3s ease, visibility 0.3s ease;
-    opacity: 0; /* 初期状態は非表示 (透明) */
-    visibility: hidden; /* 初期状態は非表示 (レイアウトに影響しない) */
-    transform: translateY(10px); /* 少し下から登場するアニメーション */
-    pointer-events: none; /* クリックを透過 */
-}
-/* hiddenクラスがついていない場合に表示 */
-#loading-indicator:not(.hidden) {
-    opacity: 1;
-    visibility: visible;
-    transform: translateY(0); /* 元の位置に戻る */
-}
-
-/* ダークモード固有のスタイル（必要に応じて微調整） */
-body.dark-mode #loading-indicator {
-    background-color: var(--bg-input); /* ダークモードでは入力欄に近い背景色 */
-    color: var(--text-secondary);
-    box-shadow: 0 2px 6px var(--shadow-secondary);
-}
-
-/* --- 履歴画面 --- */
-/* 履歴画面自体は背景画像なし */
-#history-screen {
-     background-color: var(--bg-primary); /* 自身の背景色を確保 */
-     transition: transform 0.3s ease-in-out; /* スワイプアニメーション */
-}
-#history-screen .main-content {
-     background-color: transparent; /* screenの背景色が見えるように */
-}
-
-.history-list {
-    list-style: none;
-    padding: 0;
-}
-.history-item {
-    padding: 12px;
-    border: 1px solid var(--border-secondary);
-    border-radius: 8px;
-    margin-bottom: 10px;
-    background-color: var(--bg-primary);
-    transition: background-color 0.2s ease, border-color 0.3s ease;
-    cursor: pointer;
-}
-.history-item:hover {
-    background-color: var(--bg-tertiary);
-}
-.history-item-details {
-    overflow: hidden;
-    min-width: 0;
-    width: 100%;
-    margin-bottom: 8px;
-}
-.history-item-title {
-    font-size: 15px;
-    font-weight: bold;
-    margin-bottom: 0px;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    display: block;
-    color: var(--text-primary);
-}
-.history-item-bottom-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 10px;
-}
-.history-item-dates {
-    font-size: 9px;
-    color: var(--text-secondary);
-    flex-shrink: 0;
-    line-height: 1.3;
-    text-align: left;
-}
-.history-item-dates span {
-    display: block;
-    white-space: nowrap;
-}
-.history-item-actions {
-    display: flex;
-    gap: 8px;
-    flex-shrink: 0;
-    flex-wrap: nowrap;
-    cursor: default; /* ボタン以外はクリックを透過 */
-}
-.history-item-actions button {
-     cursor: pointer;
-}
-.history-item-actions .js-edit-title-btn {
-    background-color: var(--bg-button-edit);
-    font-size: 16px;
-    padding: 6px 8px;
-}
-.history-item-actions .js-edit-title-btn:hover { background-color: var(--bg-button-edit-hover); }
-.history-item-actions .js-delete-btn { background-color: var(--bg-button-delete); }
-.history-item-actions .js-delete-btn:hover { background-color: var(--bg-button-delete-hover); }
-.history-item-actions .js-duplicate-btn { background-color: var(--bg-button-duplicate); }
-.history-item-actions .js-duplicate-btn:hover { background-color: var(--bg-button-duplicate-hover); }
-.history-item-actions .js-export-btn { background-color: var(--bg-button-export); }
-.history-item-actions .js-export-btn:hover { background-color: var(--bg-button-export-hover); }
-
-.js-history-item-template {
-     display: none !important; /* テンプレートは非表示 */
-}
-#no-history-message {
-    text-align: center;
-    color: var(--text-secondary);
-    margin-top: 20px;
-}
-
-/* --- 設定画面 --- */
-/* 設定画面自体は背景画像なし */
-#settings-screen {
-     background-color: var(--bg-primary); /* 自身の背景色を確保 */
-     transition: transform 0.3s ease-in-out; /* スワイプアニメーション */
-}
- #settings-screen .main-content {
-     background-color: transparent; /* screenの背景色が見えるように */
-}
-
-.settings-group {
-    margin-bottom: 25px;
-    padding: 15px;
-    border: 1px solid var(--border-tertiary);
-    border-radius: 8px;
-    background-color: var(--bg-tertiary);
-    transition: background-color 0.3s ease, border-color 0.3s ease;
-}
-.settings-group h3 {
-    margin-bottom: 15px;
-    font-size: 16px;
-    color: var(--text-link);
-    border-bottom: 1px solid var(--border-tertiary);
-    padding-bottom: 5px;
-    transition: color 0.3s ease, border-color 0.3s ease;
-}
-.settings-actions {
-    margin-top: 20px;
-    padding-top: 20px;
-    border-top: 1px solid var(--border-tertiary);
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-.settings-actions.bottom {
-    margin-bottom: 20px;
-}
-.settings-actions button {
-    width: 100%;
-}
-.danger-zone {
-    margin-top: 30px;
-    padding-top: 20px;
-    border-top: 2px solid var(--border-danger);
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-.danger-zone button {
-    width: 100%;
-}
-#update-app-btn {
-    background-color: var(--bg-button-update);
-}
-#update-app-btn:hover {
-    background-color: var(--bg-button-update-hover);
-}
-#clear-data-btn {
-    background-color: var(--bg-button-delete);
-}
-#clear-data-btn:hover {
-    background-color: var(--bg-button-delete-hover);
-}
-.checkbox-label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 10px;
-    cursor: pointer;
-    color: var(--text-primary);
-}
-.checkbox-label input[type="checkbox"] {
-    width: auto;
-    margin-bottom: 0;
-    cursor: pointer;
-}
-.param-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    gap: 15px;
-}
-
-/* 設定画面: 画像コントロール */
-.image-upload-controls {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-}
-/* アクションボタンスタイルをアップロードボタンに適用 */
-.settings-action-button {
-    background-color: var(--bg-button-action);
-    padding: 8px 15px;
-    border-radius: 5px;
-    border: none;
-    font-size: 14px;
-    color: var(--text-light);
-    cursor: pointer;
-}
-.settings-action-button:hover {
-    background-color: var(--bg-button-action-hover);
-}
-/* 削除ボタンスタイル */
-.settings-delete-button {
-    background-color: var(--bg-button-delete);
-    padding: 8px 15px; /* 他のボタンと一貫性のあるパディング */
-    border-radius: 5px;
-    border: none;
-    font-size: 14px;
-    color: var(--text-light);
-    cursor: pointer;
-    margin-left: auto; /* 削除ボタンを右端に寄せる */
-}
-.settings-delete-button:hover {
-    background-color: var(--bg-button-delete-hover);
-}
-.background-thumbnail {
-    max-width: 100px;
-    max-height: 60px;
-    border-radius: 4px;
-    border: 1px solid var(--border-tertiary);
-    object-fit: cover;
-    vertical-align: middle;
-}
-/* ========================================== */
-
-/* --- OSのカラースキームを優先 --- */
-@media (prefers-color-scheme: dark) {
-  body:not(.light-mode-forced) {
-    /* デフォルトでダークモード変数を適用 */
-    --bg-primary: #1a1a1a;
-    --bg-secondary: #101010;
-    --bg-tertiary: #252525;
-    --bg-input: #303030;
-    --bg-user-message: #056162;
-    --bg-model-message: #3a3a3c;
-    --bg-system-message: #2a3a4a; /* システムプロンプト用 */
-    --bg-error-message: #5c1c1c;
-    --bg-button: #007aff;
-    --bg-button-hover: #005ecb;
-    --bg-button-disabled: #4a5a70;
-    --bg-button-action: #666666;
-    --bg-button-action-hover: #888888;
-    --bg-button-delete: #ff3b30;
-    --bg-button-delete-hover: #d12c23;
-    --bg-button-retry: #34c759;
-    --bg-button-retry-hover: #249a41;
-    --bg-button-edit: #ff9500;
-    --bg-button-edit-hover: #d17d00;
-    --bg-button-duplicate: #8e8e93;
-    --bg-button-duplicate-hover: #6b6b70;
-    --bg-button-export: #0a84ff;
-    --bg-button-export-hover: #0069d1;
-    --bg-button-save: #30d158;
-    --bg-button-save-hover: #24a345;
-    --bg-button-cancel: #ff453a;
-    --bg-button-cancel-hover: #d1332b;
-    --bg-button-update: #0a84ff;
-    --bg-button-update-hover: #0069d1;
-    --bg-header: #007aff;
-    --bg-message-actions: rgba(50, 50, 50, 0.8);
-    /* --bg-overlay-dark は body.dark-mode で定義済み */
-    /* カスケードコントロール用 (ダーク) */
-    --bg-cascade-button: var(--bg-button-action);
-    --bg-cascade-button-hover: var(--bg-button-action-hover);
-    --bg-cascade-delete-button: var(--bg-button-delete);
-    --bg-cascade-delete-button-hover: var(--bg-button-delete-hover);
-    --text-cascade-indicator: var(--text-secondary);
-
-    --text-primary: #e0e0e0;
-    --text-secondary: #aaaaaa;
-    --text-light: #ffffff;
-    --text-disabled: #666666;
-    --text-error: #ff8a80;
-    --text-link: #00aaff;
-    --text-placeholder: #777777;
-    --text-system: #ccc; /* システムプロンプト用 */
-
-    --border-primary: #444444;
-    --border-secondary: #555555;
-    --border-tertiary: #333333;
-    --border-danger: #7a2e35;
-    --border-system: #4682b4; /* システムプロンプト用 */
-
-    --shadow-primary: rgba(255, 255, 255, 0.1);
-    --shadow-secondary: rgba(0, 0, 0, 0.5);
-  }
-}
-
-/* --- Markdown固有スタイル --- */
-.message-content {
-    font-size: 14px;
-    line-height: 1.6;
-    color: inherit;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-    position: relative; /* コンテンツがメッセージフロー内にあることを保証 */
-    z-index: 1; /* オーバーレイより手前 */
-}
-.message-content > *:first-child { margin-top: 0; }
-.message-content > *:last-child { margin-bottom: 0; }
-.message-content h1, .message-content h2, .message-content h3, .message-content h4, .message-content h5, .message-content h6 {
-    margin-top: 1.2em;
-    margin-bottom: 0.6em;
-    font-weight: bold;
-    line-height: 1.3;
-    color: inherit;
-}
-.message-content h1 { font-size: 1.8em; }
-.message-content h2 { font-size: 1.5em; }
-.message-content h3 { font-size: 1.3em; }
-.message-content h4 { font-size: 1.1em; }
-.message-content p {
-    margin-bottom: 0.8em;
-}
-.message-content ul, .message-content ol {
-    margin-bottom: 0.8em;
-    padding-left: 2em;
-}
-.message-content li {
-    margin-bottom: 0.3em;
-}
-.message-content li > ul, .message-content li > ol {
-     margin-top: 0.3em;
-     margin-bottom: 0.3em;
-}
-.message-content pre {
-    background-color: var(--bg-secondary);
-    padding: 10px;
-    border-radius: 5px;
-    overflow-x: auto;
-    margin: 1em 0;
-    font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
-    font-size: 13px;
-    border: 1px solid var(--border-tertiary);
-    color: var(--text-secondary);
-}
-/* ユーザーメッセージの<pre>は背景色透過が必要 */
-.message.user .message-content pre {
-     background-color: transparent;
-     padding: 0;
-     margin: 0;
-     border: none;
-     border-radius: 0;
-     color: inherit;
-     font-family: inherit;
-     font-size: inherit;
-     line-height: inherit;
-     white-space: pre-wrap;
-     word-wrap: break-word;
-     overflow-x: visible;
-}
-.message-content code:not(pre > code) { /* インラインコード */
-    background-color: var(--bg-secondary);
-    padding: 0.2em 0.4em;
-    border-radius: 3px;
-    font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
-    font-size: 0.9em;
-    border: 1px solid var(--border-tertiary);
-    color: var(--text-secondary);
-}
-.message-content blockquote {
-    margin: 1em 0;
-    padding-left: 1em;
-    border-left: 4px solid var(--border-primary);
-    color: var(--text-secondary);
-}
-.message-content blockquote > *:first-child { margin-top: 0; }
-.message-content blockquote > *:last-child { margin-bottom: 0; }
-.message-content a {
-    color: var(--text-link);
-    text-decoration: underline;
-}
-.message-content strong {
-    font-weight: bold;
-}
-.message-content em {
-    font-style: italic;
-}
-.message-content table {
-    border-collapse: collapse;
-    margin: 1em 0;
-    width: auto;
-    border: 1px solid var(--border-secondary);
-}
-.message-content th, .message-content td {
-    border: 1px solid var(--border-secondary);
-    padding: 6px 10px;
-    text-align: left;
-}
-.message-content th {
-    background-color: var(--bg-tertiary);
-    font-weight: bold;
-}
-.message-content hr {
-    border: none;
-    border-top: 1px solid var(--border-secondary);
-    margin: 1.5em 0;
-}
-
-/* :hover または .show-actions クラスで操作ボックスを表示 */
-.message:hover .message-actions,
-.message.show-actions .message-actions,
-.message:hover .message-cascade-controls,
-.message.show-actions .message-cascade-controls {
-    display: flex; /* または block など、元の表示プロパティに合わせる */
-    /* 必要であれば他のスタイルも調整 */
-}
-
-/* 編集中はクリックによる表示も抑制する (既存ルールと合わせる) */
-.message.editing.show-actions .message-actions,
-.message.editing.show-actions .message-cascade-controls {
-    display: none !important; /* 編集時は確実に非表示 */
-}
-/* リトライ中の非表示スタイル */
-.message.retrying-hidden {
-    display: none !important;
-}
-/* ダークモードでのMarkdown調整 */
-body.dark-mode .message-content pre {
-    background-color: var(--bg-tertiary);
-    border-color: var(--border-primary);
-    color: var(--text-secondary);
-}
- body.dark-mode .message-content code:not(pre > code) {
-    background-color: var(--bg-tertiary);
-    border-color: var(--border-primary);
-    color: var(--text-secondary);
-}
-body.dark-mode .message-content blockquote {
-    border-left-color: var(--border-primary);
-    color: var(--text-secondary);
-}
- body.dark-mode .message-content a {
-    color: var(--text-link);
- }
-body.dark-mode .message-content table,
-body.dark-mode .message-content th,
-body.dark-mode .message-content td {
-    border-color: var(--border-primary);
-}
-body.dark-mode .message-content th {
-    background-color: var(--bg-secondary);
-}
-body.dark-mode .message-content hr {
-    border-top-color: var(--border-primary);
-}
-
-/* メッセージアクション領域のトークン数表示 */
-.message-actions .token-count-display {
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    /*margin-left: 4px;*/
-    vertical-align: middle;
-    line-height: 1.5;
-    white-space: nowrap;
-}
-
-/* --- カスタムダイアログスタイル --- */
-.custom-dialog {
-    border: 1px solid var(--border-secondary);
-    border-radius: 8px;
-    padding: 25px;
-    background-color: var(--bg-primary);
-    color: var(--text-primary);
-    box-shadow: 0 5px 20px var(--shadow-secondary);
-    min-width: 280px;
-    max-width: 500px;
-    width: fit-content;
-    box-sizing: border-box;
-    margin-left: auto;
-    margin-right: auto;
-    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
-    position: relative; /* ダイアログがページコンテンツより上に来るように */
-    z-index: 100; /* ダイアログ用の高いz-index */
-}
-.custom-dialog::backdrop {
-    background-color: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(3px);
-    transition: background-color 0.3s ease;
-    z-index: 99; /* バックドロップはダイアログの後ろ */
-}
-
-body.dark-mode .custom-dialog::backdrop {
-    background-color: rgba(30, 30, 30, 0.7);
-}
-.custom-dialog[open] {
-    animation: dialog-fade-in 0.3s ease forwards;
-}
-@keyframes dialog-fade-in {
-    from { opacity: 0; transform: translateY(-10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-.custom-dialog .dialog-message {
-    margin: 0 0 20px 0;
-    font-size: 15px;
-    line-height: 1.6;
-    display: block;
-    text-align: left;
-}
-.custom-dialog .dialog-input {
-    width: 100%;
-    padding: 8px 10px;
-    margin-bottom: 20px;
-    border: 1px solid var(--border-primary);
-    border-radius: 4px;
-    font-size: 14px;
-    background-color: var(--bg-input);
-    color: var(--text-primary);
-}
-.custom-dialog .dialog-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-    margin-top: 15px;
-}
-.custom-dialog button {
-    padding: 8px 18px;
-    font-weight: 500;
-    min-width: 80px;
-}
-.custom-dialog .dialog-ok-btn {
-    background-color: var(--bg-button);
-    color: var(--text-light);
-}
-.custom-dialog .dialog-ok-btn:hover:not(:disabled) {
-    background-color: var(--bg-button-hover);
-}
- .custom-dialog .dialog-cancel-btn {
-    background-color: var(--bg-button-action);
-    color: var(--text-light);
-}
-.custom-dialog .dialog-cancel-btn:hover:not(:disabled) {
-    background-color: var(--bg-button-action-hover);
-}
-/* Thought Summary表示スタイル */
-.thought-summary-details {
-    margin-bottom: 10px; /* 本文との間隔 */
-    font-size: 13px;
-    border: 1px solid var(--border-tertiary);
-    border-radius: 5px;
-    background-color: var(--bg-tertiary);
-    transition: background-color 0.3s ease, border-color 0.3s ease;
-}
-.thought-summary-details summary {
-    cursor: pointer;
-    font-weight: 500; /* 少し太字に */
-    color: var(--text-secondary);
-    list-style: none;
-    padding: 6px 10px;
-    outline: none;
-    -webkit-tap-highlight-color: transparent;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    user-select: none;
-}
-.thought-summary-details summary::-webkit-details-marker { display: none; }
-.thought-summary-details summary::marker { display: none; }
-.thought-summary-details summary::before { /* アイコン追加 */
-    content: '🧠'; /* 脳の絵文字など */
-    font-size: 14px;
-    display: inline-block;
-}
-.thought-summary-details[open] summary {
-    border-bottom: 1px solid var(--border-tertiary);
-}
-.thought-summary-content {
-    padding: 8px 10px;
-    font-size: 13px; /* 本文より少し小さめ */
-    line-height: 1.5;
-    color: var(--text-primary);
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-}
-.thought-summary-content > *:first-child { margin-top: 0; }
-.thought-summary-content > *:last-child { margin-bottom: 0; }
-.thought-summary-content ul,
-.thought-summary-content ol { margin-left: 1em;}
-/* ダークモード用 */
-body.dark-mode .thought-summary-details {
-    border-color: var(--border-primary);
-    background-color: var(--bg-secondary);
-}
-body.dark-mode .thought-summary-details summary {
-    color: var(--text-secondary);
-}
-body.dark-mode .thought-summary-details[open] summary {
-    border-bottom-color: var(--border-primary);
-}
-body.dark-mode .thought-summary-content {
-    color: var(--text-primary);
-}
-/* MarkdownスタイルをThought Summaryにも適用 (一部抜粋) */
-.thought-summary-content pre {
-    background-color: var(--bg-secondary); /* 通常のpreより少し明るいかも */
-    padding: 8px;
-    border-radius: 4px;
-    overflow-x: auto;
-    margin: 0.8em 0;
-    font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
-    font-size: 12px;
-    border: 1px solid var(--border-tertiary);
-    color: var(--text-secondary);
-}
-body.dark-mode .thought-summary-content pre {
-    background-color: var(--bg-tertiary); /* ダークモードでは通常preと同じでも良いかも */
-    border-color: var(--border-primary);
-    color: var(--text-secondary);
-}
-.thought-summary-content code:not(pre > code) {
-    background-color: var(--bg-secondary);
-    padding: 0.1em 0.3em;
-    border-radius: 3px;
-    font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
-    font-size: 0.85em;
-    border: 1px solid var(--border-tertiary);
-    color: var(--text-secondary);
-}
-body.dark-mode .thought-summary-content code:not(pre > code) {
-    background-color: var(--bg-tertiary);
-    border-color: var(--border-primary);
-    color: var(--text-secondary);
-}
-/* --- 引用元表示スタイル --- */
-.citation-details {
-    margin-top: 10px; /* 少し詰める */
-    font-size: 12px;
-    border-top: 1px dashed var(--border-secondary); /* 区切り線 */
-    padding-top: 8px;
-}
-.citation-details summary {
-    cursor: pointer;
-    font-weight: normal;
-    color: var(--text-secondary);
-    list-style: none; /* マーカーを消す */
-    display: inline-block; /* summaryの幅を内容に合わせる */
-    outline: none; /* フォーカス時のアウトラインを消す */
-    -webkit-tap-highlight-color: transparent; /* モバイルタップ時のハイライトを消す */
-}
-.citation-details summary::-webkit-details-marker { display: none; } /* Chrome/Safari */
-.citation-details summary::marker { display: none; } /* Firefox */
-.citation-details summary:hover {
-    text-decoration: underline;
-}
-.citation-list {
-    list-style: none;
-    padding-left: 0; /* 左のパディングを削除 */
-    margin-top: 8px;
-    margin-bottom: 0;
-}
-.citation-list li {
-    margin-bottom: 5px;
-    overflow-wrap: break-word; /* 長いURLやタイトルを折り返す */
-}
-.citation-list li a {
-    color: var(--text-link);
-    text-decoration: none; /* 下線はホバー時のみなど、お好みで */
-    display: block; /* リンク領域を広げる */
-}
-.citation-list li a:hover {
-    text-decoration: underline;
-}
-/* ダークモード用 */
-body.dark-mode .citation-details {
-    border-top-color: var(--border-primary);
-}
-body.dark-mode .citation-details summary {
-    color: var(--text-secondary);
-}
-body.dark-mode .citation-list li a {
-    color: var(--text-link);
-}
-/* --- 添付ファイル表示スタイル (ユーザーメッセージ内) --- */
-.attachment-details {
-    margin-top: 10px;
-    font-size: 12px;
-    border: 1px solid var(--border-attachment-details);
-    border-radius: 5px;
-    background-color: var(--bg-attachment-details);
-    transition: background-color 0.3s ease, border-color 0.3s ease;
-}
-.attachment-details summary {
-    cursor: pointer;
-    font-weight: normal;
-    color: var(--text-attachment-summary);
-    list-style: none;
-    padding: 5px 10px;
-    outline: none;
-    -webkit-tap-highlight-color: transparent;
-    display: flex; /* アイコン表示用 */
-    align-items: center; /* アイコン垂直中央揃え */
-    gap: 5px; /* アイコンとテキストの間隔 */
-}
-.attachment-details summary::-webkit-details-marker { display: none; }
-.attachment-details summary::marker { display: none; }
-.attachment-details summary::before { /* アイコン追加 */
-    content: '📎'; /* クリップアイコン */
-    font-size: 14px;
-    display: inline-block;
-}
-.attachment-details[open] summary {
-    border-bottom: 1px solid var(--border-attachment-details);
-}
-.attachment-list {
-    list-style: none;
-    padding: 8px 10px 5px 10px; /* 内側のパディング */
-    margin: 0;
-}
-.attachment-list li {
-    margin-bottom: 4px;
-    font-size: 10px;
-    color: var(--text-attachment-filename);
-    overflow-wrap: break-word;
-    white-space: nowrap; /* ファイル名は折り返さない */
-    overflow: hidden; /* はみ出した部分は隠す */
-    text-overflow: ellipsis; /* 省略記号 */
-    line-height: 1.4;
-}
-
-/* ファイルアップロードダイアログ固有スタイル */
-#fileUploadDialog {
-    min-width: 320px;
-    max-width: 600px; /* 少し広め */
-    width: 90%;
-}
-.dialog-content { /* ダイアログ内の主要コンテンツエリア */
-    margin-bottom: 20px;
-}
-.file-upload-area {
-    margin-bottom: 15px;
-    text-align: center; /* ボタンを中央寄せ */
-}
-.file-upload-area .dialog-button { /* ダイアログ内のボタン共通スタイル */
-    padding: 10px 20px;
-    font-size: 14px;
-}
-.file-upload-area #select-files-btn {
-    background-color: var(--bg-dialog-button-select);
-}
-.file-upload-area #select-files-btn:hover {
-    background-color: var(--bg-dialog-button-select-hover);
-}
-#selected-files-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    max-height: 200px; /* スクロール可能にする */
-    overflow-y: auto;
-    border: 1px solid var(--border-secondary);
-    border-radius: 5px;
-    background-color: var(--bg-secondary); /* リスト背景 */
-    transition: background-color 0.3s ease, border-color 0.3s ease;
-}
-.selected-file-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--border-dialog-file-item);
-    background-color: var(--bg-dialog-file-item);
-    transition: background-color 0.3s ease, border-color 0.3s ease;
-}
-.selected-file-item:last-child {
-    border-bottom: none;
-}
-.selected-file-info {
-    flex-grow: 1;
-    overflow: hidden; /* ファイル名が長い場合のため */
-    margin-right: 10px;
-}
-.selected-file-name {
-    display: block;
-    font-size: 14px;
-    color: var(--text-dialog-file-name);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.selected-file-size {
-    display: block;
-    font-size: 11px;
-    color: var(--text-dialog-file-size);
-}
-.remove-file-btn {
-    background-color: var(--bg-button-delete);
-    color: var(--text-light);
-    border: none;
-    border-radius: 15%; /* 丸ボタン */
-    width: 22px;
-    height: 22px;
-    min-width: 0 !important;
-    font-size: 14px;
-    line-height: 1;
-    padding: 0;
-    cursor: pointer;
-    flex-shrink: 0;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-.remove-file-btn:hover {
-    background-color: var(--bg-button-delete-hover);
-}
-#file-upload-notice {
-    font-size: 11px;
-    color: var(--text-secondary);
-    margin-top: 10px;
-    text-align: center;
-}
-/* ダイアログのアクションボタン */
-#fileUploadDialog .dialog-actions {
-    margin-top: 20px; /* コンテンツとの間隔 */
-}
-#fileUploadDialog .dialog-actions #confirm-attach-btn {
-    background-color: var(--bg-dialog-button-confirm);
-}
-#fileUploadDialog .dialog-actions #confirm-attach-btn:hover:not(:disabled) {
-    background-color: var(--bg-dialog-button-confirm-hover);
-}
-#fileUploadDialog .dialog-actions #cancel-attach-btn {
-    background-color: var(--bg-dialog-button-cancel);
-}
-#fileUploadDialog .dialog-actions #cancel-attach-btn:hover:not(:disabled) {
-    background-color: var(--bg-dialog-button-cancel-hover);
-}
-
-/* --- 画像サムネイル表示調整 --- */
-.message-content img {
-    max-width: 100%; /* ★表示崩れを防ぐための最も重要な設定 */
-    height: auto;    /* 画像の縦横比を維持 */
-    border-radius: 8px; /* 画像の角を少し丸める */
-    cursor: pointer;    /* クリックできることを示すカーソル */
-    transition: opacity 0.2s ease;
-    display: block; /* 画像下の余分なスペースを削除 */
-    margin-top: 5px;
-    margin-bottom: 5px;
-}
-.message-content img:hover {
-    opacity: 0.8; /* ホバー時に少し透明にする */
-}
-
-/* --- 画像拡大モーダル --- */
-#image-modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.85);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 1000; /* 他の要素より最前面に表示 */
-    cursor: pointer;
-    animation: fadeIn 0.3s ease;
-}
-#image-modal-overlay.hidden {
-    display: none; /* 初期状態は非表示 */
-}
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-#image-modal-img {
-    max-width: 90vw;  /* 画面幅の90%を最大幅とする */
-    max-height: 90vh; /* 画面高さの90%を最大高とする */
-    object-fit: contain; /* アスペクト比を維持してコンテナに収める */
-    box-shadow: 0 0 25px rgba(0,0,0,0.5);
-    cursor: default; /* 画像上では通常のカーソル */
-}
-#image-modal-close {
-    position: absolute;
-    top: 20px;
-    right: 35px;
-    color: #fff;
-    font-size: 40px;
-    font-weight: bold;
-    cursor: pointer;
-    transition: color 0.2s ease;
-    line-height: 1;
-}
-#image-modal-close:hover {
-    color: #bbb;
-}

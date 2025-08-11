@@ -6,10 +6,11 @@
     <title>Gemini PWA Mk-II</title>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" id="theme-color-meta" content="#4a90e2">
-    <!-- CSSファイルを外部から読み込む -->
-    <link rel="stylesheet" href="style.css">
+    
     <script src="marked.js"></script>
-    <script src="function-calling.js"></script>
+        <script src="function-calling.js"></script>
+
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="app-container">
@@ -245,7 +246,6 @@
                     </p>
                 </div>
 
-
                 <div class="settings-group">
                     <h3>校正機能</h3>
                     <label class="checkbox-label">
@@ -396,6 +396,15 @@
             </div>
             <ul id="selected-files-list">
                 <!-- 選択されたファイルがここに表示される -->
+                <!-- 例:
+                <li class="selected-file-item" data-file-index="0">
+                    <div class="selected-file-info">
+                        <span class="selected-file-name">example.jpg</span>
+                        <span class="selected-file-size">1.2 MB</span>
+                    </div>
+                    <button class="remove-file-btn" title="削除">×</button>
+                </li>
+                -->
             </ul>
             <p id="file-upload-notice">画像、テキスト、PDF、動画、音声などを添付可能</p>
         </div>
@@ -410,7 +419,9 @@
         <img id="image-modal-img" src="" alt="拡大画像">
     </div>
 
-    <!-- JavaScriptファイルを外部から読み込む (defer属性付き) -->
-    <script src="script.js" defer></script>
+    
+    
+    
+    <script src="app.js" defer></script>
 </body>
 </html>
