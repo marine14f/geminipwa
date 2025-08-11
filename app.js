@@ -2905,14 +2905,24 @@ const appLogic = {
                     throw new Error("リクエストがキャンセルされました。");
                 }
 
+                // ▼▼▼【ここから変更】▼▼▼
                 if (attempt > 0) {
                     const delay = INITIAL_RETRY_DELAY * Math.pow(2, attempt - 1);
-                    uiUtils.setLoadingIndicatorText(`校正を再試行中 (${attempt}回目)... ${delay}ms待機`);
+                    // リトライ時にインジケーターのテキストを更新
+                    uiUtils.setLoadingIndicatorText(`校正エラー 再試行(${attempt}回目)... ${delay}ms待機`);
                     console.log(`校正APIリトライ ${attempt}: ${delay}ms待機...`);
                     await interruptibleSleep(delay, state.abortController.signal);
-                } else {
-                    uiUtils.setLoadingIndicatorText('校正中...');
                 }
+
+                // API通信中のステータスメッセージを設定
+                if (attempt === 0) {
+                    uiUtils.setLoadingIndicatorText('校正中...');
+                } else if (attempt === 1) {
+                    uiUtils.setLoadingIndicatorText('校正を再試行中...');
+                } else {
+                    uiUtils.setLoadingIndicatorText(`校正を${attempt}回目の再試行中...`);
+                }
+                // ▲▲▲【ここまで変更】▲▲▲
 
                 const response = await fetch(endpoint, {
                     method: 'POST',
@@ -4150,6 +4160,7 @@ const appLogic = {
                     throw new Error("リクエストがキャンセルされました。");
                 }
 
+                // ▼▼▼【ここから変更】▼▼▼
                 // リトライ時に待機処理（初回は待機しない）
                 if (attempt > 0) {
                     const delay = INITIAL_RETRY_DELAY * Math.pow(2, attempt - 1);
@@ -4159,8 +4170,16 @@ const appLogic = {
                     console.log(`API呼び出し失敗。${delay}ms後にリトライします... (試行 ${attempt + 1}/${maxRetries + 1})`);
                     
                     await interruptibleSleep(delay, state.abortController.signal);
-                    uiUtils.setLoadingIndicatorText('応答中...'); // 待機後、インジケーターを戻す
                 }
+
+                // API通信中のステータスメッセージを設定
+                // handleSendで"応答中..."が設定されているため、attempt > 0 の場合のみ上書き
+                if (attempt === 1) {
+                    uiUtils.setLoadingIndicatorText('再試行中...');
+                } else if (attempt > 1) {
+                    uiUtils.setLoadingIndicatorText(`${attempt}回目の再試行中...`);
+                }
+                // ▲▲▲【ここまで変更】▲▲▲
 
                 const response = await apiUtils.callGeminiApi(messagesForApi, generationConfig, systemInstruction, tools);
 
@@ -4186,12 +4205,10 @@ const appLogic = {
                         }
                     }
 
-                    // ▼▼▼【ここから変更】▼▼▼
                     // 空応答（テキストもツール呼び出しもない）の場合、リトライ対象のエラーとして扱う
                     if (!fullContent && !toolCalls) {
                         throw new Error("APIから空の応答が返されました。");
                     }
-                    // ▲▲▲【ここまで変更】▲▲▲
 
                      // ストリーミングが正常に完了した場合の戻り値
                     return { 
@@ -4221,12 +4238,10 @@ const appLogic = {
                     const textPart = parts.find(p => p.text);
                     const toolCallParts = parts.filter(p => p.functionCall);
 
-                    // ▼▼▼【ここから変更】▼▼▼
                     // 空応答（テキストもツール呼び出しもない）の場合、リトライ対象のエラーとして扱う
                     if (!textPart && toolCallParts.length === 0) {
                         throw new Error("APIから空の応答が返されました。");
                     }
-                    // ▲▲▲【ここまで変更】▲▲▲
 
                     // 正常な応答の戻り値
                     return {
