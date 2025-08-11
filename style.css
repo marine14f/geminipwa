@@ -1,5 +1,4 @@
-
-        /* --- CSS変数 --- */
+/* --- CSS変数 --- */
         :root {
             /* ライトモード (デフォルト) */
             --bg-primary: #ffffff;
@@ -1708,4 +1707,3 @@
         #image-modal-close:hover {
             color: #bbb;
         }
-    

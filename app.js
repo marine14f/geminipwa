@@ -1,6 +1,3 @@
-
-
-// ===== Inline script #1 split from index.html =====
 // --- 定数 ---
         const DB_NAME = 'GeminiPWA_DB';
         const DB_VERSION = 8; // スキーマ変更なしのため据え置き
@@ -4555,9 +4552,8 @@
         // --- 初期化処理 ---
         appLogic.initializeApp();
 
+// ---- Separator between original inline <script> blocks ----
 
-
-// ===== Inline script #2 split from index.html =====
 // システムプロンプト更新処理
         appLogic.updateCurrentSystemPrompt = function () {
             try {
