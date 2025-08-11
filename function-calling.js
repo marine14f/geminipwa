@@ -130,7 +130,6 @@ async function getCurrentDateTime() {
     }
 }
 
-// ▼▼▼【ここから追加】▼▼▼
 /**
  * TRPGなどで使用するダイスロールを実行する関数
  * @param {object} args - AIによって提供される引数オブジェクト
@@ -199,8 +198,6 @@ async function rollDice({ expression }) {
         return { error: `ダイスロール中に予期せぬエラーが発生しました: ${error.message}` };
     }
 }
-// ▲▲▲【ここまで追加】▲▲▲
-
 
 window.functionCallingTools = {
   calculate: async function({ expression }) {
@@ -227,9 +224,7 @@ window.functionCallingTools = {
   },
   manage_persistent_memory: manage_persistent_memory,
   getCurrentDateTime: getCurrentDateTime,
-  // ▼▼▼【ここから追加】▼▼▼
   rollDice: rollDice
-  // ▲▲▲【ここまで追加】▲▲▲
 };
 
 /**
