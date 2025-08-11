@@ -6,8 +6,411 @@
     <title>Gemini PWA Mk-II</title>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" id="theme-color-meta" content="#4a90e2">
+    <!-- CSSファイルを外部から読み込む -->
     <link rel="stylesheet" href="style.css">
+    <script src="marked.js"></script>
+    <script src="function-calling.js"></script>
+</head>
+<body>
+    <div class="app-container">
 
-    <script src="script.js"></script>
+        <!-- チャット画面 -->
+        <div id="chat-screen" class="screen active">
+            <header class="app-header">
+                <button id="goto-history-btn" class="header-button" aria-label="履歴一覧へ">☰</button>
+                <h1 id="chat-title">新規チャット</h1>
+                <button id="new-chat-btn" class="new-chat-button" title="新規チャットを開始">新規</button>
+                <button id="goto-settings-btn" class="header-button" aria-label="設定へ">⚙</button>
+            </header>
+            <main class="main-content">
+                <!-- システムプロンプト表示/編集エリア -->
+                <div id="system-prompt-area" class="system-prompt-area">
+                    <details id="system-prompt-details">
+                        <summary>システムプロンプト</summary>
+                        <div class="system-prompt-content">
+                            <textarea id="system-prompt-editor" aria-label="システムプロンプト編集"></textarea>
+                            <div class="system-prompt-actions">
+                                <button id="cancel-system-prompt-btn" class="cancel-system-prompt-btn">キャンセル</button>
+                                <button id="save-system-prompt-btn" class="save-system-prompt-btn">保存</button>
+                            </div>
+                        </div>
+                    </details>
+                </div>
+                <!-- メッセージコンテナ -->
+                <div id="message-container" class="message-container">
+                    <!-- メッセージはここに読み込まれる -->
+                </div>
+                <div id="loading-indicator" class="loading-indicator hidden" aria-live="polite">応答中</div>
+            </main>
+            <footer class="chat-input-area">
+                <textarea id="user-input" placeholder="メッセージを入力..." rows="1" aria-label="メッセージ入力"></textarea>
+                <!-- 添付ファイルボタンを追加 -->
+                <button id="attach-file-btn" title="ファイルを添付">+<span class="attachment-badge"></span></button>
+                <button id="send-button" title="送信">送</button>
+            </footer>
+        </div>
+
+        <!-- 履歴画面 -->
+        <div id="history-screen" class="screen">
+            <header class="app-header">
+                <button id="back-to-chat-from-history" class="header-button" aria-label="チャットへ戻る">＞</button>
+                <h1 id="history-title">履歴一覧</h1>
+                <button id="import-history-btn" class="header-save-button" title="履歴をインポート">インポート</button>
+                <input type="file" id="import-history-input" accept=".txt,text/plain" class="hidden"> <!-- インポート用ファイル入力 -->
+            </header>
+            <main class="main-content">
+                <ul id="history-list" class="history-list">
+                    <!-- 履歴アイテムはここに読み込まれる -->
+                    <li class="js-history-item-template history-item">
+                        <div class="history-item-details">
+                            <span class="history-item-title"></span>
+                        </div>
+                        <div class="history-item-bottom-row">
+                            <div class="history-item-dates">
+                                <span class="created-date"></span>
+                                <span class="updated-date"></span>
+                            </div>
+                            <div class="history-item-actions">
+                                <button class="js-edit-title-btn" title="タイトル編集">✎</button>
+                                <button class="js-export-btn" title="出力">出力</button>
+                                <button class="js-duplicate-btn" title="複製">複製</button>
+                                <button class="js-delete-btn" title="削除">削除</button>
+                            </div>
+                        </div>
+                    </li>
+                </ul>
+                 <p id="no-history-message" class="hidden" style="text-align: center; color: var(--text-secondary); margin-top: 20px;">チャット履歴はありません。</p>
+            </main>
+        </div>
+
+        <!-- 設定画面 -->
+        <div id="settings-screen" class="screen">
+            <header class="app-header">
+                 <button id="back-to-chat-from-settings" class="header-button" aria-label="チャットへ戻る">＜</button>
+                 <h1>設定</h1>
+                 <span id="settings-save-notice" class="header-notice">※反映には保存が必要</span>
+                 <button class="js-save-settings-btn header-save-button" title="設定を保存">設定を保存</button>
+            </header>
+            <main class="main-content">
+                <div class="settings-group">
+                    <h3>基本設定</h3>
+                    <label for="api-key">Gemini APIキー:</label>
+                    <input type="password" id="api-key" placeholder="APIキーを入力" aria-label="Gemini APIキー">
+
+                    <label for="model-name">モデル名:</label>
+                    <select id="model-name" aria-label="モデル名">
+                        <optgroup label="無料">
+                            <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+                            <option value="gemini-2.5-flash-preview-04-17">gemini-2.5-flash-preview-04-17</option>
+                            <option value="gemini-2.5-flash-preview-05-20">gemini-2.5-flash-preview-05-20</option>
+                            <option value="gemini-2.5-pro-exp-03-25">gemini-2.5-pro-exp-03-25</option>
+                        </optgroup>
+                        <optgroup label="有料">
+                            <option value="gemini-2.5-pro-preview-03-25">gemini-2.5-pro-preview-03-25</option>
+                            <option value="gemini-2.5-pro-preview-05-06">gemini-2.5-pro-preview-05-06</option>
+                        </optgroup>
+                        <optgroup label="ユーザー指定" id="user-defined-models-group">
+                            <!-- 追加モデルはここにJSで挿入される -->
+                        </optgroup>
+                    </select>
+
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="streaming-output">
+                        ストリーミング出力を使用する
+                    </label>
+                    <label for="streaming-speed">文字送り速度 (ミリ秒/文字):</label>
+                    <input type="number" id="streaming-speed" min="0" step="1" placeholder="例: 30 (0で無効)" aria-label="文字送り速度">
+                </div>
+
+                <div class="settings-group">
+                    <h3>パラメータ</h3>
+                    <label for="system-prompt-default">システムプロンプト (デフォルト):</label>
+                    <textarea id="system-prompt-default" placeholder="例: あなたは親切なアシスタントです。新規チャット作成時に適用されます。" aria-label="システムプロンプト (デフォルト)"></textarea>
+
+                    <div class="param-grid">
+                        <div>
+                            <label for="max-tokens">Max Tokens:</label>
+                            <input type="number" id="max-tokens" step="1" min="1" placeholder="例:1024" aria-label="Max Tokens">
+                        </div>
+                        <div>
+                            <label for="temperature">Temperature:</label>
+                            <input type="number" id="temperature" step="0.1" min="0" max="2" placeholder="例:0.9(0.0-2.0)" aria-label="Temperature">
+                        </div>
+                        <div>
+                            <label for="top-k">Top K:</label>
+                            <input type="number" id="top-k" step="1" min="1" placeholder="例:40(1-40)" aria-label="Top K">
+                        </div>
+                        <div>
+                            <label for="top-p">Top P:</label>
+                            <input type="number" id="top-p" step="0.01" min="0" max="1" placeholder="例:0.95(0.0 - 1.0)" aria-label="Top P">
+                        </div>
+                    </div>
+                    
+                    <details style="margin-top: 15px;">
+                        <summary style="cursor: pointer; font-weight: normal; font-size: 14px; color: var(--text-link); margin-bottom: 10px;">その他パラメータ</summary>
+                        <div class="param-grid">
+                             <div>
+                                <label for="presence-penalty">Presence Penalty:</label>
+                                <input type="number" id="presence-penalty" step="0.1" min="-2.0" max="1.9" placeholder="例:0.0 (-2.0～2.0未満)" aria-label="Presence Penalty">
+                             </div>
+                             <div>
+                                <label for="frequency-penalty">Frequency Penalty:</label>
+                                <input type="number" id="frequency-penalty" step="0.1" min="-2.0" max="1.9" placeholder="例:0.0 (-2.0～2.0未満)" aria-label="Frequency Penalty">
+                            </div>
+                        </div>
+                        <p style="font-size: 11px; color: var(--text-secondary); margin-top: 8px;">
+                            ※ Presence/Frequency Penaltyは一部モデルでは非対応、APIエラーとなる場合あり
+                        </p>
+                        <p style="height:16px;"></p>
+                        <div class="param-grid">
+                            <div>
+                                <label for="thinking-budget">Thinking Budget:</label>
+                                <input type="number" id="thinking-budget" step="1" min="0" placeholder="例: 5000 (0～24576整数)" aria-label="Thinking Budget">
+                            </div>
+                        </div>
+                        <p style="font-size: 11px; color: var(--text-secondary); margin-top: 8px;">
+                            ※ Thinking Budgetは新しいGeminiモデルのみ対応。0明示でthinkingをOFF。<br>
+                            ※ 1～1024指定時は固定で1024になる
+                        </p>
+                        <label class="checkbox-label" style="margin-top: 15px;">
+                            <input type="checkbox" id="include-thoughts-toggle">
+                            Include Thoughts
+                        </label>
+                        <p style="font-size: 11px; color: var(--text-secondary); margin-top: -5px; margin-bottom: 10px;">
+                            ※ チェック時、モデルの思考プロセスの要約が返る。<br>
+                            ※ thinkingConfigが有効なモデルでのみ機能。
+                        </p>
+                    </details>
+                </div>
+
+                <div class="settings-group">
+                   <h3>アドバンスド</h3>
+                   <label for="dummy-user">ダミー User プロンプト (送信時のみ追加):</label>
+                   <textarea id="dummy-user" placeholder="API送信直前に user ロールとして履歴末尾に追加されます" aria-label="ダミー User プロンプト"></textarea>
+
+                   <label for="dummy-model">ダミー Model プロンプト (送信時のみ追加):</label>
+                   <textarea id="dummy-model" placeholder="API送信直前に model ロールとして履歴最末尾に追加されます" aria-label="ダミー Model プロンプト"></textarea>
+
+                   <label class="checkbox-label">
+                       <input type="checkbox" id="concat-dummy-model">
+                       ダミーモデルと回答を連結
+                   </label>
+                   <p style="font-size: 11px; color: var(--text-secondary); margin-top: -5px; margin-bottom: 10px;">
+                       ※チェック時、モデル応答の先頭に上記ダミーModelの内容を付与。
+                   </p>
+
+                   <label class="checkbox-label">
+                       <input type="checkbox" id="pseudo-streaming">
+                       疑似ストリーミングを使用<br> (ストリーミングON時のみ有効)
+                   </label>
+                   <p style="font-size: 11px; color: var(--text-secondary); margin-top: -5px; margin-bottom: 10px;">
+                       ※実際には一括生成を呼び、応答はストリーミング再生を行う。<br>
+                       普通のストリーミングより生成待ち時間は長くなる。
+                   </p>
+                   <label class="checkbox-label" style="margin-top: 15px;">
+                    <input type="checkbox" id="enable-auto-retry">
+                    APIエラー/ブロック時に自動でリトライする
+                    </label>
+                    <div id="auto-retry-options">
+                        <label for="max-retries">リトライ上限回数:</label>
+                        <input type="number" id="max-retries" step="1" min="0" placeholder="例: 5">
+                        <p style="font-size: 11px; color: var(--text-secondary); margin-top: -5px; margin-bottom: 10px;">
+                            ※ 0に設定するとリトライしません。
+                        </p>
+                    </div>
+                </div>
+                      
+                <div id="gemini-grounding-param" class="settings-group">
+                    <h3>ツール設定 (Gemini)</h3>
+                    <p style="font-size: 12px; color: var(--text-secondary); margin-top: -10px; margin-bottom: 15px;">
+                        ※ Function Calling と Google Search は同時に使用できません。
+                    </p>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="gemini-enable-function-calling-toggle">
+                        Function Calling を使用する
+                    </label>
+                    <p style="font-size: 11px; color: var(--text-secondary); margin-top: -5px; margin-bottom: 10px;">
+                        ※ チェック時、AIは計算などのタスクを外部関数に任せようとします。<br>
+                        ※ Google Searchより優先されます。
+                    </p>
+
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="gemini-enable-grounding-toggle">
+                        ネットから情報を取得させる (Google Search)
+                    </label>
+                    <p style="font-size: 11px; color: var(--text-secondary); margin-top: -5px; margin-bottom: 10px;">
+                        ※ チェック時、モデルは回答生成のためにWeb検索を行います。<br>
+                        ※ Gemini 2.0以降でのみ対応(1.5以前は互換なし。エラーになる)<br>
+                        ※ 推論モデルは推論内で検索する場合があり、引用データが帰らない場合がある。
+                    </p>
+                </div>
+
+
+                <div class="settings-group">
+                    <h3>校正機能</h3>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="enable-proofreading">
+                        生成後に別のモデルで文章を校正する
+                    </label>
+                    <p style="font-size: 11px; color: var(--text-secondary); margin-top: -5px; margin-bottom: 10px;">
+                        ※チェック時、最初の応答生成に成功した後、下記設定で校正処理が実行されます。<br>
+                        ※校正処理にもAPIコストが発生します。
+                    </p>
+                
+                    <div id="proofreading-options" class="hidden">
+                        <label for="proofreading-model-name">校正用モデル名:</label>
+                        <select id="proofreading-model-name" aria-label="校正用モデル名">
+                            <!-- オプションは既存のモデル選択と同様にJSで動的に設定可能 -->
+                            <optgroup label="推奨">
+                                <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                            </optgroup>
+                             <optgroup label="その他">
+                                <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+                                <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
+                             </optgroup>
+                        </select>
+                
+                        <label for="proofreading-system-instruction">校正用システムプロンプト:</label>
+                        <textarea id="proofreading-system-instruction" placeholder="例: あなたはプロの編集者です。受け取った文章をより自然で分かりやすく校正してください。" aria-label="校正用システムプロンプト"></textarea>
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <h3>イメージ画像</h3>
+                    <label>チャット画面の背景画像:</label>
+                    <div class="image-upload-controls">
+                        <!-- 非表示のファイル入力 -->
+                        <input type="file" id="background-image-input" accept="image/jpeg, image/png, image/gif, image/webp" class="hidden">
+                        <!-- 表示されるアップロードボタン -->
+                        <button id="upload-background-btn" class="settings-action-button" type="button">画像を選択...</button>
+                        <!-- サムネイルプレビュー -->
+                        <img id="background-thumbnail" src="" alt="背景画像プレビュー" class="background-thumbnail hidden">
+                        <!-- 削除ボタン (初期非表示) -->
+                        <button id="delete-background-btn" class="settings-delete-button hidden" type="button">画像を削除</button>
+                    </div>
+                     <p style="font-size: 11px; color: var(--text-secondary); margin-top: 8px;">
+                       ※ 画像はブラウザ内のデータベースに保存。<br>
+                       ※ 可読性のため画像の上に半透明のレイヤーを表示。
+                     </p>
+                </div>
+
+                <div class="settings-group">
+                   <h3>その他設定</h3>
+                    <label class="checkbox-label">
+                       <input type="checkbox" id="enter-to-send">
+                       Enterキーで送信する
+                   </label>
+                   <p style="height:10px"></p>
+                   <!-- ジェスチャー遷移ON/OFF -->
+                   <label class="checkbox-label">
+                       <input type="checkbox" id="swipe-navigation-toggle">
+                       チャット画面から左右スワイプで画面移動
+                   </label>
+                   <p style="height:10px"></p>
+                   <!-- ダークモード切り替え -->
+                   <label class="checkbox-label">
+                       <input type="checkbox" id="dark-mode-toggle">
+                       ダークモードを使用する
+                   </label>
+                   <p style="height:10px"></p>
+                   <!-- システムプロンプト非表示設定 -->
+                   <label class="checkbox-label">
+                       <input type="checkbox" id="hide-system-prompt-toggle">
+                       システムプロンプト非表示
+                   </label>
+                   <p style="font-size: 11px; color: var(--text-secondary); margin-top: -5px; margin-bottom: 10px;">
+                       ※ 没入感を高めたい場合に。非表示でも機能は有効。
+                   </p>
+                   <label for="history-sort-order">履歴のソート順:</label>
+                   <select id="history-sort-order" aria-label="履歴のソート順">
+                       <option value="updatedAt">更新日時 (新しい順)</option>
+                       <option value="createdAt">作成日時 (新しい順)</option>
+                   </select>
+                   <!-- フォント指定 -->
+                   <label for="font-family-input">アプリのフォント:</label>
+                   <input type="text" id="font-family-input" placeholder="例: 'Meiryo', sans-serif" aria-label="アプリ全体のフォント">
+                   <p style="font-size: 11px; color: var(--text-secondary); margin-top: -5px; margin-bottom: 10px;">
+                       ※ 端末またはPCにインストールされているフォント名を指定。
+                   </p>
+                   <!-- 追加モデル入力欄 -->
+                   <label for="additional-models">追加モデル (カンマ区切り):</label>
+                   <textarea id="additional-models" placeholder="例: gemini-2.0-pro,gemini-2.0-flash-lite" aria-label="追加モデル"></textarea>
+                   <p style="font-size: 11px; color: var(--text-secondary); margin-top: -5px; margin-bottom: 10px;">
+                       ※ 追加後は設定を保存の上、ページをリロード。
+                   </p>
+                </div>
+
+                <div class="danger-zone">
+                     <!-- バージョン表示 -->
+                     <p style="text-align: center; color: var(--text-secondary); font-size: 12px; margin-bottom: 10px;">
+                         バージョン: <span id="app-version"></span>
+                     </p>
+                     <button id="update-app-btn">アプリを更新 (キャッシュクリア)</button>
+                     <p style="font-size: 11px; color: var(--text-secondary); margin-top: -5px; margin-bottom: 10px; text-align:center;">
+                         ※ サーバー側のhtmlファイルなどはブラウザにキャッシュされるため、<BR>
+                         このボタンで明示的にサーバーがから再取得しない限り更新されない。
+                     </p>
+                     <details style="text-align:center;">
+                         <summary style="cursor: pointer; font-weight: normal; font-size: 14px; color: var(--text-link); margin-bottom: 10px;">※取り扱い注意項目※</summary>
+                         <button id="clear-data-btn">全データクリア (履歴と設定)</button>
+                         <p style="font-size: 11px; color: var(--text-secondary); margin-top:5px; margin-bottom: 10px;">
+                             ※ ブラウザに保存されている設定や履歴を全て削除。<BR>
+                             ！！間違えて押そうとしていないか注意！！
+                         </p>
+                     </details>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- カスタムダイアログテンプレート -->
+    <dialog id="alertDialog" class="custom-dialog">
+        <p class="dialog-message"></p>
+        <div class="dialog-actions">
+            <button value="ok" class="dialog-ok-btn">OK</button>
+        </div>
+    </dialog>
+
+    <dialog id="confirmDialog" class="custom-dialog">
+        <p class="dialog-message"></p>
+        <div class="dialog-actions">
+            <button value="cancel" class="dialog-cancel-btn">キャンセル</button>
+            <button value="ok" class="dialog-ok-btn">OK</button>
+        </div>
+    </dialog>
+
+    <dialog id="promptDialog" class="custom-dialog">
+        <label class="dialog-message" for="promptInput"></label>
+        <input type="text" id="promptInput" class="dialog-input">
+        <div class="dialog-actions">
+            <button value="cancel" class="dialog-cancel-btn">キャンセル</button>
+            <button value="ok" class="dialog-ok-btn">OK</button>
+        </div>
+    </dialog>
+
+    <!-- ファイルアップロードダイアログ -->
+    <dialog id="fileUploadDialog" class="custom-dialog">
+        <div class="dialog-content">
+            <div class="file-upload-area">
+                <input type="file" id="file-input" multiple accept="image/*,text/*,application/pdf,video/*,audio/*" class="hidden">
+                <button id="select-files-btn" class="dialog-button">ファイルを選択</button>
+            </div>
+            <ul id="selected-files-list">
+                <!-- 選択されたファイルがここに表示される -->
+            </ul>
+            <p id="file-upload-notice">画像、テキスト、PDF、動画、音声などを添付可能</p>
+        </div>
+        <div class="dialog-actions">
+            <button id="cancel-attach-btn" value="cancel" class="dialog-cancel-btn">キャンセル</button>
+            <button id="confirm-attach-btn" value="ok" class="dialog-ok-btn" disabled>添付して閉じる</button>
+        </div>
+    </dialog>
+
+    <div id="image-modal-overlay" class="hidden">
+        <span id="image-modal-close">×</span>
+        <img id="image-modal-img" src="" alt="拡大画像">
+    </div>
+
+    <!-- JavaScriptファイルを外部から読み込む -->
+    <script src="app.js"></script>
 </body>
 </html>
