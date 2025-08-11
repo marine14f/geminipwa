@@ -533,6 +533,7 @@ const dbUtils = {
 
     // チャットを保存 (タイトル指定可)
     // dbUtils オブジェクト内の saveChat 関数を置き換えてください
+    // dbUtils オブジェクト内の saveChat 関数を置き換えてください
     async saveChat(optionalTitle = null) {
         await this.openDB();
         // メッセージもシステムプロンプトもない場合は保存しない
@@ -551,6 +552,9 @@ const dbUtils = {
                 content: msg.content,
                 timestamp: msg.timestamp,
                 thoughtSummary: msg.thoughtSummary || null,
+                // ▼▼▼【ここから変更】▼▼▼
+                tool_calls: msg.tool_calls || null, // tool_callsプロパティを保存対象に追加
+                // ▲▲▲【ここまで変更】▲▲▲
                 ...(msg.finishReason && { finishReason: msg.finishReason }),
                 ...(msg.safetyRatings && { safetyRatings: msg.safetyRatings }),
                 ...(msg.error && { error: msg.error }),
@@ -560,9 +564,7 @@ const dbUtils = {
                 ...(msg.groundingMetadata && { groundingMetadata: msg.groundingMetadata }),
                 ...(msg.attachments && msg.attachments.length > 0 && { attachments: msg.attachments }),
                 ...(msg.usageMetadata && { usageMetadata: msg.usageMetadata }),
-                // ▼▼▼【ここから変更】▼▼▼
-                ...(msg.executedFunctions && { executedFunctions: msg.executedFunctions }) // 実行された関数リストを保存
-                // ▲▲▲【ここまで変更】▲▲▲
+                ...(msg.executedFunctions && { executedFunctions: msg.executedFunctions })
             }));
 
             // タイトルを決定して保存を実行する内部関数
@@ -2967,7 +2969,7 @@ const appLogic = {
         if (state.isSending) { console.warn("handleSend: 既に送信中のため処理を中断"); return; }
         if (state.editingMessageIndex !== null) { await uiUtils.showCustomAlert("他のメッセージを編集中です。"); return; }
         if (state.isEditingSystemPrompt) { await uiUtils.showCustomAlert("システムプロンプトを編集中です。"); return; }
-
+    
         uiUtils.setSendingState(true);
         
         try {
@@ -2988,19 +2990,17 @@ const appLogic = {
                 uiUtils.adjustTextareaHeight();
                 uiUtils.scrollToBottom();
             }
-
+    
             await dbUtils.saveChat();
             
             let loopCount = 0;
             const MAX_LOOPS = 10;
-            // ▼▼▼【ここから変更】▼▼▼
-            const executedFunctionNamesInTurn = []; // この会話ターンで実行された関数名を記録
-            // ▲▲▲【ここまで変更】▲▲▲
-
+            const executedFunctionNamesInTurn = [];
+    
             while (loopCount < MAX_LOOPS) {
                 loopCount++;
                 uiUtils.setLoadingIndicatorText('応答中...');
-
+    
                 const messagesForApi = state.currentMessages.map(msg => {
                     const parts = [];
                     if (msg.content && msg.content.trim() !== '') parts.push({ text: msg.content });
@@ -3010,19 +3010,26 @@ const appLogic = {
                     if (msg.role === 'model' && msg.tool_calls) {
                         msg.tool_calls.forEach(toolCall => parts.push({ functionCall: toolCall.functionCall }));
                     }
+                    // ▼▼▼【ここから変更】▼▼▼
                     if (msg.role === 'tool') {
-                        parts.push({ functionResponse: { name: msg.name, response: msg.response } });
+                        // nameとresponseプロパティが存在する有効なtoolメッセージのみをpartsに追加
+                        if (msg.name && msg.response) {
+                            parts.push({ functionResponse: { name: msg.name, response: msg.response } });
+                        } else {
+                            console.warn("handleSend: nameまたはresponseが欠けた不完全なtoolメッセージをスキップしました。", msg);
+                        }
                     }
+                    // ▲▲▲【ここまで変更】▲▲▲
                     return { role: msg.role === 'tool' ? 'tool' : (msg.role === 'model' ? 'model' : 'user'), parts };
                 }).filter(c => c.parts.length > 0 && (c.role === 'user' || c.role === 'model' || c.role === 'tool'));
-
+    
                 const generationConfig = {};
                 if (state.settings.temperature !== null) generationConfig.temperature = state.settings.temperature;
                 if (state.settings.maxTokens !== null) generationConfig.maxOutputTokens = state.settings.maxTokens;
                 if (state.settings.topK !== null) generationConfig.topK = state.settings.topK;
                 if (state.settings.topP !== null) generationConfig.topP = state.settings.topP;
                 const systemInstruction = state.currentSystemPrompt?.trim() ? { role: "system", parts: [{ text: state.currentSystemPrompt.trim() }] } : null;
-
+    
                 const result = await this.callApiWithRetry({
                     messagesForApi,
                     generationConfig,
@@ -3032,7 +3039,7 @@ const appLogic = {
                 });
                 
                 let finalContent = result.content;
-
+    
                 if (state.settings.enableProofreading && finalContent && finalContent.trim() !== '') {
                     try {
                         const proofreadContent = await this.proofreadText(finalContent);
@@ -3042,7 +3049,7 @@ const appLogic = {
                         console.error("校正処理中にエラーが発生しました。元のテキストを使用します。", proofreadError);
                     }
                 }
-
+    
                 const modelMessage = {
                     role: 'model',
                     content: finalContent,
@@ -3055,11 +3062,8 @@ const appLogic = {
                     usageMetadata: result.usageMetadata,
                     retryCount: result.retryCount
                 };
-
-                // ▼▼▼【ここから変更】▼▼▼
-                // Function Callingがなければループを抜ける
+                
                 if (!result.toolCalls || result.toolCalls.length === 0) {
-                    // ループ終了時、これまでに実行された関数があればメッセージに記録
                     if (executedFunctionNamesInTurn.length > 0) {
                         modelMessage.executedFunctions = executedFunctionNamesInTurn;
                     }
@@ -3074,33 +3078,29 @@ const appLogic = {
                             originalResponse.isSelected = false;
                         }
                     }
-
+    
                     state.currentMessages.push(modelMessage);
                     await dbUtils.saveChat();
                     uiUtils.renderChatMessages();
                     uiUtils.scrollToBottom();
-                    break; // ループを抜ける
+                    break;
                 }
-
-                // Function Callingが続く場合
+    
                 modelMessage.tool_calls = result.toolCalls;
-                state.currentMessages.push(modelMessage); // tool_callsを含む中間応答を保存
+                state.currentMessages.push(modelMessage);
                 
-                // 実行された関数名を記録
                 result.toolCalls.forEach(toolCall => {
                     if (toolCall.functionCall?.name) {
                         executedFunctionNamesInTurn.push(toolCall.functionCall.name);
                     }
                 });
-                // ▲▲▲【ここまで変更】▲▲▲
-
+    
                 uiUtils.setLoadingIndicatorText('関数実行中...');
                 const toolResults = await this.executeToolCalls(result.toolCalls);
                 state.currentMessages.push(...toolResults);
                 await dbUtils.saveChat();
-                // UI更新は不要（toolロールは表示されないため）
             }
-
+    
         } catch(error) {
             console.error("--- handleSend: 最終catchブロックでエラー捕捉 ---", error);
             if (error.name !== 'AbortError') {
