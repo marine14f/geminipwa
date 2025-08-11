@@ -11,7 +11,6 @@
  async function manage_persistent_memory({ action, key, value }) {
   console.log(`[Function Calling] manage_persistent_memoryが呼び出されました。`, { action, key, value });
 
-  // 前提条件: チャットが保存されているか（IDが存在するか）を確認
   if (!state.currentChatId) {
       const errorMsg = "チャットがまだ保存されていません。最初のメッセージを送信してから、再度実行してください。";
       console.error(`[Function Calling] エラー: ${errorMsg}`);
@@ -19,13 +18,11 @@
   }
 
   try {
-      // 最新のチャットデータを取得
       const chat = await dbUtils.getChat(state.currentChatId);
       if (!chat) {
           throw new Error(`チャットデータ (ID: ${state.currentChatId}) が見つかりません。`);
       }
 
-      // メモリ空間を初期化（存在しない場合）
       if (!chat.persistentMemory) {
           chat.persistentMemory = {};
       }
@@ -73,11 +70,9 @@
               return { error: `無効なアクションです: ${action}` };
       }
 
-      // 変更をDBに保存
-      chat.updatedAt = Date.now(); // 更新日時を更新
-      await dbUtils.saveChat(chat.title); // タイトルは既存のものを維持
+      chat.updatedAt = Date.now();
+      await dbUtils.saveChat(chat.title);
 
-      // stateにも反映
       state.currentPersistentMemory = memory;
 
       console.log(`[Function Calling] 処理完了:`, resultData);
@@ -89,7 +84,6 @@
   }
 }
 
-// ▼▼▼【ここから追加】▼▼▼
 /**
  * 現在の日付と時刻をJST（日本標準時）で取得する関数
  * @returns {Promise<object>} JSTの日付、曜日、時刻を含むオブジェクトを返すPromise
@@ -97,23 +91,21 @@
 async function getCurrentDateTime() {
     console.log(`[Function Calling] getCurrentDateTimeが呼び出されました。`);
     try {
-        // JST (UTC+9) でフォーマットするためのオプション
         const options = {
             timeZone: 'Asia/Tokyo',
             year: 'numeric',
             month: '2-digit',
             day: '2-digit',
-            weekday: 'long', // 'short', 'narrow' も可能
+            weekday: 'long',
             hour: '2-digit',
             minute: '2-digit',
             second: '2-digit',
-            hour12: false // 24時間表記
+            hour12: false
         };
 
         const formatter = new Intl.DateTimeFormat('ja-JP', options);
         const parts = formatter.formatToParts(new Date());
 
-        // パーツから必要な情報を抽出
         const year = parts.find(p => p.type === 'year').value;
         const month = parts.find(p => p.type === 'month').value;
         const day = parts.find(p => p.type === 'day').value;
@@ -137,19 +129,83 @@ async function getCurrentDateTime() {
         return { error: `時刻の取得中にエラーが発生しました: ${error.message}` };
     }
 }
+
+// ▼▼▼【ここから追加】▼▼▼
+/**
+ * TRPGなどで使用するダイスロールを実行する関数
+ * @param {object} args - AIによって提供される引数オブジェクト
+ * @param {string} args.expression - ダイスロールの式 (例: "2d6", "1d100+5")
+ * @returns {Promise<object>} ダイスロールの結果詳細を含むオブジェクトを返すPromise
+ */
+async function rollDice({ expression }) {
+    console.log(`[Function Calling] rollDiceが呼び出されました。式: ${expression}`);
+
+    // 式をパースするための正規表現 (例: 2d6+3)
+    const diceRegex = /^(?<count>\d+)d(?<sides>\d+)(?:(?<modifier_op>[+-])(?<modifier_val>\d+))?$/i;
+    const match = expression.trim().match(diceRegex);
+
+    if (!match) {
+        const errorMsg = "無効なダイス形式です。「(個数)d(面数)+(補正値)」の形式で指定してください。(例: 1d6, 2d10+5)";
+        console.error(`[Function Calling] rollDice: ${errorMsg}`);
+        return { error: errorMsg };
+    }
+
+    const { count, sides, modifier_op, modifier_val } = match.groups;
+    const numCount = parseInt(count, 10);
+    const numSides = parseInt(sides, 10);
+    const numModifier = modifier_val ? parseInt(modifier_val, 10) : 0;
+
+    // バリデーション
+    if (numCount < 1 || numCount > 100) {
+        return { error: "ダイスの個数は1個から100個までです。" };
+    }
+    if (numSides < 1 || numSides > 1000) {
+        return { error: "ダイスの面数は1面から1000面までです。" };
+    }
+    if (numModifier > 10000) {
+        return { error: "補正値は10000までです。" };
+    }
+
+    try {
+        const rolls = [];
+        let sum = 0;
+        for (let i = 0; i < numCount; i++) {
+            // 1からnumSidesまでのランダムな整数を生成
+            const roll = Math.floor(Math.random() * numSides) + 1;
+            rolls.push(roll);
+            sum += roll;
+        }
+
+        let total = sum;
+        if (modifier_op === '+') {
+            total += numModifier;
+        } else if (modifier_op === '-') {
+            total -= numModifier;
+        }
+
+        const result = {
+            expression: expression,
+            rolls: rolls,
+            sum: sum,
+            modifier: modifier_op ? `${modifier_op}${numModifier}` : "なし",
+            total: total
+        };
+
+        console.log(`[Function Calling] rollDice: 実行結果:`, result);
+        return result;
+
+    } catch (error) {
+        console.error(`[Function Calling] rollDiceで予期せぬエラー:`, error);
+        return { error: `ダイスロール中に予期せぬエラーが発生しました: ${error.message}` };
+    }
+}
 // ▲▲▲【ここまで追加】▲▲▲
 
 
 window.functionCallingTools = {
-  /**
-   * 文字列形式の四則演算の式を計算し、結果を返す関数
-   * @param {object} args - AIによって提供される引数オブジェクト
-   * @param {string} args.expression - 計算する数式 (例: "2 * (3 + 5)")
-   * @returns {Promise<object>} 計算結果またはエラーを含むオブジェクトを返すPromise
-   */
   calculate: async function({ expression }) {
     console.log(`[Function Calling] calculateが呼び出されました。式: ${expression}`);
-    await new Promise(resolve => setTimeout(resolve, 1000)); // 意図的な遅延
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
     const allowedChars = /^[0-9+\-*/().\s]+$/;
     if (!allowedChars.test(expression)) {
@@ -170,8 +226,9 @@ window.functionCallingTools = {
     }
   },
   manage_persistent_memory: manage_persistent_memory,
+  getCurrentDateTime: getCurrentDateTime,
   // ▼▼▼【ここから追加】▼▼▼
-  getCurrentDateTime: getCurrentDateTime
+  rollDice: rollDice
   // ▲▲▲【ここまで追加】▲▲▲
 };
 
@@ -224,6 +281,20 @@ window.functionDeclarations = [
                 "type": "OBJECT",
                 "properties": {},
                 "required": []
+            }
+          },
+          {
+            "name": "rollDice",
+            "description": "テーブルトークRPG（TRPG）やボードゲームなどで使用される、指定された形式のダイスを振って結果を返します。例えば「1d100」や「2d6+3」のような形式のダイスロールを要求された場合に使用します。単純な乱数ではなく、ダイスロールの文脈で呼び出してください。",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "expression": {
+                        "type": "STRING",
+                        "description": "ダイスロールの式。XdY+Z (X=個数, Y=面数, Z=補正値) の形式。例: '1d100', '2d6+5', '3d8-2'"
+                    }
+                },
+                "required": ["expression"]
             }
           }
       ]
