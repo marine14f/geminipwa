@@ -4221,4 +4221,4 @@ const appLogic = {
 
 
 // --- 初期化処理 ---
-appLogic.initializeApp();```
+appLogic.initializeApp();
