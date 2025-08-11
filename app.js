@@ -2145,7 +2145,7 @@ const appLogic = {
             }
     
             // 裏でhandleSendを呼び出す
-            await this.handleSend(false, -1);
+            await this.handleSend(false, -1, true);
         },
     // アプリ初期化
     async initializeApp() {
@@ -3054,18 +3054,20 @@ const appLogic = {
         throw lastError;
     },
 
-    async handleSend(isRetry = false, retryUserMessageIndex = -1) {
-        console.log("--- handleSend: 処理開始 ---", { isRetry, retryUserMessageIndex });
+    async handleSend(isRetry = false, retryUserMessageIndex = -1, isAutoTrigger = false) { // ← 引数を追加
+        console.log("--- handleSend: 処理開始 ---", { isRetry, retryUserMessageIndex, isAutoTrigger });
 
         if (state.isSending) { console.warn("handleSend: 既に送信中のため処理を中断"); return; }
         if (state.editingMessageIndex !== null) { await uiUtils.showCustomAlert("他のメッセージを編集中です。"); return; }
         if (state.isEditingSystemPrompt) { await uiUtils.showCustomAlert("システムプロンプトを編集中です。"); return; }
-    
+
         uiUtils.setSendingState(true);
         
         try {
-            // 通常送信の場合のみ、新しいユーザーメッセージを作成
-            if (!isRetry) {
+            // ▼▼▼【ここから変更】▼▼▼
+            // 通常のユーザー手動送信の場合のみ、入力欄から新しいメッセージを作成
+            if (!isRetry && !isAutoTrigger) {
+            // ▲▲▲【ここまで変更】▲▲▲
                 const text = elements.userInput.value.trim();
                 const attachmentsToSend = [...state.pendingAttachments];
                 if (!text && attachmentsToSend.length === 0) {
@@ -3081,17 +3083,17 @@ const appLogic = {
                 uiUtils.adjustTextareaHeight();
                 uiUtils.scrollToBottom();
             }
-    
+
             await dbUtils.saveChat();
             
             let loopCount = 0;
             const MAX_LOOPS = 10;
             const executedFunctionNamesInTurn = [];
-    
+
             while (loopCount < MAX_LOOPS) {
                 loopCount++;
                 uiUtils.setLoadingIndicatorText('応答中...');
-    
+
                 const messagesForApi = state.currentMessages.map(msg => {
                     const parts = [];
                     if (msg.content && msg.content.trim() !== '') parts.push({ text: msg.content });
@@ -3101,26 +3103,23 @@ const appLogic = {
                     if (msg.role === 'model' && msg.tool_calls) {
                         msg.tool_calls.forEach(toolCall => parts.push({ functionCall: toolCall.functionCall }));
                     }
-                    // ▼▼▼【ここから変更】▼▼▼
                     if (msg.role === 'tool') {
-                        // nameとresponseプロパティが存在する有効なtoolメッセージのみをpartsに追加
                         if (msg.name && msg.response) {
                             parts.push({ functionResponse: { name: msg.name, response: msg.response } });
                         } else {
                             console.warn("handleSend: nameまたはresponseが欠けた不完全なtoolメッセージをスキップしました。", msg);
                         }
                     }
-                    // ▲▲▲【ここまで変更】▲▲▲
                     return { role: msg.role === 'tool' ? 'tool' : (msg.role === 'model' ? 'model' : 'user'), parts };
                 }).filter(c => c.parts.length > 0 && (c.role === 'user' || c.role === 'model' || c.role === 'tool'));
-    
+
                 const generationConfig = {};
                 if (state.settings.temperature !== null) generationConfig.temperature = state.settings.temperature;
                 if (state.settings.maxTokens !== null) generationConfig.maxOutputTokens = state.settings.maxTokens;
                 if (state.settings.topK !== null) generationConfig.topK = state.settings.topK;
                 if (state.settings.topP !== null) generationConfig.topP = state.settings.topP;
                 const systemInstruction = state.currentSystemPrompt?.trim() ? { role: "system", parts: [{ text: state.currentSystemPrompt.trim() }] } : null;
-    
+
                 const result = await this.callApiWithRetry({
                     messagesForApi,
                     generationConfig,
@@ -3130,7 +3129,7 @@ const appLogic = {
                 });
                 
                 let finalContent = result.content;
-    
+
                 if (state.settings.enableProofreading && finalContent && finalContent.trim() !== '') {
                     try {
                         const proofreadContent = await this.proofreadText(finalContent);
@@ -3140,7 +3139,7 @@ const appLogic = {
                         console.error("校正処理中にエラーが発生しました。元のテキストを使用します。", proofreadError);
                     }
                 }
-    
+
                 const modelMessage = {
                     role: 'model',
                     content: finalContent,
@@ -3169,14 +3168,14 @@ const appLogic = {
                             originalResponse.isSelected = false;
                         }
                     }
-    
+
                     state.currentMessages.push(modelMessage);
                     await dbUtils.saveChat();
                     uiUtils.renderChatMessages();
                     uiUtils.scrollToBottom();
                     break;
                 }
-    
+
                 modelMessage.tool_calls = result.toolCalls;
                 state.currentMessages.push(modelMessage);
                 
@@ -3185,13 +3184,13 @@ const appLogic = {
                         executedFunctionNamesInTurn.push(toolCall.functionCall.name);
                     }
                 });
-    
+
                 uiUtils.setLoadingIndicatorText('関数実行中...');
                 const toolResults = await this.executeToolCalls(result.toolCalls);
                 state.currentMessages.push(...toolResults);
                 await dbUtils.saveChat();
             }
-    
+
         } catch(error) {
             console.error("--- handleSend: 最終catchブロックでエラー捕捉 ---", error);
             if (error.name !== 'AbortError') {
