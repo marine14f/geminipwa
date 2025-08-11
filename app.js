@@ -2116,30 +2116,37 @@ const appLogic = {
      * タイマー時間切れ時にAIに応答を促す関数
      * @param {string} timerName - 時間切れになったタイマーの名前
      */
-    async triggerTimerExpiredResponse(timerName) {
-        // 現在送信中の場合は何もしない
-        if (state.isSending) {
-            console.warn("タイマーが切れましたが、現在送信中のため自動応答をスキップします。");
-            return;
-        }
-        console.log(`タイマー「${timerName}」の時間切れ応答を生成します。`);
-
-        // ユーザーには見えない内部的な指示メッセージを作成
-        const systemInstructionForTimer = `[システムメモ]
-タイマー「${timerName}」が時間切れになりました。
-この事実を踏まえて、現在の会話の文脈に沿った自然な応答を生成してください。
-例えば、「そういえば、約束の時間だね」「時間切れだ！イベントが発生する」のように、会話を続けてください。
-このシステムメモ自体は応答に含めないでください。`;
-
-        const userMessage = { role: 'user', content: systemInstructionForTimer, timestamp: Date.now() };
-
-        // 履歴にこの内部メッセージを追加してAPIを呼び出す
-        state.currentMessages.push(userMessage);
-        
-        // UIは更新せず、裏でhandleSendを呼び出す
-        // isRetry=false, retryUserMessageIndex=-1 は通常の送信と同じ扱い
-        await this.handleSend(false, -1);
-    },
+        async triggerTimerExpiredResponse(timerName) {
+            // 現在送信中の場合は何もしない
+            if (state.isSending) {
+                console.warn("タイマーが切れましたが、現在送信中のため自動応答をスキップします。");
+                return;
+            }
+            console.log(`タイマー「${timerName}」の時間切れ応答を生成します。`);
+    
+            // ユーザーには見えない内部的な指示メッセージを作成
+            const systemInstructionForTimer = `[システムメモ]
+    タイマー「${timerName}」が時間切れになりました。
+    この事実を踏まえて、現在の会話の文脈に沿った自然な応答を生成してください。
+    例えば、「そういえば、約束の時間だね」「時間切れだ！イベントが発生する」のように、会話を続けてください。
+    このシステムメモ自体は応答に含めないでください。`;
+    
+            const userMessage = { role: 'user', content: systemInstructionForTimer, timestamp: Date.now() };
+    
+            // 履歴にこの内部メッセージを追加
+            state.currentMessages.push(userMessage);
+            
+            // UIにもメッセージ要素を追加するが、即座に非表示にする
+            const messageIndex = state.currentMessages.length - 1;
+            uiUtils.appendMessage(userMessage.role, userMessage.content, messageIndex);
+            const messageElement = elements.messageContainer.querySelector(`.message[data-index="${messageIndex}"]`);
+            if (messageElement) {
+                messageElement.classList.add('hidden');
+            }
+    
+            // 裏でhandleSendを呼び出す
+            await this.handleSend(false, -1);
+        },
     // アプリ初期化
     async initializeApp() {
         // marked.jsの設定
