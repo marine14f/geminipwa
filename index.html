@@ -5160,7 +5160,16 @@ if (isRetry === true) {
   }
 } else {
   state._retryCounter = 0;
+  if (state._retryCounter && state._retryCounter > 0) {
+  if (state._retryCounter === 1) {
+    setLoadingIndicatorText("再送信中...");
+  } else {
+    setLoadingIndicatorText(`${state._retryCounter}回目再送信中...`);
+  }
+} else {
   setLoadingIndicatorText("応答中...");
+}
+
 }
 
 
