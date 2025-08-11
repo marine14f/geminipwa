@@ -2112,7 +2112,7 @@ const appLogic = {
         },
     },
 
-    /**
+        /**
      * タイマー時間切れ時にAIに応答を促す関数
      * @param {string} timerName - 時間切れになったタイマーの名前
      */
@@ -2141,10 +2141,13 @@ const appLogic = {
             uiUtils.appendMessage(userMessage.role, userMessage.content, messageIndex);
             const messageElement = elements.messageContainer.querySelector(`.message[data-index="${messageIndex}"]`);
             if (messageElement) {
-                messageElement.classList.add('hidden');
+                // ▼▼▼【ここから変更】▼▼▼
+                // hiddenクラスではなく、styleを直接操作して確実に非表示にする
+                messageElement.style.display = 'none';
+                // ▲▲▲【ここまで変更】▲▲▲
             }
     
-            // 裏でhandleSendを呼び出す
+            // 裏でhandleSendを呼び出す (第3引数 isAutoTrigger を true に設定)
             await this.handleSend(false, -1, true);
         },
     // アプリ初期化
