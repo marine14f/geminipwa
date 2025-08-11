@@ -5129,7 +5129,7 @@
                         }
                         const userMessage = { role: 'user', content: text, timestamp: Date.now(), attachments: attachmentsToSend };
                         state.currentMessages.push(userMessage);
-                        uiUtils.appendMessage(userMessage, state.currentMessages.length - 1, false, null, userMessage.attachments);
+                        uiUtils.appendMessage(userMessage.role, userMessage.content, state.currentMessages.length - 1, false, null, userMessage.attachments);
                         elements.userInput.value = '';
                         state.pendingAttachments = [];
                         uiUtils.updateAttachmentBadgeVisibility();
@@ -5150,28 +5150,7 @@
 
                     while (functionCallTurn < MAX_FC_TURNS) {
                         functionCallTurn++;
-                        uiUtils.if (!state._retryCounter) state._retryCounter = 0;
-if (isRetry === true) {
-  state._retryCounter += 1;
-  if (state._retryCounter === 1) {
-    setLoadingIndicatorText("再送信中...");
-  } else {
-    setLoadingIndicatorText(`${state._retryCounter}回目再送信中...`);
-  }
-} else {
-  state._retryCounter = 0;
-  if (state._retryCounter && state._retryCounter > 0) {
-  if (state._retryCounter === 1) {
-    setLoadingIndicatorText("再送信中...");
-  } else {
-    setLoadingIndicatorText(`${state._retryCounter}回目再送信中...`);
-  }
-} else {
-  setLoadingIndicatorText("応答中...");
-}
-
-}
-
+                        uiUtils.setLoadingIndicatorText('応答中...');
 
                         const messagesForApi = state.currentMessages.map(msg => {
                             const parts = [];
@@ -5737,7 +5716,7 @@ if (isRetry === true) {
                         }
                         const userMessage = { role: 'user', content: text, timestamp: Date.now(), attachments: attachmentsToSend };
                         state.currentMessages.push(userMessage);
-                        uiUtils.appendMessage(userMessage, state.currentMessages.length - 1, false, null, userMessage.attachments);
+                        uiUtils.appendMessage(userMessage.role, userMessage.content, state.currentMessages.length - 1, false, null, userMessage.attachments);
                         elements.userInput.value = '';
                         state.pendingAttachments = [];
                         uiUtils.updateAttachmentBadgeVisibility();
