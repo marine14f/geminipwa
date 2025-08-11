@@ -1758,3 +1758,10 @@ body.dark-mode .citation-list li a {
 body.dark-mode .function-call-details {
     border-top-color: var(--border-primary);
 }
+.function-call-list li {
+    margin-bottom: 4px;
+    font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace; /* コード用のフォント */
+    font-size: 11px;
+    color: var(--text-secondary);
+    line-height: 1.4; /* ← この行を追加 */
+}

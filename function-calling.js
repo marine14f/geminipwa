@@ -89,6 +89,56 @@
   }
 }
 
+// ▼▼▼【ここから追加】▼▼▼
+/**
+ * 現在の日付と時刻をJST（日本標準時）で取得する関数
+ * @returns {Promise<object>} JSTの日付、曜日、時刻を含むオブジェクトを返すPromise
+ */
+async function getCurrentDateTime() {
+    console.log(`[Function Calling] getCurrentDateTimeが呼び出されました。`);
+    try {
+        // JST (UTC+9) でフォーマットするためのオプション
+        const options = {
+            timeZone: 'Asia/Tokyo',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            weekday: 'long', // 'short', 'narrow' も可能
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false // 24時間表記
+        };
+
+        const formatter = new Intl.DateTimeFormat('ja-JP', options);
+        const parts = formatter.formatToParts(new Date());
+
+        // パーツから必要な情報を抽出
+        const year = parts.find(p => p.type === 'year').value;
+        const month = parts.find(p => p.type === 'month').value;
+        const day = parts.find(p => p.type === 'day').value;
+        const weekday = parts.find(p => p.type === 'weekday').value;
+        const hour = parts.find(p => p.type === 'hour').value;
+        const minute = parts.find(p => p.type === 'minute').value;
+        const second = parts.find(p => p.type === 'second').value;
+
+        const result = {
+            date: `${year}年${month}月${day}日`,
+            weekday: weekday,
+            time: `${hour}:${minute}:${second}`,
+            timezone: "JST (UTC+9)"
+        };
+
+        console.log(`[Function Calling] getCurrentDateTime: 取得結果:`, result);
+        return result;
+
+    } catch (error) {
+        console.error(`[Function Calling] getCurrentDateTimeでエラーが発生しました:`, error);
+        return { error: `時刻の取得中にエラーが発生しました: ${error.message}` };
+    }
+}
+// ▲▲▲【ここまで追加】▲▲▲
+
 
 window.functionCallingTools = {
   /**
@@ -119,8 +169,10 @@ window.functionCallingTools = {
       return { error: `計算エラー: ${error.message}` };
     }
   },
-  // 新しい関数を登録
-  manage_persistent_memory: manage_persistent_memory
+  manage_persistent_memory: manage_persistent_memory,
+  // ▼▼▼【ここから追加】▼▼▼
+  getCurrentDateTime: getCurrentDateTime
+  // ▲▲▲【ここまで追加】▲▲▲
 };
 
 /**
@@ -143,7 +195,6 @@ window.functionDeclarations = [
                   "required": ["expression"]
               }
           },
-          // 新しい関数の定義を追加
           {
               "name": "manage_persistent_memory",
               "description": "現在の会話セッションに限定して、重要な情報（記念日、登場人物の設定、世界の法則など）を後から参照できるように記憶・管理します。他の会話には影響しません。",
@@ -165,6 +216,15 @@ window.functionDeclarations = [
                   },
                   "required": ["action"]
               }
+          },
+          {
+            "name": "getCurrentDateTime",
+            "description": "現実世界の現在の日付と時刻（日本時間）を取得します。この情報を利用することで、ユーザーとの会話がより現実的で没入感のあるものになる場合にのみ使用してください。会話の文脈を慎重に判断し、ロールプレイの世界観を壊すなど、不自然になる場合は絶対に使用しないでください。",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {},
+                "required": []
+            }
           }
       ]
   }
