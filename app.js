@@ -532,6 +532,7 @@ const dbUtils = {
     },
 
     // チャットを保存 (タイトル指定可)
+    // dbUtils オブジェクト内の saveChat 関数を置き換えてください
     async saveChat(optionalTitle = null) {
         await this.openDB();
         // メッセージもシステムプロンプトもない場合は保存しない
@@ -549,19 +550,19 @@ const dbUtils = {
                 role: msg.role,
                 content: msg.content,
                 timestamp: msg.timestamp,
-                thoughtSummary: msg.thoughtSummary || null, // Thought Summary を保存
+                thoughtSummary: msg.thoughtSummary || null,
                 ...(msg.finishReason && { finishReason: msg.finishReason }),
                 ...(msg.safetyRatings && { safetyRatings: msg.safetyRatings }),
                 ...(msg.error && { error: msg.error }),
-                // 新しいフラグを追加 (存在すれば)
                 ...(msg.isCascaded !== undefined && { isCascaded: msg.isCascaded }),
                 ...(msg.isSelected !== undefined && { isSelected: msg.isSelected }),
                 ...(msg.siblingGroupId !== undefined && { siblingGroupId: msg.siblingGroupId }),
                 ...(msg.groundingMetadata && { groundingMetadata: msg.groundingMetadata }),
-                // 添付ファイル情報を追加 (存在すれば)
                 ...(msg.attachments && msg.attachments.length > 0 && { attachments: msg.attachments }),
-                // usageMetadata を追加 (存在すれば)
                 ...(msg.usageMetadata && { usageMetadata: msg.usageMetadata }),
+                // ▼▼▼【ここから変更】▼▼▼
+                ...(msg.executedFunctions && { executedFunctions: msg.executedFunctions }) // 実行された関数リストを保存
+                // ▲▲▲【ここまで変更】▲▲▲
             }));
 
             // タイトルを決定して保存を実行する内部関数
@@ -579,64 +580,57 @@ const dbUtils = {
                 const chatIdForOperation = existingChatData ? existingChatData.id : state.currentChatId;
                 const chatData = {
                     messages: messagesToSave,
-                    systemPrompt: state.currentSystemPrompt, // システムプロンプトを保存
-                    persistentMemory: state.currentPersistentMemory || {}, // 永続メモリを保存
+                    systemPrompt: state.currentSystemPrompt,
+                    persistentMemory: state.currentPersistentMemory || {},
                     updatedAt: now,
-                    createdAt: existingChatData ? existingChatData.createdAt : now, // 新規なら現在時刻
+                    createdAt: existingChatData ? existingChatData.createdAt : now,
                     title: title,
                 };
-                if (chatIdForOperation) { // IDがあれば更新なのでIDを付与
+                if (chatIdForOperation) {
                     chatData.id = chatIdForOperation;
                 }
 
-                const request = store.put(chatData); // putは新規・更新両対応
+                const request = store.put(chatData);
                 request.onsuccess = (event) => {
                     const savedId = event.target.result;
-                    if (!state.currentChatId && savedId) { // 新規保存でIDが確定したらstateに反映
+                    if (!state.currentChatId && savedId) {
                         state.currentChatId = savedId;
                     }
                     console.log(`チャット ${state.currentChatId ? '更新' : '保存'} 完了 ID:`, state.currentChatId || savedId);
-                    // 保存したチャットが現在表示中のものなら、タイトルをUIに反映
                     if ((state.currentChatId || savedId) === (chatIdForOperation || savedId)) {
                         uiUtils.updateChatTitle(chatData.title);
                     }
-                    resolve(state.currentChatId || savedId); // 保存/更新後のIDを返す
+                    resolve(state.currentChatId || savedId);
                 };
                 request.onerror = (event) => reject(`チャット保存エラー: ${event.target.error}`);
             };
 
-            // 現在のチャットIDがあるか (更新か新規か)
             if (state.currentChatId) {
-                // 更新の場合、既存のデータを取得してcreatedAtを引き継ぐ
                 const getRequest = store.get(state.currentChatId);
                 getRequest.onsuccess = (event) => {
                     const existingChat = event.target.result;
-                     if (!existingChat) { // IDはあるがデータがない場合 (削除されたなど) は新規として保存
+                     if (!existingChat) {
                          console.warn(`ID ${state.currentChatId} のチャットが見つかりません(保存時)。新規として保存します。`);
-                         state.currentChatId = null; // IDをリセット
+                         state.currentChatId = null;
                          determineTitleAndSave(null);
                     } else {
-                        determineTitleAndSave(existingChat); // 既存データを使って保存
+                        determineTitleAndSave(existingChat);
                     }
                 };
                 getRequest.onerror = (event) => {
-                    // 既存データの取得に失敗した場合も、とりあえず新規として保存を試みる
                     console.error("既存チャットの取得エラー(更新用):", event.target.error);
                     console.warn("既存チャット取得エラーのため、新規として保存を試みます。");
-                    state.currentChatId = null; // IDをリセット
+                    state.currentChatId = null;
                     determineTitleAndSave(null);
                 };
             } else {
-                // 新規保存の場合
                 determineTitleAndSave(null);
             }
 
-            // トランザクション全体のエラーハンドリング
             store.transaction.onerror = (event) => {
                 console.error("チャット保存トランザクション失敗:", event.target.error);
                 reject(`チャット保存トランザクション失敗: ${event.target.error}`);
             };
-            // store.transaction.oncomplete = () => { console.log("チャット保存トランザクション完了"); };
         });
     },
 
@@ -806,18 +800,17 @@ const uiUtils = {
     },
 
     // メッセージをコンテナに追加
+    // uiUtils オブジェクト内の appendMessage 関数を置き換えてください
     appendMessage(role, content, index, isStreamingPlaceholder = false, cascadeInfo = null, attachments = null) {
         const messageDiv = document.createElement('div');
         messageDiv.classList.add('message', role);
-        messageDiv.dataset.index = index; // state.currentMessages 内のインデックス
+        messageDiv.dataset.index = index;
 
-        const messageData = state.currentMessages[index]; // メッセージデータを取得
+        const messageData = state.currentMessages[index];
         
-        // Thought Summary 表示エリア (モデル応答で thoughtSummary がある場合)
         if (role === 'model' && messageData && messageData.thoughtSummary) {
             const thoughtDetails = document.createElement('details');
             thoughtDetails.classList.add('thought-summary-details');
-            // thoughtDetails.open = false; // 初期は閉じている (デフォルト)
 
             const thoughtSummaryElem = document.createElement('summary');
             thoughtSummaryElem.textContent = '思考プロセス';
@@ -826,8 +819,8 @@ const uiUtils = {
             const thoughtContentDiv = document.createElement('div');
             thoughtContentDiv.classList.add('thought-summary-content');
             if (isStreamingPlaceholder) {
-                thoughtContentDiv.id = `streaming-thought-summary-${index}`; // ストリーミング用ID
-                thoughtContentDiv.innerHTML = ''; // 初期は空
+                thoughtContentDiv.id = `streaming-thought-summary-${index}`;
+                thoughtContentDiv.innerHTML = '';
             } else {
                 try {
                     thoughtContentDiv.innerHTML = marked.parse(messageData.thoughtSummary || '');
@@ -837,13 +830,12 @@ const uiUtils = {
                 }
             }
             thoughtDetails.appendChild(thoughtContentDiv);
-            messageDiv.appendChild(thoughtDetails); // メッセージ本文より前に追加
+            messageDiv.appendChild(thoughtDetails);
         }
 
         const contentDiv = document.createElement('div');
         contentDiv.classList.add('message-content');
         
-        // ユーザーメッセージで添付ファイルがある場合の処理
         if (role === 'user' && attachments && attachments.length > 0) {
             const details = document.createElement('details');
             details.classList.add('attachment-details');
@@ -857,26 +849,23 @@ const uiUtils = {
             attachments.forEach(att => {
                 const listItem = document.createElement('li');
                 listItem.textContent = att.name;
-                listItem.title = `${att.name} (${att.mimeType})`; // ホバーで詳細表示
+                listItem.title = `${att.name} (${att.mimeType})`;
                 list.appendChild(listItem);
             });
             details.appendChild(list);
-            contentDiv.appendChild(details); // 最初に添付ファイル情報を追加
+            contentDiv.appendChild(details);
 
-            // テキストコンテンツがあれば <pre> で追加
             if (content && content.trim() !== '') {
                 const pre = document.createElement('pre');
                 pre.textContent = content;
-                // 添付ファイル情報とテキストの間に少しマージンを追加
                 pre.style.marginTop = '8px';
                 contentDiv.appendChild(pre);
             }
         } else {
-            // 通常のコンテンツ処理 (既存ロジック)
             try {
                 if (role === 'model' && !isStreamingPlaceholder && typeof marked !== 'undefined') {
                     contentDiv.innerHTML = marked.parse(content || '');
-                } else if (role === 'user') { // 添付ファイルがないユーザーメッセージ
+                } else if (role === 'user') {
                     const pre = document.createElement('pre'); pre.textContent = content; contentDiv.appendChild(pre);
                 } else if (role === 'error') {
                      const p = document.createElement('p'); p.textContent = content; contentDiv.appendChild(p);
@@ -899,19 +888,17 @@ const uiUtils = {
         {
             try {
                 const details = document.createElement('details');
-                details.classList.add('citation-details'); // 既存のクラスを使用
+                details.classList.add('citation-details');
 
                 const summary = document.createElement('summary');
-                // summary.textContent = '引用元と検索クエリを表示';
-                summary.textContent = '引用元/検索クエリ'; // より短く
+                summary.textContent = '引用元/検索クエリ';
                 details.appendChild(summary);
 
-                let detailsHasContent = false; // detailsに何か追加されたか追跡
+                let detailsHasContent = false;
 
-                // --- 引用元リストの生成---
                 if (messageData.groundingMetadata.groundingChunks && messageData.groundingMetadata.groundingChunks.length > 0) {
                     const citationList = document.createElement('ul');
-                    citationList.classList.add('citation-list'); // 既存のクラス
+                    citationList.classList.add('citation-list');
 
                     const citationMap = new Map();
                     let displayIndexCounter = 1;
@@ -949,7 +936,6 @@ const uiUtils = {
                         citationList.appendChild(listItem);
                     });
 
-                    // フォールバック
                     if (sortedCitations.length === 0) {
                          messageData.groundingMetadata.groundingChunks.forEach((chunk, idx) => {
                              if (chunk?.web?.uri) {
@@ -971,48 +957,44 @@ const uiUtils = {
                         detailsHasContent = true;
                     }
                 }
-                // --- 引用元リストここまで ---
 
-                // 検索クエリリストの生成
                 if (messageData.groundingMetadata.webSearchQueries && messageData.groundingMetadata.webSearchQueries.length > 0) {
-                    // 引用元リストとクエリリストの間に区切り線を追加 (引用元がある場合のみ)
                     if (detailsHasContent) {
                         const separator = document.createElement('hr');
                         separator.style.marginTop = '10px';
                         separator.style.marginBottom = '8px';
-                        separator.style.border = 'none'; // デフォルトの線を消す
+                        separator.style.border = 'none';
                         separator.style.borderTop = '1px dashed var(--border-tertiary)'; 
                         details.appendChild(separator);
                     }
 
                     const queryHeader = document.createElement('div');
                     queryHeader.textContent = '検索に使用されたクエリ:';
-                    queryHeader.style.fontWeight = '500'; // 少し太く
-                    queryHeader.style.marginTop = detailsHasContent ? '0' : '8px'; // 上マージン調整
+                    queryHeader.style.fontWeight = '500';
+                    queryHeader.style.marginTop = detailsHasContent ? '0' : '8px';
                     queryHeader.style.marginBottom = '4px';
                     queryHeader.style.fontSize = '11px';
                     queryHeader.style.color = 'var(--text-secondary)';
                     details.appendChild(queryHeader);
 
                     const queryList = document.createElement('ul');
-                    queryList.classList.add('search-query-list'); // スタイル用クラス
-                    queryList.style.listStyle = 'none'; // リストマーカーなし
-                    queryList.style.paddingLeft = '0'; // パディングなし
-                    queryList.style.margin = '0'; // マージンなし
+                    queryList.classList.add('search-query-list');
+                    queryList.style.listStyle = 'none';
+                    queryList.style.paddingLeft = '0';
+                    queryList.style.margin = '0';
                     queryList.style.fontSize = '11px';
                     queryList.style.color = 'var(--text-secondary)';
 
                     messageData.groundingMetadata.webSearchQueries.forEach(query => {
                         const queryItem = document.createElement('li');
-                        queryItem.textContent = `• ${query}`; // ビュレットを手動で追加
+                        queryItem.textContent = `• ${query}`;
                         queryItem.style.marginBottom = '3px';
                         queryList.appendChild(queryItem);
                     });
                     details.appendChild(queryList);
-                    detailsHasContent = true; // クエリが追加された
+                    detailsHasContent = true;
                 }
 
-                // details に内容が追加されていれば、メッセージ要素に追加
                 if (detailsHasContent) {
                     contentDiv.appendChild(details);
                 }
@@ -1021,18 +1003,39 @@ const uiUtils = {
                 console.error(`引用元/検索クエリ表示の生成中にエラーが発生しました (index: ${index}):`, e);
             }
         }
+        
+        // ▼▼▼【ここから変更】▼▼▼
+        // Function Calling 実行履歴の表示
+        if (role === 'model' && messageData && messageData.executedFunctions && messageData.executedFunctions.length > 0) {
+            const details = document.createElement('details');
+            details.classList.add('function-call-details'); // 新しいCSSクラス
 
-        // 編集用エリア (初期非表示)
+            const uniqueFunctions = [...new Set(messageData.executedFunctions)]; // 重複を除外
+            const summary = document.createElement('summary');
+            summary.textContent = `ツール使用 (${uniqueFunctions.length}件)`;
+            details.appendChild(summary);
+
+            const list = document.createElement('ul');
+            list.classList.add('function-call-list');
+            
+            uniqueFunctions.forEach(funcName => {
+                const listItem = document.createElement('li');
+                listItem.textContent = funcName;
+                list.appendChild(listItem);
+            });
+            details.appendChild(list);
+            contentDiv.appendChild(details); // コンテンツの最後に追加
+        }
+        // ▲▲▲【ここまで変更】▲▲▲
+
         const editArea = document.createElement('div');
         editArea.classList.add('message-edit-area', 'hidden');
         messageDiv.appendChild(editArea);
 
-        // --- カスケードコントロール (上部) ---
         if (role === 'model' && cascadeInfo && cascadeInfo.total > 1) {
             const cascadeControlsDiv = document.createElement('div');
             cascadeControlsDiv.classList.add('message-cascade-controls');
 
-            // 前へボタン
             const prevButton = document.createElement('button');
             prevButton.textContent = '＜';
             prevButton.title = '前の応答';
@@ -1041,13 +1044,11 @@ const uiUtils = {
             prevButton.onclick = () => appLogic.navigateCascade(index, 'prev');
             cascadeControlsDiv.appendChild(prevButton);
 
-            // インジケーター (例: 1/3)
             const indicatorSpan = document.createElement('span');
             indicatorSpan.classList.add('cascade-indicator');
             indicatorSpan.textContent = `${cascadeInfo.currentIndex}/${cascadeInfo.total}`;
             cascadeControlsDiv.appendChild(indicatorSpan);
 
-            // 次へボタン
             const nextButton = document.createElement('button');
             nextButton.textContent = '＞';
             nextButton.title = '次の応答';
@@ -1056,36 +1057,30 @@ const uiUtils = {
             nextButton.onclick = () => appLogic.navigateCascade(index, 'next');
             cascadeControlsDiv.appendChild(nextButton);
 
-            // この応答を削除ボタン
             const deleteCascadeButton = document.createElement('button');
-            deleteCascadeButton.textContent = '✕'; // または '削除'
+            deleteCascadeButton.textContent = '✕';
             deleteCascadeButton.title = 'この応答を削除';
             deleteCascadeButton.classList.add('cascade-delete-btn');
             deleteCascadeButton.onclick = () => appLogic.confirmDeleteCascadeResponse(index);
             cascadeControlsDiv.appendChild(deleteCascadeButton);
 
-            messageDiv.appendChild(cascadeControlsDiv); // メッセージ要素に追加
+            messageDiv.appendChild(cascadeControlsDiv);
         }
-        // --- カスケードコントロールここまで ---
 
-        // エラーメッセージ以外にはアクションボタンを追加 (下部)
         if (role !== 'error') {
             const actionsDiv = document.createElement('div');
             actionsDiv.classList.add('message-actions');
             
-            // 編集ボタン
             const editButton = document.createElement('button');
             editButton.textContent = '編集'; editButton.title = 'メッセージを編集'; editButton.classList.add('js-edit-btn');
             editButton.onclick = () => appLogic.startEditMessage(index, messageDiv);
             actionsDiv.appendChild(editButton);
 
-            // 削除ボタン (メッセージペア全体削除)
             const deleteButton = document.createElement('button');
             deleteButton.textContent = '削除'; deleteButton.title = 'この会話ターンを削除'; deleteButton.classList.add('js-delete-btn');
-            deleteButton.onclick = () => appLogic.deleteMessage(index); // 既存の全体削除関数
+            deleteButton.onclick = () => appLogic.deleteMessage(index);
             actionsDiv.appendChild(deleteButton);
 
-            // ユーザーメッセージにはリトライボタンも追加
             if (role === 'user') {
                 const retryButton = document.createElement('button');
                 retryButton.textContent = 'リトライ'; retryButton.title = 'このメッセージから再生成'; retryButton.classList.add('js-retry-btn');
@@ -1093,15 +1088,13 @@ const uiUtils = {
                 actionsDiv.appendChild(retryButton);
             }
             
-            // const messageData = state.currentMessages[index]; // 上で取得済みなので再利用
-            // モデル応答で、usageMetadata があり、必要なトークン数が数値として存在する場合
             if (role === 'model' && messageData?.usageMetadata &&
                 typeof messageData.usageMetadata.candidatesTokenCount === 'number' &&
                 typeof messageData.usageMetadata.totalTokenCount === 'number')
             {
                 const usage = messageData.usageMetadata;
                 const tokenSpan = document.createElement('span');
-                tokenSpan.classList.add('token-count-display'); // スタイル適用用のクラス
+                tokenSpan.classList.add('token-count-display');
                 let finalTotalTokenCount = usage.totalTokenCount;
                 if (typeof messageData.usageMetadata.thoughtsTokenCount === 'number') {
                     finalTotalTokenCount -= messageData.usageMetadata.thoughtsTokenCount;
@@ -1109,19 +1102,15 @@ const uiUtils = {
                 const formattedCandidates = usage.candidatesTokenCount.toLocaleString('en-US');
                 const formattedTotal = finalTotalTokenCount.toLocaleString('en-US');
                 tokenSpan.textContent = `${formattedCandidates} / ${formattedTotal}`;
-                tokenSpan.title = `Candidate Tokens / Total Tokens`; // ホバー時のツールチップ
-
-                // アクションボタン群の前 (左端) に追加
+                tokenSpan.title = `Candidate Tokens / Total Tokens`;
                 actionsDiv.appendChild(tokenSpan);
             }
 
-            // リトライ回数表示
             if (role === 'model' && typeof messageData?.retryCount === 'number' && messageData.retryCount > 0) {
                 const retrySpan = document.createElement('span');
-                retrySpan.classList.add('token-count-display'); // トークン数と同じスタイルを適用
+                retrySpan.classList.add('token-count-display');
                 retrySpan.textContent = `(リトライ: ${messageData.retryCount}回)`;
                 retrySpan.title = `APIリクエストを${messageData.retryCount}回再試行した結果です`;
-                // トークン表示がある場合は少しマージンを空ける
                 if (actionsDiv.querySelector('.token-count-display')) {
                     retrySpan.style.marginLeft = '8px';
                 }
@@ -1131,7 +1120,6 @@ const uiUtils = {
             messageDiv.appendChild(actionsDiv);
         }
 
-        // ストリーミングプレースホルダーの場合、IDを付与して後で更新できるようにする
         if (isStreamingPlaceholder) {
             messageDiv.id = `streaming-message-${index}`;
         }
@@ -3004,11 +2992,14 @@ const appLogic = {
             await dbUtils.saveChat();
             
             let loopCount = 0;
-            const MAX_LOOPS = 10; // Function Callingの最大ループ回数
+            const MAX_LOOPS = 10;
+            // ▼▼▼【ここから変更】▼▼▼
+            const executedFunctionNamesInTurn = []; // この会話ターンで実行された関数名を記録
+            // ▲▲▲【ここまで変更】▲▲▲
 
             while (loopCount < MAX_LOOPS) {
                 loopCount++;
-                uiUtils.setLoadingIndicatorText('応答中...'); // ループ開始時にインジケーターをリセット
+                uiUtils.setLoadingIndicatorText('応答中...');
 
                 const messagesForApi = state.currentMessages.map(msg => {
                     const parts = [];
@@ -3022,9 +3013,8 @@ const appLogic = {
                     if (msg.role === 'tool') {
                         parts.push({ functionResponse: { name: msg.name, response: msg.response } });
                     }
-                    // APIに送る形式に整形
                     return { role: msg.role === 'tool' ? 'tool' : (msg.role === 'model' ? 'model' : 'user'), parts };
-                }).filter(c => c.parts.length > 0 && (c.role === 'user' || c.role === 'model' || c.role === 'tool')); // APIが受け付けるロールのみ
+                }).filter(c => c.parts.length > 0 && (c.role === 'user' || c.role === 'model' || c.role === 'tool'));
 
                 const generationConfig = {};
                 if (state.settings.temperature !== null) generationConfig.temperature = state.settings.temperature;
@@ -3041,25 +3031,21 @@ const appLogic = {
                     isFunctionCallingSequence: loopCount > 1
                 });
                 
-                // ▼▼▼【ここから変更】▼▼▼
                 let finalContent = result.content;
 
-                // --- 校正処理 ---
                 if (state.settings.enableProofreading && finalContent && finalContent.trim() !== '') {
                     try {
                         const proofreadContent = await this.proofreadText(finalContent);
                         console.log("校正適用完了。");
-                        finalContent = proofreadContent; // 校正後のテキストで上書き
+                        finalContent = proofreadContent;
                     } catch (proofreadError) {
                         console.error("校正処理中にエラーが発生しました。元のテキストを使用します。", proofreadError);
-                        // 校正失敗は致命的エラーではないため、アラートは出さずにコンソール出力に留める
                     }
                 }
 
-                // --- 応答処理 ---
                 const modelMessage = {
                     role: 'model',
-                    content: finalContent, // 校正済み(かもしれない)テキストを使用
+                    content: finalContent,
                     thoughtSummary: result.thoughtSummary,
                     tool_calls: result.toolCalls,
                     timestamp: Date.now(),
@@ -3069,38 +3055,50 @@ const appLogic = {
                     usageMetadata: result.usageMetadata,
                     retryCount: result.retryCount
                 };
-                // ▲▲▲【ここまで変更】▲▲▲
-                
-                // カスケード情報を付与 (リトライ時)
-                if (isRetry && loopCount === 1) { // Function Callingループの初回のみ
-                    const firstResponseIndexForRetry = retryUserMessageIndex + 1;
-                    if (firstResponseIndexForRetry < state.currentMessages.length && state.currentMessages[firstResponseIndexForRetry].isCascaded) {
-                        const originalResponse = state.currentMessages[firstResponseIndexForRetry];
-                        modelMessage.isCascaded = true;
-                        modelMessage.isSelected = true;
-                        modelMessage.siblingGroupId = originalResponse.siblingGroupId;
-                        originalResponse.isSelected = false;
-                    }
-                }
 
-                state.currentMessages.push(modelMessage);
-                await dbUtils.saveChat();
-                uiUtils.renderChatMessages();
-                uiUtils.scrollToBottom();
-
+                // ▼▼▼【ここから変更】▼▼▼
                 // Function Callingがなければループを抜ける
                 if (!result.toolCalls || result.toolCalls.length === 0) {
-                    break;
+                    // ループ終了時、これまでに実行された関数があればメッセージに記録
+                    if (executedFunctionNamesInTurn.length > 0) {
+                        modelMessage.executedFunctions = executedFunctionNamesInTurn;
+                    }
+                    
+                    if (isRetry && loopCount === 1) {
+                        const firstResponseIndexForRetry = retryUserMessageIndex + 1;
+                        if (firstResponseIndexForRetry < state.currentMessages.length && state.currentMessages[firstResponseIndexForRetry].isCascaded) {
+                            const originalResponse = state.currentMessages[firstResponseIndexForRetry];
+                            modelMessage.isCascaded = true;
+                            modelMessage.isSelected = true;
+                            modelMessage.siblingGroupId = originalResponse.siblingGroupId;
+                            originalResponse.isSelected = false;
+                        }
+                    }
+
+                    state.currentMessages.push(modelMessage);
+                    await dbUtils.saveChat();
+                    uiUtils.renderChatMessages();
+                    uiUtils.scrollToBottom();
+                    break; // ループを抜ける
                 }
+
+                // Function Callingが続く場合
+                modelMessage.tool_calls = result.toolCalls;
+                state.currentMessages.push(modelMessage); // tool_callsを含む中間応答を保存
                 
-                // Function Callingの実行
+                // 実行された関数名を記録
+                result.toolCalls.forEach(toolCall => {
+                    if (toolCall.functionCall?.name) {
+                        executedFunctionNamesInTurn.push(toolCall.functionCall.name);
+                    }
+                });
+                // ▲▲▲【ここまで変更】▲▲▲
+
                 uiUtils.setLoadingIndicatorText('関数実行中...');
                 const toolResults = await this.executeToolCalls(result.toolCalls);
                 state.currentMessages.push(...toolResults);
                 await dbUtils.saveChat();
-                uiUtils.renderChatMessages();
-                uiUtils.scrollToBottom();
-                // ループの先頭に戻り、関数の結果を含めて再度APIを呼び出す
+                // UI更新は不要（toolロールは表示されないため）
             }
 
         } catch(error) {

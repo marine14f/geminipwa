@@ -1713,3 +1713,48 @@ body.dark-mode .citation-list li a {
 #image-modal-close:hover {
     color: #bbb;
 }
+
+/* --- Function Calling 表示スタイル --- */
+.function-call-details {
+    margin-top: 10px;
+    font-size: 12px;
+    border-top: 1px dashed var(--border-secondary);
+    padding-top: 8px;
+}
+.function-call-details summary {
+    cursor: pointer;
+    font-weight: normal;
+    color: var(--text-secondary);
+    list-style: none;
+    display: inline-flex; /* アイコンとテキストを横並びにする */
+    align-items: center;
+    gap: 5px;
+    outline: none;
+    -webkit-tap-highlight-color: transparent;
+}
+.function-call-details summary::-webkit-details-marker { display: none; }
+.function-call-details summary::marker { display: none; }
+.function-call-details summary:hover {
+    text-decoration: underline;
+}
+.function-call-details summary::before { /* アイコン追加 */
+    content: '⚙️'; /* 歯車アイコン */
+    font-size: 14px;
+    display: inline-block;
+}
+.function-call-list {
+    list-style: none;
+    padding-left: 20px; /* アイコン分のインデント */
+    margin-top: 8px;
+    margin-bottom: 0;
+}
+.function-call-list li {
+    margin-bottom: 4px;
+    font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace; /* コード用のフォント */
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+/* ダークモード用 */
+body.dark-mode .function-call-details {
+    border-top-color: var(--border-primary);
+}
