@@ -812,7 +812,7 @@ async function manage_relationship(args) {
     }
 }
 
-// ▼▼▼【ここから追加】▼▼▼
+
 /**
  * 指定された範囲内のランダムな整数を生成します。
  * @param {object} args - AIによって提供される引数オブジェクト
@@ -941,7 +941,64 @@ async function generate_random_string({ length, count = 1, use_uppercase = true,
         return { error: `内部エラーが発生しました: ${error.message}` };
     }
 }
-// ▲▲▲【ここまで追加】▲▲▲
+
+/**
+ * Google Custom Search APIを使用してWeb検索を実行し、結果の要約を返します。
+ * @param {object} args - AIによって提供される引数オブジェクト
+ * @param {string} args.query - 検索キーワードまたは質問文
+ * @returns {Promise<object>} 検索結果の要約またはエラー情報を含むオブジェクトを返すPromise
+ */
+ async function search_web({ query }) {
+  console.log(`[Function Calling] search_webが呼び出されました。`, { query });
+
+  const apiKey = state.settings.googleSearchApiKey;
+  const engineId = state.settings.googleSearchEngineId;
+
+  if (!apiKey || !engineId) {
+      return { error: "Web検索機能を利用するには、設定画面でGoogle Search APIキーと検索エンジンIDの両方を設定する必要があります。" };
+  }
+  if (!query) {
+      return { error: "検索クエリ(query)は必須です。" };
+  }
+
+  const endpoint = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${engineId}&q=${encodeURIComponent(query)}`;
+
+  try {
+      const response = await fetch(endpoint);
+      if (!response.ok) {
+          const errorData = await response.json();
+          const errorMessage = errorData.error?.message || `HTTPエラー: ${response.status}`;
+          console.error(`[Function Calling] search_web APIエラー:`, errorMessage);
+          return { error: `Web検索APIでエラーが発生しました: ${errorMessage}` };
+      }
+
+      const data = await response.json();
+
+      if (!data.items || data.items.length === 0) {
+          return { success: true, message: "検索結果が見つかりませんでした。", results: [] };
+      }
+
+      const results = data.items.slice(0, 5).map(item => ({ // 上位5件に絞る
+          title: item.title,
+          link: item.link,
+          snippet: item.snippet
+      }));
+
+      // AIが扱いやすいように、結果を一つの文字列にまとめる
+      let summary = `Web検索結果の要約:\n\n`;
+      results.forEach((result, index) => {
+          summary += `[${index + 1}] ${result.title}\n`;
+          summary += `抜粋: ${result.snippet}\n`;
+          summary += `URL: ${result.link}\n\n`;
+      });
+
+      return { success: true, summary: summary.trim(), results: results };
+
+  } catch (error) {
+      console.error(`[Function Calling] search_webで予期せぬエラー:`, error);
+      return { error: `Web検索中に予期せぬエラーが発生しました: ${error.message}` };
+  }
+}
 
 
 window.functionCallingTools = {
@@ -977,12 +1034,13 @@ window.functionCallingTools = {
   manage_flags: manage_flags,
   manage_game_date: manage_game_date,
   manage_relationship: manage_relationship,
-  // ▼▼▼【ここから追加】▼▼▼
   get_random_integer: get_random_integer,
   get_random_choice: get_random_choice,
-  generate_random_string: generate_random_string
-  // ▲▲▲【ここまで追加】▲▲▲
+  generate_random_string: generate_random_string,
+  search_web: search_web
 };
+
+
 
 /**
 * AIに提供するツールの定義情報 (Tool Declaration)
@@ -1324,6 +1382,20 @@ window.functionDeclarations = [
                     }
                 },
                 "required": ["length"]
+            }
+          },
+          {
+            "name": "search_web",
+            "description": "AI自身の知識にない、現実世界の最新情報、特定の専門知識、あるいは具体的なデータが必要な場合に使用します。物語のリアリティを高めるための情報収集に役立ちます。例えば、歴史的な出来事、特定の場所の天気、科学的な事実などを調べるのに使ってください。",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "query": {
+                        "type": "STRING",
+                        "description": "検索したいキーワードや質問文。具体的で明確なクエリを指定してください。例: '日本の城下町の発展の歴史', '今日の東京の天気'"
+                    }
+                },
+                "required": ["query"]
             }
           }
       ]

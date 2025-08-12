@@ -159,6 +159,8 @@ const elements = {
     enableAutoRetryCheckbox: document.getElementById('enable-auto-retry'),
     maxRetriesInput: document.getElementById('max-retries'),
     autoRetryOptionsDiv: document.getElementById('auto-retry-options'),
+    googleSearchApiKeyInput: document.getElementById('google-search-api-key'),
+    googleSearchEngineIdInput: document.getElementById('google-search-engine-id'),
 };
 
 // --- アプリ状態 ---
@@ -201,6 +203,8 @@ const state = {
         proofreadingSystemInstruction: 'あなたはプロの編集者です。受け取った文章の過剰な読点を抑制し、日本語として違和感のない読点の使用量に校正してください。承知しました等の応答は行わず、校正後の文章のみ出力して下さい。読点の抑制以外の編集は禁止です。読点以外の文章には絶対に手を付けないで下さい。',
         geminiEnableGrounding: false,
         geminiEnableFunctionCalling: false,
+        googleSearchApiKey: '',
+        googleSearchEngineId: '',
     },
     backgroundImageUrl: null,
     isSending: false,
@@ -1413,6 +1417,8 @@ const uiUtils = {
         elements.enableAutoRetryCheckbox.checked = state.settings.enableAutoRetry;
         elements.maxRetriesInput.value = state.settings.maxRetries;
         elements.autoRetryOptionsDiv.classList.toggle('hidden', !state.settings.enableAutoRetry);
+        elements.googleSearchApiKeyInput.value = state.settings.googleSearchApiKey || '';
+        elements.googleSearchEngineIdInput.value = state.settings.googleSearchEngineId || '';
 
         this.updateUserModelOptions();
         this.updateBackgroundSettingsUI();
@@ -3553,6 +3559,8 @@ const appLogic = {
             enableProofreading: elements.enableProofreadingCheckbox.checked,
             proofreadingModelName: elements.proofreadingModelNameSelect.value,
             proofreadingSystemInstruction: elements.proofreadingSystemInstructionTextarea.value.trim(),
+            googleSearchApiKey: elements.googleSearchApiKeyInput.value.trim(),
+            googleSearchEngineId: elements.googleSearchEngineIdInput.value.trim(),
         };
 
         if (isNaN(newSettings.streamingSpeed) || newSettings.streamingSpeed < 0) {

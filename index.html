@@ -225,6 +225,16 @@
                     <p style="font-size: 12px; color: var(--text-secondary); margin-top: -10px; margin-bottom: 15px;">
                         ※ Function Calling と Google Search は同時に使用できません。
                     </p>
+                    <details style="margin-top: 15px; margin-bottom: 15px;">
+                        <summary style="cursor: pointer; font-weight: normal; font-size: 14px; color: var(--text-link); margin-bottom: 10px;">Web検索設定 (Google Custom Search)</summary>
+                        <p style="font-size: 11px; color: var(--text-secondary); margin-top: 8px; margin-bottom: 10px;">
+                            ※AIがFunction Callingを使用して外部情報を検索するために使用します。<a href="https://developers.google.com/custom-search/v1/overview" target="_blank" rel="noopener">Google Custom Search API</a>を利用し、1日100回まで無料です。
+                        </p>
+                        <label for="google-search-api-key">Google Search APIキー:</label>
+                        <input type="password" id="google-search-api-key" placeholder="APIキーを入力">
+                        <label for="google-search-engine-id">検索エンジンID (CX):</label>
+                        <input type="text" id="google-search-engine-id" placeholder="検索エンジンIDを入力">
+                    </details>
                     <label class="checkbox-label">
                         <input type="checkbox" id="gemini-enable-function-calling-toggle">
                         Function Calling を使用する
