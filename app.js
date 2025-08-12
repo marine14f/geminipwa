@@ -3180,9 +3180,13 @@ const appLogic = {
                     generationConfig,
                     systemInstruction,
                     tools: window.functionDeclarations,
-                    isFunctionCallingSequence: loopCount > 1,
+                    isFunctionCallingSequence: loopCount > 1
+                });
+
+                console.log("--- API応答メタデータ ---", { 
                     finishReason: result.finishReason, 
-                    safetyRatings: result.safetyRatings 
+                    safetyRatings: result.safetyRatings,
+                    retryCount: result.retryCount
                 });
                 
                 let finalContent = result.content;
