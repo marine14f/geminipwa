@@ -3180,7 +3180,9 @@ const appLogic = {
                     generationConfig,
                     systemInstruction,
                     tools: window.functionDeclarations,
-                    isFunctionCallingSequence: loopCount > 1
+                    isFunctionCallingSequence: loopCount > 1,
+                    finishReason: result.finishReason, 
+                    safetyRatings: result.safetyRatings 
                 });
                 
                 let finalContent = result.content;
