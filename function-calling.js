@@ -653,7 +653,6 @@ async function manage_game_date({ action, days = 1 }) {
     }
 }
 
-// ▼▼▼【ここから追加】▼▼▼
 /**
  * キャラクター間の関係値（好感度、信頼度など）を多軸で管理する関数
  * @param {object} args - AIによって提供される引数オブジェクト
@@ -812,6 +811,136 @@ async function manage_relationship(args) {
         return { error: `内部エラーが発生しました: ${error.message}` };
     }
 }
+
+// ▼▼▼【ここから追加】▼▼▼
+/**
+ * 指定された範囲内のランダムな整数を生成します。
+ * @param {object} args - AIによって提供される引数オブジェクト
+ * @param {number} args.min - 乱数の最小値 (整数)
+ * @param {number} args.max - 乱数の最大値 (整数)
+ * @param {number} [args.count=1] - 生成する乱数の個数 (デフォルト1)
+ * @returns {Promise<object>} 生成された整数の配列を含むオブジェクトを返すPromise
+ */
+async function get_random_integer({ min, max, count = 1 }) {
+    console.log(`[Function Calling] get_random_integerが呼び出されました。`, { min, max, count });
+
+    if (typeof min !== 'number' || typeof max !== 'number' || !Number.isInteger(min) || !Number.isInteger(max)) {
+        return { error: "引数 'min' と 'max' は整数である必要があります。" };
+    }
+    if (min > max) {
+        return { error: "引数 'min' は 'max' 以下である必要があります。" };
+    }
+    if (typeof count !== 'number' || !Number.isInteger(count) || count < 1) {
+        return { error: "引数 'count' は1以上の整数である必要があります。" };
+    }
+    if (count > 100) {
+        return { error: "一度に生成できる個数は100個までです。" };
+    }
+
+    try {
+        const results = [];
+        for (let i = 0; i < count; i++) {
+            const randomNumber = Math.floor(Math.random() * (max - min + 1)) + min;
+            results.push(randomNumber);
+        }
+        return { success: true, results: results };
+    } catch (error) {
+        console.error(`[Function Calling] get_random_integerでエラーが発生しました:`, error);
+        return { error: `内部エラーが発生しました: ${error.message}` };
+    }
+}
+
+/**
+ * 提供されたリストの中からランダムに項目を選択します。
+ * @param {object} args - AIによって提供される引数オブジェクト
+ * @param {Array<any>} args.list - 選択肢となる配列
+ * @param {number} [args.count=1] - 選択する項目の個数 (デフォルト1、重複を許す)
+ * @returns {Promise<object>} 選択された項目の配列を含むオブジェクトを返すPromise
+ */
+async function get_random_choice({ list, count = 1 }) {
+    console.log(`[Function Calling] get_random_choiceが呼び出されました。`, { list, count });
+
+    if (!Array.isArray(list) || list.length === 0) {
+        return { error: "引数 'list' は空でない配列である必要があります。" };
+    }
+    if (typeof count !== 'number' || !Number.isInteger(count) || count < 1) {
+        return { error: "引数 'count' は1以上の整数である必要があります。" };
+    }
+    if (count > 100) {
+        return { error: "一度に選択できる個数は100個までです。" };
+    }
+
+    try {
+        const results = [];
+        for (let i = 0; i < count; i++) {
+            const randomIndex = Math.floor(Math.random() * list.length);
+            results.push(list[randomIndex]);
+        }
+        return { success: true, results: results };
+    } catch (error) {
+        console.error(`[Function Calling] get_random_choiceでエラーが発生しました:`, error);
+        return { error: `内部エラーが発生しました: ${error.message}` };
+    }
+}
+
+/**
+ * 指定された条件でランダムな文字列を生成します。
+ * @param {object} args - AIによって提供される引数オブジェクト
+ * @param {number} args.length - 生成する文字列の長さ
+ * @param {number} [args.count=1] - 生成する文字列の個数 (デフォルト1)
+ * @param {boolean} [args.use_uppercase=true] - 大文字英字を使用するか
+ * @param {boolean} [args.use_lowercase=true] - 小文字英字を使用するか
+ * @param {boolean} [args.use_numbers=true] - 数字を使用するか
+ * @param {boolean} [args.use_symbols=false] - 記号を使用するか
+ * @returns {Promise<object>} 生成された文字列の配列を含むオブジェクトを返すPromise
+ */
+async function generate_random_string({ length, count = 1, use_uppercase = true, use_lowercase = true, use_numbers = true, use_symbols = false }) {
+    console.log(`[Function Calling] generate_random_stringが呼び出されました。`, { length, count, use_uppercase, use_lowercase, use_numbers, use_symbols });
+
+    if (typeof length !== 'number' || !Number.isInteger(length) || length < 1) {
+        return { error: "引数 'length' は1以上の整数である必要があります。" };
+    }
+    if (length > 128) {
+        return { error: "一度に生成できる文字列の長さは128文字までです。" };
+    }
+    if (typeof count !== 'number' || !Number.isInteger(count) || count < 1) {
+        return { error: "引数 'count' は1以上の整数である必要があります。" };
+    }
+    if (count > 100) {
+        return { error: "一度に生成できる個数は100個までです。" };
+    }
+
+    const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const lower = 'abcdefghijklmnopqrstuvwxyz';
+    const numbers = '0123456789';
+    const symbols = '!@#$%^&*()_+-=[]{}|;:,.<>?';
+
+    let charSet = '';
+    if (use_uppercase) charSet += upper;
+    if (use_lowercase) charSet += lower;
+    if (use_numbers) charSet += numbers;
+    if (use_symbols) charSet += symbols;
+
+    if (charSet.length === 0) {
+        return { error: "少なくとも1種類の文字セット（大文字、小文字、数字、記号）を有効にする必要があります。" };
+    }
+
+    try {
+        const results = [];
+        for (let i = 0; i < count; i++) {
+            let randomString = '';
+            for (let j = 0; j < length; j++) {
+                const randomIndex = Math.floor(Math.random() * charSet.length);
+                randomString += charSet[randomIndex];
+            }
+            results.push(randomString);
+        }
+        return { success: true, results: results };
+    } catch (error) {
+        console.error(`[Function Calling] generate_random_stringでエラーが発生しました:`, error);
+        return { error: `内部エラーが発生しました: ${error.message}` };
+    }
+}
 // ▲▲▲【ここまで追加】▲▲▲
 
 
@@ -847,8 +976,11 @@ window.functionCallingTools = {
   manage_scene: manage_scene,
   manage_flags: manage_flags,
   manage_game_date: manage_game_date,
+  manage_relationship: manage_relationship,
   // ▼▼▼【ここから追加】▼▼▼
-  manage_relationship: manage_relationship
+  get_random_integer: get_random_integer,
+  get_random_choice: get_random_choice,
+  generate_random_string: generate_random_string
   // ▲▲▲【ここまで追加】▲▲▲
 };
 
@@ -905,7 +1037,7 @@ window.functionDeclarations = [
           },
           {
             "name": "rollDice",
-            "description": "テーブルトークRPG（TRPG）やボードゲームなどで使用される、指定された形式のダイスを振って結果を返します。例えば「1d100」や「2d6+3」のような形式のダイスロールを要求された場合に使用します。単純な乱数ではなく、ダイスロールの文脈で呼び出してください。",
+            "description": "テーブルトークRPG（TRPG）やボードゲームなどで使用される、指定された形式のダイスを振って結果を返します。ユーザーが「1d100」や「2d6+3」のように、明確にダイスロールを要求した場合にのみ使用してください。一般的な確率計算には `get_random_integer` を使用してください。",
             "parameters": {
                 "type": "OBJECT",
                 "properties": {
@@ -1117,6 +1249,81 @@ window.functionDeclarations = [
                     }
                 },
                 "required": ["action", "source_character"]
+            }
+          },
+          {
+            "name": "get_random_integer",
+            "description": "指定された最小値と最大値の範囲内で、ランダムな整数を生成します。『50%の確率』や『1から10までのランダムな数字』など、一般的な確率計算や数値のランダム化が必要な場合に使用してください。TRPGのダイスロール（例: '2d6'）の場合は、代わりに `rollDice` 関数を使用してください。",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "min": {
+                        "type": "NUMBER",
+                        "description": "生成される乱数の最小値（この値も含まれる）。"
+                    },
+                    "max": {
+                        "type": "NUMBER",
+                        "description": "生成される乱数の最大値（この値も含まれる）。"
+                    },
+                    "count": {
+                        "type": "NUMBER",
+                        "description": "生成する乱数の個数。指定しない場合は1。"
+                    }
+                },
+                "required": ["min", "max"]
+            }
+          },
+          {
+            "name": "get_random_choice",
+            "description": "提供されたリストの中から、ランダムに一つまたは複数の項目を選択します。くじ引き、ガチャ、ランダムなアイテムの選択、登場人物の行動のランダム決定などに使用してください。",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "list": {
+                        "type": "ARRAY",
+                        "description": "選択肢となる項目を含む配列。例: ['リンゴ', 'バナナ', 'オレンジ']",
+                        "items": { "type": "STRING" }
+                    },
+                    "count": {
+                        "type": "NUMBER",
+                        "description": "選択する項目の個数（重複選択を許す）。指定しない場合は1。"
+                    }
+                },
+                "required": ["list"]
+            }
+          },
+          {
+            "name": "generate_random_string",
+            "description": "指定された条件に基づいて、ランダムな文字列（パスワード、シリアルナンバー、IDなど）を生成します。物語の中で、意味を持たないユニークな文字列や、機械的に生成されたようなコードが必要な場合に使用してください。",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "length": {
+                        "type": "NUMBER",
+                        "description": "生成する文字列の長さ。"
+                    },
+                    "count": {
+                        "type": "NUMBER",
+                        "description": "生成する文字列の個数。指定しない場合は1。"
+                    },
+                    "use_uppercase": {
+                        "type": "BOOLEAN",
+                        "description": "大文字の英字（A-Z）を含めるか。デフォルトはtrue。"
+                    },
+                    "use_lowercase": {
+                        "type": "BOOLEAN",
+                        "description": "小文字の英字（a-z）を含めるか。デフォルトはtrue。"
+                    },
+                    "use_numbers": {
+                        "type": "BOOLEAN",
+                        "description": "数字（0-9）を含めるか。デフォルトはtrue。"
+                    },
+                    "use_symbols": {
+                        "type": "BOOLEAN",
+                        "description": "記号（!@#$...など）を含めるか。デフォルトはfalse。"
+                    }
+                },
+                "required": ["length"]
             }
           }
       ]
