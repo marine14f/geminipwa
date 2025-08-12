@@ -2832,58 +2832,70 @@ const appLogic = {
 
     // チャットをテキストファイルとしてエクスポート
     async exportChat(chatId, chatTitle) {
-         const confirmed = await uiUtils.showCustomConfirm(`チャット「${chatTitle || 'この履歴'}」をテキスト出力しますか？`);
-         if (!confirmed) return;
-
-         try {
-             const chat = await dbUtils.getChat(chatId);
-             if (!chat || ((!chat.messages || chat.messages.length === 0) && !chat.systemPrompt)) {
-                 await uiUtils.showCustomAlert("チャットデータが空です。");
-                 return;
-             }
-             // エクスポート用テキスト生成
-             let exportText = '';
-             // システムプロンプトを出力
-             if (chat.systemPrompt) {
-                 exportText += `<|#|system|#|>\n${chat.systemPrompt}\n<|#|/system|#|>\n\n`;
-             }
-             // メッセージを出力
-             if (chat.messages) {
-                 chat.messages.forEach(msg => {
-                     // userとmodelのメッセージのみ出力
-                     if (msg.role === 'user' || msg.role === 'model') {
-                         let attributes = '';
-                         if (msg.role === 'model') {
-                             if (msg.isCascaded) attributes += ' isCascaded';
-                             if (msg.isSelected) attributes += ' isSelected';
-                             // siblingGroupId はエクスポートしない方針
-                         }
-                         // 添付ファイル情報を属性として追加 (ファイル名のみ)
-                         if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
-                             const fileNames = msg.attachments.map(a => a.name).join(';'); // ファイル名をセミコロン区切りで
-                             attributes += ` attachments="${fileNames.replace(/"/g, '&quot;')}"`; // 属性値としてエンコード
-                         }
-                         exportText += `<|#|${msg.role}|#|${attributes}>\n${msg.content}\n<|#|/${msg.role}|#|>\n\n`;
-                     }
-                 });
-             }
-             // Blobを作成してダウンロードリンクを生成
-             const blob = new Blob([exportText.trim()], { type: 'text/plain;charset=utf-8' });
-             const url = URL.createObjectURL(blob);
-             const a = document.createElement('a');
-             // ファイル名を生成 (不正文字を置換)
-             const safeTitle = (chatTitle || `chat_${chatId}_export`).replace(/[<>:"/\\|?*\s]/g, '_');
-             a.href = url;
-             a.download = `${safeTitle}.txt`;
-             document.body.appendChild(a); // bodyに追加してクリック可能に
-             a.click(); // ダウンロード実行
-             document.body.removeChild(a); // 要素削除
-             URL.revokeObjectURL(url); // URL破棄
-             console.log("チャットエクスポート完了:", chatId);
-         } catch (error) {
-             await uiUtils.showCustomAlert(`エクスポートエラー: ${error}`);
-         }
-    },
+        const confirmed = await uiUtils.showCustomConfirm(`チャット「${chatTitle || 'この履歴'}」をテキスト出力しますか？`);
+        if (!confirmed) return;
+   
+        try {
+            const chat = await dbUtils.getChat(chatId);
+            if (!chat || ((!chat.messages || chat.messages.length === 0) && !chat.systemPrompt)) {
+                await uiUtils.showCustomAlert("チャットデータが空です。");
+                return;
+            }
+            // エクスポート用テキスト生成
+            let exportText = '';
+   
+            // persistentMemory をメタデータとして出力
+            if (chat.persistentMemory && Object.keys(chat.persistentMemory).length > 0) {
+                try {
+                    const metadataJson = JSON.stringify(chat.persistentMemory, null, 2);
+                    exportText += `<|#|metadata|#|>\n${metadataJson}\n<|#|/metadata|#|>\n\n`;
+                } catch (e) {
+                    console.error("persistentMemoryのJSON化に失敗しました:", e);
+                    // エラーが発生してもエクスポート処理は続行
+                }
+            }
+   
+            // システムプロンプトを出力
+            if (chat.systemPrompt) {
+                exportText += `<|#|system|#|>\n${chat.systemPrompt}\n<|#|/system|#|>\n\n`;
+            }
+            // メッセージを出力
+            if (chat.messages) {
+                chat.messages.forEach(msg => {
+                    // userとmodelのメッセージのみ出力
+                    if (msg.role === 'user' || msg.role === 'model') {
+                        let attributes = '';
+                        if (msg.role === 'model') {
+                            if (msg.isCascaded) attributes += ' isCascaded';
+                            if (msg.isSelected) attributes += ' isSelected';
+                            // siblingGroupId はエクスポートしない方針
+                        }
+                        // 添付ファイル情報を属性として追加 (ファイル名のみ)
+                        if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
+                            const fileNames = msg.attachments.map(a => a.name).join(';'); // ファイル名をセミコロン区切りで
+                            attributes += ` attachments="${fileNames.replace(/"/g, '&quot;')}"`; // 属性値としてエンコード
+                        }
+                        exportText += `<|#|${msg.role}|#|${attributes}>\n${msg.content}\n<|#|/${msg.role}|#|>\n\n`;
+                    }
+                });
+            }
+            // Blobを作成してダウンロードリンクを生成
+            const blob = new Blob([exportText.trim()], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            // ファイル名を生成 (不正文字を置換)
+            const safeTitle = (chatTitle || `chat_${chatId}_export`).replace(/[<>:"/\\|?*\s]/g, '_');
+            a.href = url;
+            a.download = `${safeTitle}.txt`;
+            document.body.appendChild(a); // bodyに追加してクリック可能に
+            a.click(); // ダウンロード実行
+            document.body.removeChild(a); // 要素削除
+            URL.revokeObjectURL(url); // URL破棄
+            console.log("チャットエクスポート完了:", chatId);
+        } catch (error) {
+            await uiUtils.showCustomAlert(`エクスポートエラー: ${error}`);
+        }
+   },
 
 
     // チャット削除の確認と実行 (メッセージペア全体)
@@ -3280,9 +3292,9 @@ const appLogic = {
                 return;
             }
             try {
-                const { messages: importedMessages, systemPrompt: importedSystemPrompt } = this.parseImportedHistory(textContent);
-                if (importedMessages.length === 0 && !importedSystemPrompt) {
-                    await uiUtils.showCustomAlert("ファイルから有効なメッセージまたはシステムプロンプトを読み込めませんでした。形式を確認してください。");
+                const { messages: importedMessages, systemPrompt: importedSystemPrompt, persistentMemory: importedMemory } = this.parseImportedHistory(textContent);
+                if (importedMessages.length === 0 && !importedSystemPrompt && (!importedMemory || Object.keys(importedMemory).length === 0)) {
+                    await uiUtils.showCustomAlert("ファイルから有効なメッセージ、システムプロンプト、またはメタデータを読み込めませんでした。形式を確認してください。");
                     return;
                 }
 
@@ -3328,6 +3340,9 @@ const appLogic = {
                 const newChatData = {
                     messages: importedMessages,
                     systemPrompt: importedSystemPrompt || '', // インポートされたシステムプロンプト
+                    // ▼▼▼【ここから変更】▼▼▼
+                    persistentMemory: importedMemory || {}, // インポートされた永続メモリ
+                    // ▲▲▲【ここまで変更】▲▲▲
                     updatedAt: Date.now(),
                     createdAt: Date.now(),
                     title: newTitle.substring(0, 100) // 100文字制限
@@ -3364,15 +3379,36 @@ const appLogic = {
     parseImportedHistory(text) {
         const messages = [];
         let systemPrompt = '';
+        let persistentMemory = {}; // persistentMemoryを初期化
+    
+        // メタデータブロックを先に抽出して、元のテキストから削除する
+        const metadataRegex = /<\|#\|metadata\|#\|>([\s\S]*?)<\|#\|\/metadata\|#\|>\s*/;
+        const metadataMatch = text.match(metadataRegex);
+        let remainingText = text;
+    
+        if (metadataMatch) {
+            const metadataJson = metadataMatch[1].trim();
+            try {
+                persistentMemory = JSON.parse(metadataJson);
+                console.log("インポートファイルからpersistentMemoryをパースしました:", persistentMemory);
+            } catch (e) {
+                console.error("インポートされたmetadataのJSONパースに失敗しました。空のオブジェクトとして扱います。", e);
+                persistentMemory = {}; // パース失敗時は空に
+            }
+            // メタデータブロックをテキストから削除して、残りのパースに影響しないようにする
+            remainingText = text.replace(metadataRegex, '');
+        }
+    
         // 正規表現を修正: <|#|role|#| [attributes]>\ncontent\n<|#|/role|#|>
         const blockRegex = /<\|#\|(system|user|model)\|#\|([^>]*)>([\s\S]*?)<\|#\|\/\1\|#\|>/g;
         let match;
-
-        while ((match = blockRegex.exec(text)) !== null) {
+    
+        // メタデータ削除後のテキストに対してループ処理
+        while ((match = blockRegex.exec(remainingText)) !== null) {
             const role = match[1];
             const attributesString = match[2].trim(); // 属性文字列 (例: "isCascaded isSelected")
             const content = match[3].trim(); // コンテンツ
-
+    
             if (role === 'system' && content) {
                 systemPrompt = content; // システムプロンプトを抽出
             } else if ((role === 'user' || role === 'model') && (content || attributesString.includes('attachments'))) { // コンテンツが空でも attachments があれば処理
@@ -3398,7 +3434,7 @@ const appLogic = {
                         attributes[attr] = true; // isCascaded, isSelected
                     }
                 });
-
+    
                 if (role === 'model') {
                     messageData.isCascaded = attributes['isCascaded'] === true;
                     messageData.isSelected = attributes['isSelected'] === true;
@@ -3417,7 +3453,8 @@ const appLogic = {
             }
         }
         console.log(`インポートテキストから ${messages.length} 件のメッセージとシステムプロンプト(${systemPrompt ? 'あり' : 'なし'})をパースしました。`);
-        return { messages, systemPrompt };
+        // 戻り値に persistentMemory を追加
+        return { messages, systemPrompt, persistentMemory };
     },
     // -------------------------------
 
