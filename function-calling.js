@@ -1,5 +1,3 @@
-// function-calling.js
-
 /**
  * 現在のチャットセッションに紐づく永続メモリを管理する関数
  * @param {object} args - AIによって提供される引数オブジェクト
@@ -592,7 +590,6 @@ async function manage_flags({ action, key, value, ttl_minutes }) {
     }
 }
 
-// ▼▼▼【ここから追加】▼▼▼
 /**
  * ゲーム内の経過日数を管理する関数
  * @param {object} args - AIによって提供される引数オブジェクト
@@ -655,6 +652,166 @@ async function manage_game_date({ action, days = 1 }) {
         return { error: `内部エラーが発生しました: ${error.message}` };
     }
 }
+
+// ▼▼▼【ここから追加】▼▼▼
+/**
+ * キャラクター間の関係値（好感度、信頼度など）を多軸で管理する関数
+ * @param {object} args - AIによって提供される引数オブジェクト
+ * @param {string} args.source_character - 関係の主体となるキャラクター名
+ * @param {string} args.target_character - 関係の対象となるキャラクター名
+ * @param {string} args.axis - 操作する関係の軸 (例: "好感度", "信頼度", "緊張度")
+ * @param {string} args.action - "set", "increase", "decrease", "get", "get_all_axes", "get_all_from_source" のいずれか
+ * @param {number} [args.value] - "set", "increase", "decrease" アクションで使用する数値
+ * @param {number} [args.clamp_min] - 関係値の下限値
+ * @param {number} [args.clamp_max] - 関係値の上限値
+ * @param {number} [args.days_to_decay] - 何日間更新がないと減衰が始まるか
+ * @param {number} [args.decay_value] - 1日あたりに減衰する値 (通常は負の数)
+ * @returns {Promise<object>} 操作結果を含むオブジェクトを返すPromise
+ */
+async function manage_relationship(args) {
+    console.log(`[Function Calling] manage_relationshipが呼び出されました。`, args);
+    const {
+        source_character, target_character, axis, action, value,
+        clamp_min, clamp_max, days_to_decay, decay_value
+    } = args;
+
+    if (!action) return { error: "引数 'action' は必須です。" };
+    if (!source_character) return { error: "引数 'source_character' は必須です。" };
+    
+    // アクションに応じて必須引数をチェック
+    if (["get", "set", "increase", "decrease", "get_all_axes"].includes(action) && !target_character) {
+        return { error: `アクション '${action}' には 'target_character' が必須です。` };
+    }
+    if (["get", "set", "increase", "decrease"].includes(action) && !axis) {
+        return { error: `アクション '${action}' には 'axis' が必須です。` };
+    }
+    if (["set", "increase", "decrease"].includes(action) && typeof value !== 'number') {
+        return { error: `アクション '${action}' には数値型の 'value' が必要です。` };
+    }
+
+    try {
+        const chat = await dbUtils.getChat(state.currentChatId);
+        if (!chat) throw new Error(`チャットデータ (ID: ${state.currentChatId}) が見つかりません。`);
+
+        // 永続メモリと各種データの初期化
+        if (!chat.persistentMemory) chat.persistentMemory = {};
+        if (!chat.persistentMemory.relationships) chat.persistentMemory.relationships = {};
+        if (typeof chat.persistentMemory.game_day !== 'number') chat.persistentMemory.game_day = 1;
+        
+        const relationships = chat.persistentMemory.relationships;
+        const currentGameDay = chat.persistentMemory.game_day;
+
+        // 減衰計算を行うヘルパー関数
+        const calculateDecay = (currentValue, lastUpdatedDay) => {
+            if (typeof days_to_decay !== 'number' || typeof decay_value !== 'number') {
+                return currentValue; // 減衰設定がなければ元の値を返す
+            }
+            const elapsedDays = currentGameDay - lastUpdatedDay;
+            if (elapsedDays > days_to_decay) {
+                const decayDays = elapsedDays - days_to_decay;
+                const totalDecay = decayDays * decay_value;
+                return currentValue + totalDecay;
+            }
+            return currentValue;
+        };
+        
+        // 関係値データを安全に取得・初期化するヘルパー関数
+        const getRelation = (source, target, axisName) => {
+            if (!relationships[source]) relationships[source] = {};
+            if (!relationships[source][target]) relationships[source][target] = {};
+            if (!relationships[source][target][axisName]) {
+                relationships[source][target][axisName] = { value: 0, last_updated_day: currentGameDay };
+            }
+            return relationships[source][target][axisName];
+        };
+
+        let message = "";
+        let resultData = {};
+
+        // アクションごとの処理
+        switch (action) {
+            case "get": {
+                const relation = getRelation(source_character, target_character, axis);
+                const decayedValue = calculateDecay(relation.value, relation.last_updated_day);
+                message = `${source_character}から${target_character}への${axis}は現在 ${decayedValue} です。`;
+                resultData = { success: true, value: decayedValue, message };
+                break;
+            }
+
+            case "set":
+            case "increase":
+            case "decrease": {
+                const relation = getRelation(source_character, target_character, axis);
+                const decayedBaseValue = (action === "set") 
+                    ? relation.value // setの場合は減衰を無視
+                    : calculateDecay(relation.value, relation.last_updated_day);
+
+                let newValue;
+                if (action === "increase") newValue = decayedBaseValue + value;
+                else if (action === "decrease") newValue = decayedBaseValue - value;
+                else newValue = value; // set
+
+                // clamp（上限/下限）処理
+                if (typeof clamp_max === 'number') newValue = Math.min(newValue, clamp_max);
+                if (typeof clamp_min === 'number') newValue = Math.max(newValue, clamp_min);
+
+                relation.value = newValue;
+                relation.last_updated_day = currentGameDay;
+                
+                message = `${source_character}から${target_character}への${axis}が更新され、${newValue}になりました。`;
+                resultData = { success: true, new_value: newValue, message };
+                break;
+            }
+
+            case "get_all_axes": {
+                if (!relationships[source_character] || !relationships[source_character][target_character]) {
+                    return { success: true, relations: {}, message: `${source_character}から${target_character}への関係はまだ設定されていません。` };
+                }
+                const targetRelations = relationships[source_character][target_character];
+                const allAxes = {};
+                for (const axisName in targetRelations) {
+                    const relation = targetRelations[axisName];
+                    allAxes[axisName] = calculateDecay(relation.value, relation.last_updated_day);
+                }
+                message = `${source_character}から${target_character}への全関係値を取得しました。`;
+                resultData = { success: true, relations: allAxes, message };
+                break;
+            }
+
+            case "get_all_from_source": {
+                if (!relationships[source_character]) {
+                     return { success: true, relations: {}, message: `${source_character}の人間関係はまだ設定されていません。` };
+                }
+                const sourceRelations = relationships[source_character];
+                const allRelations = {};
+                for (const targetName in sourceRelations) {
+                    allRelations[targetName] = {};
+                    for (const axisName in sourceRelations[targetName]) {
+                        const relation = sourceRelations[targetName][axisName];
+                        allRelations[targetName][axisName] = calculateDecay(relation.value, relation.last_updated_day);
+                    }
+                }
+                message = `${source_character}が持つ全ての人間関係を取得しました。`;
+                resultData = { success: true, relations: allRelations, message };
+                break;
+            }
+            
+            default:
+                return { error: `無効なアクションです: ${action}` };
+        }
+
+        chat.updatedAt = Date.now();
+        await dbUtils.saveChat(chat.title);
+        state.currentPersistentMemory = chat.persistentMemory;
+
+        console.log(`[Function Calling] 処理完了:`, resultData);
+        return resultData;
+
+    } catch (error) {
+        console.error(`[Function Calling] manage_relationshipでエラーが発生しました:`, error);
+        return { error: `内部エラーが発生しました: ${error.message}` };
+    }
+}
 // ▲▲▲【ここまで追加】▲▲▲
 
 
@@ -689,8 +846,9 @@ window.functionCallingTools = {
   manage_inventory: manage_inventory,
   manage_scene: manage_scene,
   manage_flags: manage_flags,
+  manage_game_date: manage_game_date,
   // ▼▼▼【ここから追加】▼▼▼
-  manage_game_date: manage_game_date
+  manage_relationship: manage_relationship
   // ▲▲▲【ここまで追加】▲▲▲
 };
 
@@ -783,7 +941,7 @@ window.functionDeclarations = [
           },
           {
             "name": "manage_character_status",
-            "description": "ロールプレイングゲームや物語に登場するキャラクターのステータス（HP, MP, 好感度, 疲労度など）を設定、増減、または確認します。キャラクターのパラメータが変動するイベントが発生した場合に使用します。",
+            "description": "ロールプレイングゲームや物語に登場するキャラクターのステータス（HP, MP, 疲労度など、キャラクター単体で完結するパラメータ）を設定、増減、または確認します。キャラクターのパラメータが変動するイベントが発生した場合に使用します。",
             "parameters": {
                 "type": "OBJECT",
                 "properties": {
@@ -797,7 +955,7 @@ window.functionDeclarations = [
                     },
                     "status_key": {
                         "type": "STRING",
-                        "description": "操作対象のステータスの種類。例: 'HP', 'MP', '好感度', '疲労度'"
+                        "description": "操作対象のステータスの種類。例: 'HP', 'MP', '疲労度'"
                     },
                     "value": {
                         "type": "NUMBER",
@@ -913,6 +1071,52 @@ window.functionDeclarations = [
                     }
                 },
                 "required": ["action"]
+            }
+          },
+          {
+            "name": "manage_relationship",
+            "description": "キャラクター間の関係値（好感度、信頼度など）を多軸で管理し、キャラクターの感情や態度を決定するために使用します。重要：キャラクターと久しぶりに会話する場合など、応答を生成する前には、まず'get'アクションで現在の関係値を確認してください。これにより、ゲーム内時間経過による関係性の変化（減衰）が会話の第一声に反映され、自然なやり取りが実現できます。",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "action": {
+                        "type": "STRING",
+                        "description": "実行する操作。'set':値を直接設定。'increase':値を増加。'decrease':値を減少。'get':特定の一つの関係値を取得。'get_all_axes':特定相手への全関係軸の値を取得。'get_all_from_source':自分が持つ全人間関係を取得。"
+                    },
+                    "source_character": {
+                        "type": "STRING",
+                        "description": "関係の主体となるキャラクターの名前。'get_all_from_source'ではこのキャラクターの視点から関係性を取得します。"
+                    },
+                    "target_character": {
+                        "type": "STRING",
+                        "description": "関係の対象となるキャラクターの名前。'get_all_from_source'アクション以外では必須です。"
+                    },
+                    "axis": {
+                        "type": "STRING",
+                        "description": "操作対象の関係軸。例: '好感度', '信頼度', '緊張度', '恐怖'。'get_all_axes'と'get_all_from_source'アクション以外では必須です。"
+                    },
+                    "value": {
+                        "type": "NUMBER",
+                        "description": "'set', 'increase', 'decrease'アクションで使用する数値。"
+                    },
+                    "clamp_min": {
+                        "type": "NUMBER",
+                        "description": "任意。関係値がこの値を下回らないようにするための下限値。"
+                    },
+                    "clamp_max": {
+                        "type": "NUMBER",
+                        "description": "任意。関係値がこの値を上回らないようにするための上限値。"
+                    },
+                    "days_to_decay": {
+                        "type": "NUMBER",
+                        "description": "任意。何日間更新がない場合に減衰を開始するかを指定します。この引数と'decay_value'はセットで使用します。"
+                    },
+                    "decay_value": {
+                        "type": "NUMBER",
+                        "description": "任意。'days_to_decay'を超えた後、1日あたりに変化する値。通常は負の数を指定します。例: -1"
+                    }
+                },
+                "required": ["action", "source_character"]
             }
           }
       ]
