@@ -223,6 +223,7 @@ const state = {
     selectedFilesForUpload: [],
     pendingAttachments: [],
     currentScene: null,
+    currentStyleProfiles: {},
 };
 
 function updateMessageMaxWidthVar() {
@@ -2649,6 +2650,7 @@ const appLogic = {
         elements.userInput.value = ''; // 入力欄クリア
         uiUtils.adjustTextareaHeight(); // 高さ調整
         uiUtils.setSendingState(false); // 送信状態リセット
+        state.currentStyleProfiles = {};
     },
 
     // 指定IDのチャットを読み込む
@@ -2693,6 +2695,9 @@ const appLogic = {
                 // 永続メモリを読み込む (存在しなければ空オブジェクト)
                 state.currentPersistentMemory = chat.persistentMemory || {};
                 console.log(`チャット ${id} の永続メモリを読み込みました:`, state.currentPersistentMemory);
+                // 口調プロファイルを読み込む
+                state.currentStyleProfiles = chat.persistentMemory?.style_profiles || {};
+                console.log(`口調プロファイルを読み込みました:`, state.currentStyleProfiles);
                 // シーン情報を読み込む (存在しない場合は初期化)
                 if (chat.persistentMemory && Array.isArray(chat.persistentMemory.scene_stack) && chat.persistentMemory.scene_stack.length > 0) {
                     state.currentScene = chat.persistentMemory.scene_stack[chat.persistentMemory.scene_stack.length - 1];

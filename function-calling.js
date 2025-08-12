@@ -999,7 +999,89 @@ async function generate_random_string({ length, count = 1, use_uppercase = true,
       return { error: `Web検索中に予期せぬエラーが発生しました: ${error.message}` };
   }
 }
+/**
+ * キャラクターの口調や一人称などのスタイルプロファイルを管理します。
+ * @param {object} args - AIによって提供される引数オブジェクト
+ * @param {string} args.action - "set", "get", "list" のいずれか
+ * @param {string} [args.character_name] - 操作対象のキャラクター名
+ * @param {string} [args.profile_name] - "set"アクションで適用する定義済みプリセット名
+ * @param {object} [args.overrides] - "set"アクションでプリセットの一部を上書きする設定
+ * @returns {Promise<object>} 操作結果を含むオブジェクトを返すPromise
+ */
+ async function manage_style_profile({ action, character_name, profile_name, overrides }) {
+  console.log(`[Function Calling] manage_style_profileが呼び出されました。`, { action, character_name, profile_name, overrides });
 
+  // 口調プリセットの定義
+  const STYLE_PRESETS = {
+      "polite": { first_person: "私", politeness: 0.8, sentence_ender: "です,ます", dialect: "standard", description: "丁寧語" },
+      "casual": { first_person: "俺", politeness: 0.3, sentence_ender: "だ,だよ", dialect: "standard", description: "カジュアル" },
+      "tsundere": { first_person: "アタシ", politeness: 0.6, sentence_ender: "なんだからね！", dialect: "standard", description: "ツンデレ" },
+      "merchant": { first_person: "あっし", politeness: 0.7, sentence_ender: "でさぁ,まっせ", dialect: "merchant_speak", description: "商人" },
+      "noble_male": { first_person: "私", politeness: 0.9, sentence_ender: "である,かね", dialect: "noble", description: "貴族男性" },
+      "noble_female": { first_person: "わたくし", politeness: 0.9, sentence_ender: "ですわ,ますのよ", dialect: "noble", description: "貴族女性（お嬢様）" },
+      "samurai": { first_person: "拙者", politeness: 0.7, sentence_ender: "である,ござる", dialect: "samurai", description: "武士" },
+      "kansai": { first_person: "ウチ", politeness: 0.4, sentence_ender: "やで,やんか", dialect: "kansai", description: "関西弁" },
+      "neutral_narration": { first_person: null, politeness: 0.5, sentence_ender: "だ,である", dialect: "standard", description: "地の文（三人称中立）" },
+  };
+
+  if (!action) return { error: "引数 'action' は必須です。" };
+  if (["set", "get"].includes(action) && !character_name) {
+      return { error: `アクション '${action}' には 'character_name' が必須です。` };
+  }
+
+  try {
+      const chat = await dbUtils.getChat(state.currentChatId);
+      if (!chat) throw new Error(`チャットデータ (ID: ${state.currentChatId}) が見つかりません。`);
+
+      if (!chat.persistentMemory) chat.persistentMemory = {};
+      if (!chat.persistentMemory.style_profiles) chat.persistentMemory.style_profiles = {};
+      const profiles = chat.persistentMemory.style_profiles;
+
+      switch (action) {
+          case "set": {
+              let baseProfile = {};
+              // 1. プリセットを適用
+              if (profile_name) {
+                  if (!STYLE_PRESETS[profile_name]) {
+                      return { error: `指定されたプリセット名 '${profile_name}' は存在しません。` };
+                  }
+                  baseProfile = { ...STYLE_PRESETS[profile_name] };
+              } else {
+                  // プリセット指定なしの場合は、既存の設定をベースにする
+                  baseProfile = profiles[character_name] ? { ...profiles[character_name] } : {};
+              }
+              
+              // 2. overridesで上書き
+              const finalProfile = { ...baseProfile, ...overrides, profile_name: profile_name || baseProfile.profile_name || "custom" };
+
+              profiles[character_name] = finalProfile;
+              
+              // 3. stateを更新して即時反映
+              state.currentStyleProfiles = profiles;
+
+              await dbUtils.saveChat(chat.title);
+              return { success: true, message: `${character_name}の口調プロファイルを更新しました。`, profile: finalProfile };
+          }
+          case "get": {
+              const profile = profiles[character_name];
+              if (!profile) {
+                  return { success: false, message: `${character_name}の口調プロファイルは設定されていません。` };
+              }
+              return { success: true, profile: profile };
+          }
+          case "list": {
+              // 利用可能なプリセットの一覧を返す
+              return { success: true, available_presets: STYLE_PRESETS };
+          }
+          default:
+              return { error: `無効なアクションです: ${action}` };
+      }
+
+  } catch (error) {
+      console.error(`[Function Calling] manage_style_profileでエラーが発生しました:`, error);
+      return { error: `内部エラーが発生しました: ${error.message}` };
+  }
+}
 
 window.functionCallingTools = {
   calculate: async function({ expression }) {
@@ -1037,7 +1119,8 @@ window.functionCallingTools = {
   get_random_integer: get_random_integer,
   get_random_choice: get_random_choice,
   generate_random_string: generate_random_string,
-  search_web: search_web
+  search_web: search_web,
+  manage_style_profile: manage_style_profile
 };
 
 
@@ -1396,6 +1479,38 @@ window.functionDeclarations = [
                     }
                 },
                 "required": ["query"]
+            }
+          },
+          {
+            "name": "manage_style_profile",
+            "description": "キャラクターの口調、一人称、方言などの話し方のスタイルを設定・確認します。キャラクターの初登場時や、喧嘩や和解など心情が大きく変化した際に呼び出し、その後の会話に一貫性を持たせます。重要：キャラクターとして発言する前には、必ず'get'アクションで現在の口調プロファイルを確認し、その内容に厳密に従って応答を生成してください。",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "action": {
+                        "type": "STRING",
+                        "description": "実行する操作。'set': キャラクターの口調を設定/変更する。'get': 現在の口調設定を確認する。'list': 利用可能な口調プリセットの一覧を表示する。"
+                    },
+                    "character_name": {
+                        "type": "STRING",
+                        "description": "'set'または'get'で操作対象となるキャラクター名。地の文を操作する場合は '地の文' と指定します。"
+                    },
+                    "profile_name": {
+                        "type": "STRING",
+                        "description": "'set'アクションで使用する、定義済みの口調プリセット名。'list'アクションで利用可能なプリセットを確認できます。例: 'polite', 'casual', 'tsundere'"
+                    },
+                    "overrides": {
+                        "type": "OBJECT",
+                        "description": "'set'アクションで使用し、プリセットの一部だけを上書きするためのオブジェクト。例: {'first_person': 'ボク'} は一人称だけを'ボク'に変更します。",
+                        "properties": {
+                            "first_person": { "type": "STRING", "description": "一人称。例: '私', '俺', 'ボク'" },
+                            "politeness": { "type": "NUMBER", "description": "丁寧さの度合い (0.0から1.0)。0.0が最もくだけており、1.0が最も丁寧。" },
+                            "sentence_ender": { "type": "STRING", "description": "特徴的な語尾や言い回し。例: '～だぜ', '～ですわ'" },
+                            "dialect": { "type": "STRING", "description": "方言や特定の話し方。例: 'kansai', 'samurai'" }
+                        }
+                    }
+                },
+                "required": ["action"]
             }
           }
       ]
