@@ -538,25 +538,23 @@ const dbUtils = {
     // チャットを保存 (タイトル指定可)
     // dbUtils オブジェクト内の saveChat 関数を置き換えてください
     // dbUtils オブジェクト内の saveChat 関数を置き換えてください
-    async saveChat(optionalTitle = null) {
+    async saveChat(optionalTitle = null, chatObjectToSave = null) { // 第2引数を追加
         await this.openDB();
-        // メッセージもシステムプロンプトもない場合は保存しない
-        if ((!state.currentMessages || state.currentMessages.length === 0) && !state.currentSystemPrompt) {
-            if(state.currentChatId) console.log(`saveChat: 既存チャット ${state.currentChatId} にメッセージもシステムプロンプトもないため保存せず`);
-            else console.log("saveChat: 新規チャットに保存するメッセージもシステムプロンプトもなし");
-            return Promise.resolve(state.currentChatId); // 現在のIDを返す
-        }
-
-        return new Promise((resolve, reject) => {
-            const store = this._getStore(CHATS_STORE, 'readwrite');
-            const now = Date.now();
-            // 保存するメッセージデータを作成 (必要なプロパティのみ + 新しいフラグ)
+        
+        // 引数でチャットオブジェクトが渡されなかった場合、現在のstateから生成する（従来の動作）
+        if (!chatObjectToSave) {
+            if ((!state.currentMessages || state.currentMessages.length === 0) && !state.currentSystemPrompt) {
+                if(state.currentChatId) console.log(`saveChat: 既存チャット ${state.currentChatId} にメッセージもシステムプロンプトもないため保存せず`);
+                else console.log("saveChat: 新規チャットに保存するメッセージもシステムプロンプトもなし");
+                return Promise.resolve(state.currentChatId);
+            }
+            
             const messagesToSave = state.currentMessages.map(msg => ({
                 role: msg.role,
                 content: msg.content,
                 timestamp: msg.timestamp,
                 thoughtSummary: msg.thoughtSummary || null,
-                tool_calls: msg.tool_calls || null, // tool_callsプロパティを保存対象に追加
+                tool_calls: msg.tool_calls || null,
                 ...(msg.finishReason && { finishReason: msg.finishReason }),
                 ...(msg.safetyRatings && { safetyRatings: msg.safetyRatings }),
                 ...(msg.error && { error: msg.error }),
@@ -570,24 +568,32 @@ const dbUtils = {
                 ...(msg.isHidden === true && { isHidden: true }),
                 ...(msg.isAutoTrigger === true && { isAutoTrigger: true })
             }));
-
-            // タイトルを決定して保存を実行する内部関数
+    
+            chatObjectToSave = {
+                messages: messagesToSave,
+                systemPrompt: state.currentSystemPrompt,
+                persistentMemory: state.currentPersistentMemory || {},
+            };
+        }
+    
+        return new Promise((resolve, reject) => {
+            const store = this._getStore(CHATS_STORE, 'readwrite');
+            const now = Date.now();
+    
             const determineTitleAndSave = (existingChatData = null) => {
                 let title;
-                if (optionalTitle !== null) { // 引数でタイトルが指定されていればそれを使う
+                if (optionalTitle !== null) {
                     title = optionalTitle;
-                } else if (existingChatData && existingChatData.title) { // 既存データにタイトルがあればそれを使う
+                } else if (existingChatData && existingChatData.title) {
                     title = existingChatData.title;
-                } else { // それ以外は最初のユーザーメッセージから生成
-                    const firstUserMessage = state.currentMessages.find(m => m.role === 'user' && !m.isHidden);
+                } else {
+                    const firstUserMessage = (chatObjectToSave.messages || []).find(m => m.role === 'user' && !m.isHidden);
                     title = firstUserMessage ? firstUserMessage.content.substring(0, 50) : "無題のチャット";
                 }
-
+    
                 const chatIdForOperation = existingChatData ? existingChatData.id : state.currentChatId;
                 const chatData = {
-                    messages: messagesToSave,
-                    systemPrompt: state.currentSystemPrompt,
-                    persistentMemory: state.currentPersistentMemory || {},
+                    ...chatObjectToSave, // 引数またはstateから生成されたオブジェクトを展開
                     updatedAt: now,
                     createdAt: existingChatData ? existingChatData.createdAt : now,
                     title: title,
@@ -595,7 +601,7 @@ const dbUtils = {
                 if (chatIdForOperation) {
                     chatData.id = chatIdForOperation;
                 }
-
+    
                 const request = store.put(chatData);
                 request.onsuccess = (event) => {
                     const savedId = event.target.result;
@@ -610,7 +616,7 @@ const dbUtils = {
                 };
                 request.onerror = (event) => reject(`チャット保存エラー: ${event.target.error}`);
             };
-
+    
             if (state.currentChatId) {
                 const getRequest = store.get(state.currentChatId);
                 getRequest.onsuccess = (event) => {
@@ -632,7 +638,7 @@ const dbUtils = {
             } else {
                 determineTitleAndSave(null);
             }
-
+    
             store.transaction.onerror = (event) => {
                 console.error("チャット保存トランザクション失敗:", event.target.error);
                 reject(`チャット保存トランザクション失敗: ${event.target.error}`);
@@ -3725,26 +3731,49 @@ const appLogic = {
     },
 
     async executeToolCalls(toolCalls) {
-        const results = await Promise.all(toolCalls.map(async (toolCall) => {
+        // 最初に一度だけチャットデータを取得
+        const chat = await dbUtils.getChat(state.currentChatId);
+        if (!chat) {
+            console.error("[Function Calling] executeToolCalls: チャットデータの取得に失敗しました。");
+            // 致命的なエラーなので、ツール実行を中断
+            const errorResult = { role: 'tool', name: 'system_error', response: { error: "チャットデータの取得に失敗" }, timestamp: Date.now() };
+            return [errorResult];
+        }
+    
+        const toolResults = [];
+    
+        // 各ツールコールを一つずつ順番に（直列で）実行する
+        for (const toolCall of toolCalls) {
             const functionName = toolCall.functionCall.name;
             const functionArgs = toolCall.functionCall.args;
             
             console.log(`[Function Calling] 実行: ${functionName}`, functionArgs);
-
+    
             if (window.functionCallingTools && typeof window.functionCallingTools[functionName] === 'function') {
                 try {
-                    const result = await window.functionCallingTools[functionName](functionArgs);
-                    return { role: 'tool', name: functionName, response: result, timestamp: Date.now() };
+                    // 各関数に現在のチャットオブジェクトを渡す
+                    const result = await window.functionCallingTools[functionName](functionArgs, chat);
+                    toolResults.push({ role: 'tool', name: functionName, response: result, timestamp: Date.now() });
                 } catch (e) {
                     console.error(`[Function Calling] 関数 '${functionName}' の実行中にエラーが発生しました:`, e);
-                    return { role: 'tool', name: functionName, response: { error: `関数実行中の内部エラー: ${e.message}` }, timestamp: Date.now() };
+                    toolResults.push({ role: 'tool', name: functionName, response: { error: `関数実行中の内部エラー: ${e.message}` }, timestamp: Date.now() });
                 }
             } else {
                 console.error(`[Function Calling] 関数 '${functionName}' が見つかりません。`);
-                return { role: 'tool', name: functionName, response: { error: `関数 '${functionName}' が見つかりません。` }, timestamp: Date.now() };
+                toolResults.push({ role: 'tool', name: functionName, response: { error: `関数 '${functionName}' が見つかりません。` }, timestamp: Date.now() });
             }
-        }));
-        return results;
+        }
+    
+        // 全てのツール実行が完了した後、一度だけDBに保存
+        chat.updatedAt = Date.now();
+        await dbUtils.saveChat(chat.title, chat); // saveChatにchatオブジェクトを渡せるように後で修正
+    
+        // stateも最新の状態に更新
+        state.currentPersistentMemory = chat.persistentMemory;
+        state.currentScene = chat.persistentMemory?.scene_stack?.slice(-1)[0] || null;
+        state.currentStyleProfiles = chat.persistentMemory?.style_profiles || {};
+    
+        return toolResults;
     },
 
     // --- システムプロンプト編集 ---
