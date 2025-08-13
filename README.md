@@ -77,7 +77,8 @@ AIがユーザーの意図を汲み取り、事前に用意された様々な「
 *   **関数の手動実行**: AIは自発的に関数を使用しますが、「`1d100`でダイスを振って」のように、プロンプトで明示的に指示することで、より確実に関数を実行させることができます。
 *   **実行ログ**: モデルが関数を使用すると、生成された文章の下部に使用した関数名が表示されます。
 *   **データ保存**: `manage_persistent_memory`などで記憶した情報は、ブラウザのデータベース（IndexedDB）に保存されます。このデータは会話履歴のエクスポート/インポートに含まれるため、環境を移行しても記憶を引き継ぐことが可能です。
-*   **リトライ時の挙動**: 生成をリトライした場合でも、直前に実行された関数の効果（ステータス変更やアイテム追加など）は**取り消されません**。
+*   **保存されたデータの確認**: IndexedDBに保存された情報は、会話をエクスポートしてテキストファイルを開くか、ブラウザの開発者メニューのコンソール等で確認が可能です。
+*   **リトライ時の挙動**: 生成を手動でリトライした場合、直前に実行された関数の効果（ステータス変更やアイテム追加など）は**取り消されません**。
 *   ⚠️ **Google Searchとの併用不可**: APIの仕様上、標準のGoogle Search機能とFunction Callingは同時に利用できません。両方が有効な場合、**Function Callingが優先**されます。
 *   💡 **FC有効時のWeb検索**: Function Callingが有効な状態でWeb検索を行いたい場合は、`search_web`関数が自動的に使用されます。
 
@@ -85,24 +86,24 @@ AIがユーザーの意図を汲み取り、事前に用意された様々な「
 *(各項目をクリックすると、ページ下部の詳細説明にジャンプします)*
 
 #### ユーティリティ系
-*   [`calculate`](#calculate-1): 正確な四則演算を行います。
-*   [`manage_persistent_memory`](#manage_persistent_memory-1): 会話内の短期的な情報を記憶・管理します。
-*   [`getCurrentDateTime`](#getcurrentdatetime-1): 現実世界の現在の日付と時刻（日本時間）を取得します。
-*   [`manage_timer`](#manage_timer-1): 指定時間後に通知するタイマーを設定します。
-*   [`search_web`](#search_web-1): Web検索を実行します。（※別途設定が必要）
-*   [`get_random_integer`](#get_random_integer-1): 指定範囲のランダムな整数を生成します。
-*   [`get_random_choice`](#get_random_choice-1): リストの中からランダムに項目を選択します。
-*   [`generate_random_string`](#generate_random_string-1): パスワードのようなランダムな文字列を生成します。
+*   [`calculate`](#calculate): 正確な四則演算を行います。
+*   [`manage_persistent_memory`](#manage_persistent_memory): 会話内の短期的な情報を記憶・管理します。
+*   [`getCurrentDateTime`](#getcurrentdatetime): 現実世界の現在の日付と時刻（日本時間）を取得します。
+*   [`manage_timer`](#manage_timer): 指定時間後に通知するタイマーを設定します。
+*   [`search_web`](#search_web): Web検索を実行します。（※別途設定が必要）
+*   [`get_random_integer`](#get_random_integer): 指定範囲のランダムな整数を生成します。
+*   [`get_random_choice`](#get_random_choice): リストの中からランダムに項目を選択します。
+*   [`generate_random_string`](#generate_random_string): パスワードのようなランダムな文字列を生成します。
 
 #### ロールプレイング・物語進行系
-*   [`rollDice`](#rolldice-1): `1d100` や `2d6+5` 形式のダイスロールを実行します。
-*   [`manage_character_status`](#manage_character_status-1): キャラクターのHPやMPなどのステータスを管理します。
-*   [`manage_inventory`](#manage_inventory-1): アイテムの所持状況を管理します。
-*   [`manage_game_date`](#manage_game_date-1): 物語内の経過日数を管理します。
-*   [`manage_flags`](#manage_flags-1): 物語の分岐条件となるフラグを管理します。
-*   [`manage_scene`](#manage_scene-1): 場所、時間、雰囲気などの場面設定を管理します。
-*   [`manage_relationship`](#manage_relationship-1): キャラクター間の好感度などの関係値を管理します。
-*   [`manage_style_profile`](#manage_style_profile-1): キャラクターの口調や一人称などの話し方を設定します。
+*   [`rollDice`](#rolldice): `1d100` や `2d6+5` 形式のダイスロールを実行します。
+*   [`manage_character_status`](#manage_character_status): キャラクターのHPやMPなどのステータスを管理します。
+*   [`manage_inventory`](#manage_inventory): アイテムの所持状況を管理します。
+*   [`manage_game_date`](#manage_game_date): 物語内の経過日数を管理します。
+*   [`manage_flags`](#manage_flags): 物語の分岐条件となるフラグを管理します。
+*   [`manage_scene`](#manage_scene): 場所、時間、雰囲気などの場面設定を管理します。
+*   [`manage_relationship`](#manage_relationship): キャラクター間の好感度などの関係値を管理します。
+*   [`manage_style_profile`](#manage_style_profile): キャラクターの口調や一人称などの話し方を設定します。
 
 ---
 
