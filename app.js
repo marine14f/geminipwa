@@ -129,7 +129,6 @@ const elements = {
     backToChatFromSettingsBtn: document.getElementById('back-to-chat-from-settings'),
     newChatBtn: document.getElementById('new-chat-btn'),
     saveSettingsBtns: document.querySelectorAll('.js-save-settings-btn'),
-    messageOpacity: (Number(elements.messageOpacitySlider?.value ?? 100) / 100),
     updateAppBtn: document.getElementById('update-app-btn'),
     clearDataBtn: document.getElementById('clear-data-btn'),
     importHistoryBtn: document.getElementById('import-history-btn'),
@@ -169,6 +168,9 @@ const elements = {
     resetHeaderColorBtn: document.getElementById('reset-header-color-btn'),
     messageOpacitySlider: document.getElementById('message-opacity-slider'),
     messageOpacityValue:  document.getElementById('message-opacity-value'),
+    messageOpacitySlider: document.getElementById('message-opacity-slider'),
+    messageOpacityValue:  document.getElementById('message-opacity-value'),
+
 };
 
 // --- アプリ状態 ---
@@ -2414,6 +2416,24 @@ const appLogic = {
         elements.saveSettingsBtns.forEach(button => {
             button.addEventListener('click', () => this.saveSettings());
         });
+        // メッセージ濃さのリアルタイム反映
+        if (elements.messageOpacitySlider) {
+            elements.messageOpacitySlider.addEventListener('input', (e) => {
+            const raw = Number(e.target.value) || 100;   // 10〜100
+            const clamped = Math.max(10, Math.min(100, raw));
+            const v = clamped / 100;                     // 0.10〜1.00
+        
+            if (elements.messageOpacityValue) {
+                elements.messageOpacityValue.textContent = `${clamped}%`;
+            }
+            // CSS変数へ即反映（style.css 側で --message-bubble-opacity を使用）
+            document.documentElement.style.setProperty('--message-bubble-opacity', String(v));
+        
+            // state にも即時反映（保存は「設定を保存」で行う）
+            if (state?.settings) state.settings.messageOpacity = v;
+            });
+        }
+        
         elements.updateAppBtn.addEventListener('click', () => this.updateApp());
         elements.clearDataBtn.addEventListener('click', () => this.confirmClearAllData());
 
@@ -3674,6 +3694,7 @@ const appLogic = {
             googleSearchApiKey: elements.googleSearchApiKeyInput.value.trim(),
             googleSearchEngineId: elements.googleSearchEngineIdInput.value.trim(),
             overlayOpacity: parseFloat(elements.overlayOpacitySlider.value) / 100,
+            messageOpacity: (parseFloat(elements.messageOpacitySlider?.value) || 100) / 100,
             headerColor: elements.headerColorInput.value,
         };
 
