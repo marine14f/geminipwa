@@ -166,6 +166,7 @@ const elements = {
     overlayOpacityValue: document.getElementById('overlay-opacity-value'),
     headerColorInput: document.getElementById('header-color-input'),
     resetHeaderColorBtn: document.getElementById('reset-header-color-btn'),
+    
 };
 
 // --- アプリ状態 ---
@@ -1449,9 +1450,9 @@ const uiUtils = {
         elements.autoRetryOptionsDiv.classList.toggle('hidden', !state.settings.enableAutoRetry);
         elements.googleSearchApiKeyInput.value = state.settings.googleSearchApiKey || '';
         elements.googleSearchEngineIdInput.value = state.settings.googleSearchEngineId || '';
-        const opacityPercent = Math.round(state.settings.overlayOpacity * 100);
-        elements.overlayOpacitySlider.value = opacityPercent;
-        elements.overlayOpacityValue.textContent = `${opacityPercent}%`;
+        const opacityPercent = Math.round((state.settings.overlayOpacity ?? 0.65) * 100);
+        if (elements.overlayOpacitySlider) elements.overlayOpacitySlider.value = opacityPercent;
+        if (elements.overlayOpacityValue)  elements.overlayOpacityValue.textContent = `${opacityPercent}%`;
         const defaultHeaderColor = state.settings.darkMode ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
         elements.headerColorInput.value = state.settings.headerColor || defaultHeaderColor;
 
@@ -2417,13 +2418,19 @@ const appLogic = {
         });
         elements.deleteBackgroundBtn.addEventListener('click', () => this.confirmDeleteBackgroundImage());
 
-        elements.overlayOpacitySlider.addEventListener('input', () => {
-            const opacityPercent = elements.overlayOpacitySlider.value;
-            const opacityValue = opacityPercent / 100;
-            state.settings.overlayOpacity = opacityValue; // stateをリアルタイム更新
-            elements.overlayOpacityValue.textContent = `${opacityPercent}%`;
-            uiUtils.applyOverlayOpacity(); // CSS変数をリアルタイム更新
-        });
+        if (elements.overlayOpacitySlider) {
+            elements.overlayOpacitySlider.addEventListener('input', () => {
+                const raw = Number(elements.overlayOpacitySlider.value) || 0;   // 0〜95
+                const clamped = Math.max(0, Math.min(95, raw));
+                const opacityValue = clamped / 100;                             // 0.00〜0.95
+                state.settings.overlayOpacity = opacityValue;                   // stateをリアルタイム更新
+                if (elements.overlayOpacityValue) {
+                    elements.overlayOpacityValue.textContent = `${clamped}%`;
+                }
+                uiUtils.applyOverlayOpacity();                                  // CSS変数をリアルタイム更新
+            });
+        }
+        
 
         // ヘッダーカラーピッカーのリアルタイム更新
         elements.headerColorInput.addEventListener('input', () => {
