@@ -168,9 +168,6 @@ const elements = {
     resetHeaderColorBtn: document.getElementById('reset-header-color-btn'),
     messageOpacitySlider: document.getElementById('message-opacity-slider'),
     messageOpacityValue:  document.getElementById('message-opacity-value'),
-    messageOpacitySlider: document.getElementById('message-opacity-slider'),
-    messageOpacityValue:  document.getElementById('message-opacity-value'),
-
 };
 
 // --- アプリ状態 ---
@@ -215,6 +212,7 @@ const state = {
         geminiEnableFunctionCalling: false,
         googleSearchApiKey: '',
         googleSearchEngineId: '',
+        messageOpacity: 1,
         overlayOpacity: 0.65,
         headerColor: '',
     },
@@ -451,6 +449,23 @@ const dbUtils = {
             request.onsuccess = (event) => {
                 const settingsArray = event.target.result;
                 const loadedSettings = {};
+                const ensureFloat = (v, fallback) => {
+                    if (v === null || v === undefined) return fallback;
+                    const n = (typeof v === 'string') ? parseFloat(v) : Number(v);
+                    return Number.isFinite(n) ? n : fallback;
+                };
+                if (loadedSettings.chatOverlayOpacity != null && loadedSettings.overlayOpacity == null) {
+                loadedSettings.overlayOpacity = ensureFloat(
+                    loadedSettings.chatOverlayOpacity,
+                    (state?.settings?.overlayOpacity ?? 0.65)
+                );
+                }
+                if (loadedSettings.overlayOpacity != null) {
+                    loadedSettings.overlayOpacity = ensureFloat(
+                    loadedSettings.overlayOpacity,
+                    (state?.settings?.overlayOpacity ?? 0.65)
+                );
+                }
                 settingsArray.forEach(item => {
                     loadedSettings[item.key] = item.value;
                 });
@@ -495,11 +510,11 @@ const dbUtils = {
                         } else if (typeof defaultValue === 'number' || defaultValue === null) {
                              // 数値 (オプションのものはnullを扱う)
                              let num;
-                             if (key === 'temperature' || key === 'topP' || key === 'presencePenalty' || key === 'frequencyPenalty') {
-                                 num = parseFloat(loadedValue);
-                             } else { // streamingSpeed, maxTokens, topK
-                                 num = parseInt(loadedValue, 10);
-                             }
+                             if (key === 'temperature' || key === 'topP' || key === 'presencePenalty' || key === 'frequencyPenalty' || key === 'overlayOpacity' || key === 'messageOpacity') {
+                                num = parseFloat(loadedValue);
+                            } else { // streamingSpeed, maxTokens, topK
+                                num = parseInt(loadedValue, 10);
+                            }
 
                              // パース失敗、またはオプションパラメータがnull/空で読み込まれたかチェック
                              if (isNaN(num)) {
@@ -511,13 +526,15 @@ const dbUtils = {
                                  }
                              } else {
                                   // 範囲を持つ数値のバリデーション (オプション)
-                                  if (key === 'temperature' && (num < 0 || num > 2)) num = defaultValue;
-                                  if (key === 'maxTokens' && num < 1) num = defaultValue;
-                                  if (key === 'topK' && num < 1) num = defaultValue;
-                                  if (key === 'topP' && (num < 0 || num > 1)) num = defaultValue;
-                                  if (key === 'streamingSpeed' && num < 0) num = defaultValue;
-                                  if ((key === 'presencePenalty' || key === 'frequencyPenalty') && (num < -2.0 || num > 2.0)) num = defaultValue;
-                                  state.settings[key] = num;
+                                    if (key === 'temperature' && (num < 0 || num > 2)) num = defaultValue;
+                                    if (key === 'maxTokens' && num < 1) num = defaultValue;
+                                    if (key === 'topK' && num < 1) num = defaultValue;
+                                    if (key === 'topP' && (num < 0 || num > 1)) num = defaultValue;
+                                    if (key === 'streamingSpeed' && num < 0) num = defaultValue;
+                                    if ((key === 'presencePenalty' || key === 'frequencyPenalty') && (num < -2.0 || num > 2.0)) num = defaultValue;
+                                    if (key === 'overlayOpacity')   num = Math.min(1, Math.max(0,    num));
+                                    if (key === 'messageOpacity')   num = Math.min(1, Math.max(0.10, num));
+                                    state.settings[key] = num;
                              }
                         } else if (typeof defaultValue === 'string') {
                              // 文字列: 読み込んだ値が文字列なら使用、そうでなければデフォルト
@@ -542,6 +559,7 @@ const dbUtils = {
 
                 console.log("設定読み込み完了:", { ...state.settings, backgroundImageBlob: state.settings.backgroundImageBlob ? '[Blob]' : null });
                 {
+                    uiUtils.applyOverlayOpacity();
                     // --- オーバーレイ（保存値 0.0〜1.0）---
                     const ov = Number(state.settings?.overlayOpacity ?? 0.65);
                     const ovPct = Math.round(ov * 100);
@@ -1483,6 +1501,12 @@ const uiUtils = {
         const opacityPercent = Math.round((state.settings.overlayOpacity ?? 0.65) * 100);
         if (elements.overlayOpacitySlider) elements.overlayOpacitySlider.value = opacityPercent;
         if (elements.overlayOpacityValue)  elements.overlayOpacityValue.textContent = `${opacityPercent}%`;
+        // メッセージバブルの濃さ（UI と CSS へ）
+        const msgPercent = Math.round((state.settings.messageOpacity ?? 1) * 100);
+        if (elements.messageOpacitySlider) elements.messageOpacitySlider.value = msgPercent;
+        if (elements.messageOpacityValue)  elements.messageOpacityValue.textContent = `${msgPercent}%`;
+        document.documentElement.style.setProperty('--message-bubble-opacity', String(state.settings.messageOpacity ?? 1));
+
         const defaultHeaderColor = state.settings.darkMode ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
         elements.headerColorInput.value = state.settings.headerColor || defaultHeaderColor;
 
@@ -2424,12 +2448,39 @@ const appLogic = {
         elements.saveSettingsBtns.forEach(button => {
             button.addEventListener('click', () => this.saveSettings());
         });
+        if (elements.overlayOpacitySlider) {
+            elements.overlayOpacitySlider.addEventListener('input', (e) => {
+                const raw = Number(e.target.value) || 0;      // 0〜95（あなたのUI仕様）
+                const clamped = Math.max(0, Math.min(95, raw));
+                const v = clamped / 100;                      // 0.00〜0.95
+                state.settings.overlayOpacity = v;
+                dbUtils.saveSetting('overlayOpacity', v).catch(console.error);
+          
+              // パーセント表示を即更新
+              if (elements.overlayOpacityValue) {
+                elements.overlayOpacityValue.textContent = `${Math.round(v * 100)}%`;
+              }
+          
+              // state にも反映（保存は「設定を保存」で）
+              if (state?.settings) state.settings.overlayOpacity = v;
+          
+              // 見た目へ即反映（あなたの実装を呼ぶ）
+              if (typeof uiUtils?.applyOverlayOpacity === 'function') {
+                uiUtils.applyOverlayOpacity();
+              } else {
+                // 念のため：直接CSS変数を更新（関数が無い場合）
+                document.documentElement.style.setProperty('--overlay-opacity', String(v));
+              }
+            });
+          }
         // メッセージ濃さのリアルタイム反映
         if (elements.messageOpacitySlider) {
             elements.messageOpacitySlider.addEventListener('input', (e) => {
             const raw = Number(e.target.value) || 100;   // 10〜100
             const clamped = Math.max(10, Math.min(100, raw));
             const v = clamped / 100;                     // 0.10〜1.00
+            state.settings.messageOpacity = v;
+            dbUtils.saveSetting('messageOpacity', v).catch(console.error);
         
             if (elements.messageOpacityValue) {
                 elements.messageOpacityValue.textContent = `${clamped}%`;
