@@ -1862,25 +1862,30 @@ input[type="color"]::-moz-color-swatch {
     gap: 12px;                 /* ラベル・色入力・リセットの間隔 */
     flex-wrap: wrap;           /* 狭い幅では折り返して崩れを防ぐ */
     margin: 10px 0 14px;       /* 下に十分な余白を確保（←ココが効く） */
-  }
-  
-  /* 色入力の見た目を少し整える（任意） */
-  #settings-screen #header-color-input {
-    width: 40px;               /* 色ボックスの幅 */
-    height: 28px;              /* 高さを少し大きく */
-    padding: 0;
-    border: 1px solid var(--border-primary);
-    border-radius: 6px;
-  }
-  
-  /* リセットボタンが詰まって見える場合の微調整（任意） */
-  #settings-screen .settings-reset-button {
-    padding: 6px 10px;
-    line-height: 1.2;
-  }
-  
-  /* ヘッダー色ピッカーの直後に来るラベル（＝追加モデル）の上余白を強化 */
-  #settings-screen .settings-color-picker-container + label {
-    margin-top: 6px;
-  }
-  
+}
+
+/* 色入力の見た目を少し整える */
+#settings-screen #header-color-input {
+width: 40px;               /* 色ボックスの幅 */
+height: 28px;              /* 高さを少し大きく */
+padding: 0;
+border: 1px solid var(--border-primary);
+border-radius: 6px;
+}
+
+/* リセットボタンが詰まって見える場合の微調整 */
+#settings-screen .settings-reset-button {
+padding: 6px 10px;
+line-height: 1.2;
+}
+
+/* ヘッダー色ピッカーの直後に来るラベル（＝追加モデル）の上余白を強化 */
+#settings-screen .settings-color-picker-container + label {
+margin-top: 6px;
+}
+
+#settings-screen #overlay-opacity-value,
+#settings-screen #message-opacity-value {
+  color: var(--text-secondary);   /* 同じ濃さにそろえる。濃くしたいなら var(--text-primary) に変更 */
+  font-weight: 500;               /* どちらも同じ太さに */
+}

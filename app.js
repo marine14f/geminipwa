@@ -542,24 +542,32 @@ const dbUtils = {
 
                 console.log("設定読み込み完了:", { ...state.settings, backgroundImageBlob: state.settings.backgroundImageBlob ? '[Blob]' : null });
                 {
-                    // 0.0〜1.0（未設定は1＝不透明）
-                    const v = Number(state.settings?.messageOpacity ?? 1);
-                    const pct = Math.round(v * 100);
-                  
-                    // elements を参照せず、直接 DOM を取る（TDZ回避）
-                    const sliderEl = document.getElementById('message-opacity-slider');
-                    const valueEl  = document.getElementById('message-opacity-value');
-                  
-                    if (sliderEl) sliderEl.value = Math.max(10, Math.min(100, pct)); // 10〜100 に制限
-                    if (valueEl)  valueEl.textContent = `${pct}%`;
-                  
-                    // CSS変数へ即反映（style.css で --message-bubble-opacity を参照している想定）
-                    document.documentElement.style.setProperty('--message-bubble-opacity', String(v));
-                  
-                    // state に既定値を保持（未保存のときに備えて）
-                    if (state.settings && state.settings.messageOpacity == null) {
-                      state.settings.messageOpacity = v;
+                    // --- オーバーレイ（保存値 0.0〜1.0）---
+                    const ov = Number(state.settings?.overlayOpacity ?? 0.65);
+                    const ovPct = Math.round(ov * 100);
+                    // UI（スライダーと％表示）
+                    const ovSlider = document.getElementById('overlay-opacity-slider');   // 0〜95, step 5
+                    const ovValue  = document.getElementById('overlay-opacity-value');
+                    if (ovSlider) {
+                      const clamped = Math.max(0, Math.min(95, Math.round(ovPct / 5) * 5));
+                      ovSlider.value = clamped;
                     }
+                    if (ovValue) ovValue.textContent = `${ovPct}%`;
+                    // CSS変数（#chat-screen::before で使用）
+                    document.documentElement.style.setProperty('--overlay-opacity', String(ov)); // :contentReference[oaicite:0]{index=0}
+                  
+                    // --- メッセージバブル（保存値 0.0〜1.0）---
+                    const mv = Number(state.settings?.messageOpacity ?? 1);
+                    const mvPct = Math.round(mv * 100);
+                    const msgSlider = document.getElementById('message-opacity-slider');  // 10〜100, step 5
+                    const msgValue  = document.getElementById('message-opacity-value');
+                    if (msgSlider) {
+                      const clamped = Math.max(10, Math.min(100, Math.round(mvPct / 5) * 5));
+                      msgSlider.value = clamped;
+                    }
+                    if (msgValue) msgValue.textContent = `${mvPct}%`;
+                    // CSS変数（style.css の色合成で使用）
+                    document.documentElement.style.setProperty('--message-bubble-opacity', String(mv));
                   }
                 resolve(state.settings);
             };
