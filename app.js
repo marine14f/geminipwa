@@ -2839,68 +2839,82 @@ const appLogic = {
     async exportChat(chatId, chatTitle) {
         const confirmed = await uiUtils.showCustomConfirm(`チャット「${chatTitle || 'この履歴'}」をテキスト出力しますか？`);
         if (!confirmed) return;
-   
+    
         try {
-            const chat = await dbUtils.getChat(chatId);
-            if (!chat || ((!chat.messages || chat.messages.length === 0) && !chat.systemPrompt)) {
+            let chatToExport;
+
+            // 現在表示中のチャットをエクスポートする場合、DBからではなく最新のstateからデータを取得する
+            if (state.currentChatId === chatId) {
+                console.log("エクスポート: 現在のチャットをstateから直接エクスポートします。");
+                chatToExport = {
+                    id: state.currentChatId,
+                    title: chatTitle, // UIから渡された最新のタイトルを使用
+                    messages: state.currentMessages,
+                    systemPrompt: state.currentSystemPrompt,
+                    persistentMemory: state.currentPersistentMemory, // 最新のメモリを使用
+                    createdAt: null, // createdAtはDBから読み込まないと不明だが、エクスポートには必須ではない
+                    updatedAt: Date.now(),
+                };
+            } else {
+                console.log(`エクスポート: チャットID ${chatId} をDBから読み込みます。`);
+                chatToExport = await dbUtils.getChat(chatId);
+            }
+    
+            if (!chatToExport || ((!chatToExport.messages || chatToExport.messages.length === 0) && !chatToExport.systemPrompt)) {
                 await uiUtils.showCustomAlert("チャットデータが空です。");
                 return;
             }
-            // エクスポート用テキスト生成
+    
             let exportText = '';
-   
+    
             // persistentMemory をメタデータとして出力
-            if (chat.persistentMemory && Object.keys(chat.persistentMemory).length > 0) {
+            if (chatToExport.persistentMemory && Object.keys(chatToExport.persistentMemory).length > 0) {
                 try {
-                    const metadataJson = JSON.stringify(chat.persistentMemory, null, 2);
+                    const metadataJson = JSON.stringify(chatToExport.persistentMemory, null, 2);
                     exportText += `<|#|metadata|#|>\n${metadataJson}\n<|#|/metadata|#|>\n\n`;
                 } catch (e) {
                     console.error("persistentMemoryのJSON化に失敗しました:", e);
-                    // エラーが発生してもエクスポート処理は続行
                 }
             }
-   
+    
             // システムプロンプトを出力
-            if (chat.systemPrompt) {
-                exportText += `<|#|system|#|>\n${chat.systemPrompt}\n<|#|/system|#|>\n\n`;
+            if (chatToExport.systemPrompt) {
+                exportText += `<|#|system|#|>\n${chatToExport.systemPrompt}\n<|#|/system|#|>\n\n`;
             }
+    
             // メッセージを出力
-            if (chat.messages) {
-                chat.messages.forEach(msg => {
-                    // userとmodelのメッセージのみ出力
+            if (chatToExport.messages) {
+                chatToExport.messages.forEach(msg => {
                     if (msg.role === 'user' || msg.role === 'model') {
                         let attributes = '';
                         if (msg.role === 'model') {
                             if (msg.isCascaded) attributes += ' isCascaded';
                             if (msg.isSelected) attributes += ' isSelected';
-                            // siblingGroupId はエクスポートしない方針
                         }
-                        // 添付ファイル情報を属性として追加 (ファイル名のみ)
                         if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
-                            const fileNames = msg.attachments.map(a => a.name).join(';'); // ファイル名をセミコロン区切りで
-                            attributes += ` attachments="${fileNames.replace(/"/g, '&quot;')}"`; // 属性値としてエンコード
+                            const fileNames = msg.attachments.map(a => a.name).join(';');
+                            attributes += ` attachments="${fileNames.replace(/"/g, '&quot;')}"`;
                         }
                         exportText += `<|#|${msg.role}|#|${attributes}>\n${msg.content}\n<|#|/${msg.role}|#|>\n\n`;
                     }
                 });
             }
-            // Blobを作成してダウンロードリンクを生成
+    
             const blob = new Blob([exportText.trim()], { type: 'text/plain;charset=utf-8' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            // ファイル名を生成 (不正文字を置換)
-            const safeTitle = (chatTitle || `chat_${chatId}_export`).replace(/[<>:"/\\|?*\s]/g, '_');
+            const safeTitle = (chatToExport.title || `chat_${chatId}_export`).replace(/[<>:"/\\|?*\s]/g, '_');
             a.href = url;
             a.download = `${safeTitle}.txt`;
-            document.body.appendChild(a); // bodyに追加してクリック可能に
-            a.click(); // ダウンロード実行
-            document.body.removeChild(a); // 要素削除
-            URL.revokeObjectURL(url); // URL破棄
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
             console.log("チャットエクスポート完了:", chatId);
         } catch (error) {
             await uiUtils.showCustomAlert(`エクスポートエラー: ${error}`);
         }
-   },
+    },
 
 
     // チャット削除の確認と実行 (メッセージペア全体)
