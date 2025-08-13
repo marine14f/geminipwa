@@ -7,9 +7,9 @@
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" id="theme-color-meta" content="#4a90e2">
     <!-- CSSファイルを外部から読み込む -->
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=0.31">
     <script src="marked.js"></script>
-    <script src="function-calling.js"></script>
+    <script src="function-calling.js?v=0.31"></script>
 </head>
 <body>
     <div class="app-container">
@@ -298,6 +298,10 @@
                         <!-- 削除ボタン (初期非表示) -->
                         <button id="delete-background-btn" class="settings-delete-button hidden" type="button">画像を削除</button>
                     </div>
+                    <div class="settings-slider-container">
+                        <label for="overlay-opacity-slider">オーバーレイの濃さ: <span id="overlay-opacity-value"></span></label>
+                        <input type="range" id="overlay-opacity-slider" min="0" max="95" step="5">
+                    </div>
                      <p style="font-size: 11px; color: var(--text-secondary); margin-top: 8px;">
                        ※ 画像はブラウザ内のデータベースに保存。<br>
                        ※ 可読性のため画像の上に半透明のレイヤーを表示。
@@ -342,6 +346,11 @@
                    <p style="font-size: 11px; color: var(--text-secondary); margin-top: -5px; margin-bottom: 10px;">
                        ※ 端末またはPCにインストールされているフォント名を指定。
                    </p>
+                   <div class="settings-color-picker-container">
+                        <label for="header-color-input">ヘッダーの色:</label>
+                        <input type="color" id="header-color-input">
+                        <button id="reset-header-color-btn" class="settings-reset-button" type="button">リセット</button>
+                    </div>
                    <!-- 追加モデル入力欄 -->
                    <label for="additional-models">追加モデル (カンマ区切り):</label>
                    <textarea id="additional-models" placeholder="例: gemini-2.0-pro,gemini-2.0-flash-lite" aria-label="追加モデル"></textarea>
@@ -422,6 +431,6 @@
     </div>
 
     <!-- JavaScriptファイルを外部から読み込む -->
-    <script src="app.js"></script>
+    <script src="app.js?v=0.31"></script>
 </body>
 </html>

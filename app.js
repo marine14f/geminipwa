@@ -19,7 +19,7 @@ const DUPLICATE_SUFFIX = ' (コピー)';
 const IMPORT_PREFIX = '(取込) ';
 const LIGHT_THEME_COLOR = '#4a90e2';
 const DARK_THEME_COLOR = '#007aff';
-const APP_VERSION = "0.26"; // Thought summaries対応、streamingのバグ修正
+const APP_VERSION = "0.31";
 const SWIPE_THRESHOLD = 50; // スワイプ判定の閾値 (px)
 const ZOOM_THRESHOLD = 1.01; // ズーム状態と判定するスケールの閾値 (誤差考慮)
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 最大ファイルサイズ (例: 10MB)
@@ -73,6 +73,7 @@ const extensionToMimeTypeMap = {
 // --- DOM要素 ---
 const elements = {
     appContainer: document.querySelector('.app-container'),
+    appHeader: document.querySelector('.app-header'),
     chatScreen: document.getElementById('chat-screen'),
     historyScreen: document.getElementById('history-screen'),
     settingsScreen: document.getElementById('settings-screen'),
@@ -161,6 +162,10 @@ const elements = {
     autoRetryOptionsDiv: document.getElementById('auto-retry-options'),
     googleSearchApiKeyInput: document.getElementById('google-search-api-key'),
     googleSearchEngineIdInput: document.getElementById('google-search-engine-id'),
+    overlayOpacitySlider: document.getElementById('overlay-opacity-slider'),
+    overlayOpacityValue: document.getElementById('overlay-opacity-value'),
+    headerColorInput: document.getElementById('header-color-input'),
+    resetHeaderColorBtn: document.getElementById('reset-header-color-btn'),
 };
 
 // --- アプリ状態 ---
@@ -205,6 +210,8 @@ const state = {
         geminiEnableFunctionCalling: false,
         googleSearchApiKey: '',
         googleSearchEngineId: '',
+        overlayOpacity: 0.65,
+        headerColor: '',
     },
     backgroundImageUrl: null,
     isSending: false,
@@ -760,6 +767,12 @@ const dbUtils = {
 const uiUtils = {
     setLoadingIndicatorText(text) {
         elements.loadingIndicator.textContent = text;
+    },
+    // オーバーレイの透明度を適用
+    applyOverlayOpacity() {
+        const opacityValue = state.settings.overlayOpacity;
+        document.documentElement.style.setProperty('--overlay-opacity', opacityValue);
+        console.log(`オーバーレイ透明度適用: ${opacityValue}`);
     },
     // チャットメッセージをレンダリング
     renderChatMessages() {
@@ -1381,6 +1394,22 @@ const uiUtils = {
             elements.deleteBackgroundBtn.classList.add('hidden');
         }
     },
+
+    applyHeaderColor() {
+        const customColor = state.settings.headerColor;
+        if (customColor) {
+            // カスタム色が設定されていれば、--header-color-custom 変数を設定
+            document.documentElement.style.setProperty('--header-color-custom', customColor);
+        } else {
+            // 設定がなければ、--header-color-custom 変数を削除してデフォルトに戻す
+            document.documentElement.style.removeProperty('--header-color-custom');
+        }
+        // ヘッダーの色が確定した後に、ブラウザのテーマカラーを更新
+        // getComputedStyleで実際に適用されている色を取得
+        const finalHeaderColor = getComputedStyle(elements.appHeader).backgroundColor;
+        elements.themeColorMeta.content = finalHeaderColor;
+        console.log(`ヘッダーカラー適用。テーマカラー: ${finalHeaderColor}`);
+    },
     // ------------------------------------
 
     // 設定をUIに適用
@@ -1420,12 +1449,19 @@ const uiUtils = {
         elements.autoRetryOptionsDiv.classList.toggle('hidden', !state.settings.enableAutoRetry);
         elements.googleSearchApiKeyInput.value = state.settings.googleSearchApiKey || '';
         elements.googleSearchEngineIdInput.value = state.settings.googleSearchEngineId || '';
+        const opacityPercent = Math.round(state.settings.overlayOpacity * 100);
+        elements.overlayOpacitySlider.value = opacityPercent;
+        elements.overlayOpacityValue.textContent = `${opacityPercent}%`;
+        const defaultHeaderColor = state.settings.darkMode ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
+        elements.headerColorInput.value = state.settings.headerColor || defaultHeaderColor;
 
         this.updateUserModelOptions();
         this.updateBackgroundSettingsUI();
         this.applyDarkMode();
         this.applyFontFamily();
         this.toggleSystemPromptVisibility();
+        this.applyOverlayOpacity();
+        this.applyHeaderColor();
     },
 
     // ユーザー指定モデルをコンボボックスに反映
@@ -1462,6 +1498,8 @@ const uiUtils = {
         document.body.classList.toggle('light-mode-forced', !isDark);
         elements.themeColorMeta.content = isDark ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
         console.log(`ダークモード ${isDark ? '有効' : '無効'}. テーマカラー: ${elements.themeColorMeta.content}`);
+        this.applyOverlayOpacity();
+        this.applyHeaderColor();
     },
 
     // フォント設定を適用
@@ -2378,6 +2416,29 @@ const appLogic = {
             event.target.value = null; // 同じファイルを選択できるようにリセット
         });
         elements.deleteBackgroundBtn.addEventListener('click', () => this.confirmDeleteBackgroundImage());
+
+        elements.overlayOpacitySlider.addEventListener('input', () => {
+            const opacityPercent = elements.overlayOpacitySlider.value;
+            const opacityValue = opacityPercent / 100;
+            state.settings.overlayOpacity = opacityValue; // stateをリアルタイム更新
+            elements.overlayOpacityValue.textContent = `${opacityPercent}%`;
+            uiUtils.applyOverlayOpacity(); // CSS変数をリアルタイム更新
+        });
+
+        // ヘッダーカラーピッカーのリアルタイム更新
+        elements.headerColorInput.addEventListener('input', () => {
+            const newColor = elements.headerColorInput.value;
+            state.settings.headerColor = newColor; // stateをリアルタイム更新
+            uiUtils.applyHeaderColor(); // CSS変数をリアルタイム更新
+        });
+
+        // ヘッダーカラーリセットボタン
+        elements.resetHeaderColorBtn.addEventListener('click', () => {
+            state.settings.headerColor = ''; // stateをリセット
+            // UIをデフォルト値に戻して再適用
+            elements.headerColorInput.value = state.settings.darkMode ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
+            uiUtils.applyHeaderColor();
+        });
 
         // SP非表示トグルリスナー
         elements.hideSystemPromptToggle.addEventListener('change', () => {
@@ -3546,6 +3607,8 @@ const appLogic = {
 
     // 設定を保存
     async saveSettings() {
+        const defaultHeaderColor = elements.darkModeToggle.checked ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
+        const currentHeaderColor = elements.headerColorInput.value;
         const newSettings = {
             apiKey: elements.apiKeyInput.value.trim(),
             modelName: elements.modelNameSelect.value,
@@ -3580,6 +3643,8 @@ const appLogic = {
             proofreadingSystemInstruction: elements.proofreadingSystemInstructionTextarea.value.trim(),
             googleSearchApiKey: elements.googleSearchApiKeyInput.value.trim(),
             googleSearchEngineId: elements.googleSearchEngineIdInput.value.trim(),
+            overlayOpacity: parseFloat(elements.overlayOpacitySlider.value) / 100,
+            headerColor: elements.headerColorInput.value,
         };
 
         if (isNaN(newSettings.streamingSpeed) || newSettings.streamingSpeed < 0) {
