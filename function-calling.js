@@ -486,98 +486,142 @@ async function manage_game_date({ action, days = 1 }, chat) { // chat引数を�
  * @param {number} [args.decay_value] - 1日あたりに減衰する値 (通常は負の数)
  * @returns {Promise<object>} 操作結果を含むオブジェクトを返すPromise
  */
-async function manage_relationship(args, chat) { // chat引数を追加
+ async function manage_relationship(args, chat) {
   console.log(`[Function Calling] manage_relationshipが呼び出されました。`, args);
-  const { source_character, target_character, axis, action, value, clamp_min, clamp_max, days_to_decay, decay_value } = args;
+
+  const {
+    source_character,
+    target_character,
+    axis,
+    action,
+    value,
+    clamp_min,
+    clamp_max,
+    days_to_decay,
+    decay_value,
+  } = args;
+
   if (!action) return { error: "引数 'action' は必須です。" };
   if (!source_character) return { error: "引数 'source_character' は必須です。" };
-  if (["get", "set", "increase", "decrease", "get_all_axes"].includes(action) && !target_character) return { error: `アクション '${action}' には 'target_character' が必須です。` };
-  if (["get", "set", "increase", "decrease"].includes(action) && !axis) return { error: `アクション '${action}' には 'axis' が必須です。` };
-  if (["set", "increase", "decrease"].includes(action) && typeof value !== 'number') return { error: `アクション '${action}' には数値型の 'value' が必要です。` };
+
+  // axis未指定時のデフォルト（好感度）
+  const needsAxis = ["get", "set", "increase", "decrease"].includes(action);
+  const axisName = needsAxis ? (axis || "好感度") : null;
+
+  // target_character 必須チェック（get_all_from_source 以外）
+  if (["get", "set", "increase", "decrease", "get_all_axes"].includes(action) && !target_character) {
+    return { error: `アクション '${action}' には 'target_character' が必須です。` };
+  }
+
+  // 軸必須の操作なのに最終的に軸が決まっていない場合
+  if (needsAxis && !axisName) {
+    return { error: `アクション '${action}' には 'axis' が必須です。` };
+  }
+
+  // 値が必要な操作
+  if (["set", "increase", "decrease"].includes(action) && typeof value !== "number") {
+    return { error: `アクション '${action}' には数値型の 'value' が必要です。` };
+  }
+
   try {
-      if (!chat.persistentMemory) chat.persistentMemory = {};
-      if (!chat.persistentMemory.relationships) chat.persistentMemory.relationships = {};
-      if (typeof chat.persistentMemory.game_day !== 'number') chat.persistentMemory.game_day = 1;
-      const relationships = chat.persistentMemory.relationships;
-      const currentGameDay = chat.persistentMemory.game_day;
-      const calculateDecay = (currentValue, lastUpdatedDay) => {
-          if (typeof days_to_decay !== 'number' || typeof decay_value !== 'number') return currentValue;
-          const elapsedDays = currentGameDay - lastUpdatedDay;
-          if (elapsedDays > days_to_decay) {
-              const decayDays = elapsedDays - days_to_decay;
-              const totalDecay = decayDays * decay_value;
-              return currentValue + totalDecay;
-          }
-          return currentValue;
-      };
-      const getRelation = (source, target, axisName) => {
-          if (!relationships[source]) relationships[source] = {};
-          if (!relationships[source][target]) relationships[source][target] = {};
-          if (!relationships[source][target][axisName]) relationships[source][target][axisName] = { value: 0, last_updated_day: currentGameDay };
-          return relationships[source][target][axisName];
-      };
-      let message = "";
-      let resultData = {};
-      switch (action) {
-          case "get": {
-              const relation = getRelation(source_character, target_character, axis);
-              const decayedValue = calculateDecay(relation.value, relation.last_updated_day);
-              message = `${source_character}から${target_character}への${axis}は現在 ${decayedValue} です。`;
-              resultData = { success: true, value: decayedValue, message };
-              break;
-          }
-          case "set":
-          case "increase":
-          case "decrease": {
-              const relation = getRelation(source_character, target_character, axis);
-              const decayedBaseValue = (action === "set") ? relation.value : calculateDecay(relation.value, relation.last_updated_day);
-              let newValue;
-              if (action === "increase") newValue = decayedBaseValue + value;
-              else if (action === "decrease") newValue = decayedBaseValue - value;
-              else newValue = value;
-              if (typeof clamp_max === 'number') newValue = Math.min(newValue, clamp_max);
-              if (typeof clamp_min === 'number') newValue = Math.max(newValue, clamp_min);
-              relation.value = newValue;
-              relation.last_updated_day = currentGameDay;
-              message = `${source_character}から${target_character}への${axis}が更新され、${newValue}になりました。`;
-              resultData = { success: true, new_value: newValue, message };
-              break;
-          }
-          case "get_all_axes": {
-              if (!relationships[source_character] || !relationships[source_character][target_character]) return { success: true, relations: {}, message: `${source_character}から${target_character}への関係はまだ設定されていません。` };
-              const targetRelations = relationships[source_character][target_character];
-              const allAxes = {};
-              for (const axisName in targetRelations) {
-                  const relation = targetRelations[axisName];
-                  allAxes[axisName] = calculateDecay(relation.value, relation.last_updated_day);
-              }
-              message = `${source_character}から${target_character}への全関係値を取得しました。`;
-              resultData = { success: true, relations: allAxes, message };
-              break;
-          }
-          case "get_all_from_source": {
-              if (!relationships[source_character]) return { success: true, relations: {}, message: `${source_character}の人間関係はまだ設定されていません。` };
-              const sourceRelations = relationships[source_character];
-              const allRelations = {};
-              for (const targetName in sourceRelations) {
-                  allRelations[targetName] = {};
-                  for (const axisName in sourceRelations[targetName]) {
-                      const relation = sourceRelations[targetName][axisName];
-                      allRelations[targetName][axisName] = calculateDecay(relation.value, relation.last_updated_day);
-                  }
-              }
-              message = `${source_character}が持つ全ての人間関係を取得しました。`;
-              resultData = { success: true, relations: allRelations, message };
-              break;
-          }
-          default:
-              return { error: `無効なアクションです: ${action}` };
+    if (!chat.persistentMemory) chat.persistentMemory = {};
+    if (!chat.persistentMemory.relationships) chat.persistentMemory.relationships = {};
+    if (typeof chat.persistentMemory.game_day !== "number") chat.persistentMemory.game_day = 1;
+
+    const relationships = chat.persistentMemory.relationships;
+    const currentGameDay = chat.persistentMemory.game_day;
+
+    const calculateDecay = (currentValue, lastUpdatedDay) => {
+      if (typeof days_to_decay !== "number" || typeof decay_value !== "number") return currentValue;
+      const elapsedDays = currentGameDay - lastUpdatedDay;
+      if (elapsedDays > days_to_decay) {
+        const decayDays = elapsedDays - days_to_decay;
+        const totalDecay = decayDays * decay_value;
+        return currentValue + totalDecay;
       }
-      console.log(`[Function Calling] 処理完了:`, resultData);
-      return resultData;
+      return currentValue;
+    };
+
+    const getRelation = (source, target, axisKey) => {
+      if (!relationships[source]) relationships[source] = {};
+      if (!relationships[source][target]) relationships[source][target] = {};
+      if (!relationships[source][target][axisKey]) {
+        relationships[source][target][axisKey] = { value: 0, last_updated_day: currentGameDay };
+      }
+      return relationships[source][target][axisKey];
+    };
+
+    let message = "";
+    let resultData = {};
+
+    switch (action) {
+      case "get": {
+        const relation = getRelation(source_character, target_character, axisName);
+        const decayedValue = calculateDecay(relation.value, relation.last_updated_day);
+        message = `${source_character}から${target_character}への${axisName}は現在 ${decayedValue} です。`;
+        resultData = { success: true, value: decayedValue, message };
+        break;
+      }
+      case "set":
+      case "increase":
+      case "decrease": {
+        const relation = getRelation(source_character, target_character, axisName);
+        const decayedBase = action === "set" ? relation.value : calculateDecay(relation.value, relation.last_updated_day);
+        let newValue;
+        if (action === "increase") newValue = decayedBase + value;
+        else if (action === "decrease") newValue = decayedBase - value;
+        else newValue = value;
+
+        if (typeof clamp_max === "number") newValue = Math.min(newValue, clamp_max);
+        if (typeof clamp_min === "number") newValue = Math.max(newValue, clamp_min);
+
+        relation.value = newValue;
+        relation.last_updated_day = currentGameDay;
+
+        message = `${source_character}から${target_character}への${axisName}が更新され、${newValue}になりました。`;
+        resultData = { success: true, new_value: newValue, message };
+        break;
+      }
+      case "get_all_axes": {
+        if (!relationships[source_character] || !relationships[source_character][target_character]) {
+          return { success: true, relations: {}, message: `${source_character}から${target_character}への関係はまだ設定されていません。` };
+        }
+        const targetRelations = relationships[source_character][target_character];
+        const allAxes = {};
+        for (const axisKey in targetRelations) {
+          const rel = targetRelations[axisKey];
+          allAxes[axisKey] = calculateDecay(rel.value, rel.last_updated_day);
+        }
+        message = `${source_character}から${target_character}への全関係軸を取得しました。`;
+        resultData = { success: true, relations: allAxes, message };
+        break;
+      }
+      case "get_all_from_source": {
+        if (!relationships[source_character]) {
+          return { success: true, relations: {}, message: `${source_character}の人間関係はまだ設定されていません。` };
+        }
+        const sourceRelations = relationships[source_character];
+        const allRelations = {};
+        for (const targetName in sourceRelations) {
+          allRelations[targetName] = {};
+          for (const axisKey in sourceRelations[targetName]) {
+            const rel = sourceRelations[targetName][axisKey];
+            allRelations[targetName][axisKey] = calculateDecay(rel.value, rel.last_updated_day);
+          }
+        }
+        message = `${source_character}が持つ全ての人間関係を取得しました。`;
+        resultData = { success: true, relations: allRelations, message };
+        break;
+      }
+      default:
+        return { error: `無効なアクションです: ${action}` };
+    }
+
+    console.log(`[Function Calling] 処理完了:`, resultData);
+    return resultData;
   } catch (error) {
-      console.error(`[Function Calling] manage_relationshipでエラーが発生しました:`, error);
-      return { error: `内部エラーが発生しました: ${error.message}` };
+    console.error(`[Function Calling] manage_relationshipでエラーが発生しました:`, error);
+    return { error: `内部エラーが発生しました: ${error.message}` };
   }
 }
 
