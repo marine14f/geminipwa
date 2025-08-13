@@ -228,11 +228,11 @@ async function manage_timer({ action, timer_name, duration_minutes }) {
 }
 
 /**
- * キャラクターのステータス（HP, MP, 好感度など）を管理する関数
+ * キャラクターのステータス（HP, MPなど）を管理する関数
  * @param {object} args - AIによって提供される引数オブジェクト
  * @param {string} args.character_name - 操作対象のキャラクター名
  * @param {string} args.action - "set", "increase", "decrease", "get" のいずれか
- * @param {string} args.status_key - 操作対象のステータス名 (例: "HP", "好感度")
+ * @param {string} args.status_key - 操作対象のステータス名 (例: "HP", "MP")
  * @param {number} [args.value] - "set", "increase", "decrease" アクションで使用する数値
  * @returns {Promise<object>} 操作結果を含むオブジェクトを返すPromise
  */
@@ -1358,7 +1358,7 @@ window.functionDeclarations = [
                     },
                     "source_character": {
                         "type": "STRING",
-                        "description": "関係の主体となるキャラクターの名前。'get_all_from_source'ではこのキャラクターの視点から関係性を取得します。"
+                        "description": "関係の主体となるキャラクターの名前。'get_all_from_source'ではこのキャラクターの視点から関係性を取得します。基本的には対象のヒロインの名前が入ります。"
                     },
                     "target_character": {
                         "type": "STRING",

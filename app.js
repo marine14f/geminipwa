@@ -463,7 +463,6 @@ const dbUtils = {
                                  if (loadedValue !== null) console.warn(`読み込んだ 'backgroundImageBlob' がBlobではありません。nullに設定します。型: ${typeof loadedValue}`);
                                  state.settings[key] = null; // Blobでないか明示的にnullならnullを使用
                             }
-                        // ▼▼▼【ここから修正】▼▼▼
                         } else if (
                             key === 'darkMode' || key === 'streamingOutput' || 
                             key === 'pseudoStreaming' || key === 'enterToSend' || 
@@ -474,7 +473,6 @@ const dbUtils = {
                         ) {
                              // その他の真偽値: 厳密にtrueかチェック
                              state.settings[key] = loadedValue === true;
-                        // ▲▲▲【ここまで修正】▲▲▲
                         } else if (key === 'thinkingBudget') {
                             const num = parseInt(loadedValue, 10);
                             if (isNaN(num) || num < 0) { // 整数かつ0以上かチェック
@@ -558,9 +556,7 @@ const dbUtils = {
                 content: msg.content,
                 timestamp: msg.timestamp,
                 thoughtSummary: msg.thoughtSummary || null,
-                // ▼▼▼【ここから変更】▼▼▼
                 tool_calls: msg.tool_calls || null, // tool_callsプロパティを保存対象に追加
-                // ▲▲▲【ここまで変更】▲▲▲
                 ...(msg.finishReason && { finishReason: msg.finishReason }),
                 ...(msg.safetyRatings && { safetyRatings: msg.safetyRatings }),
                 ...(msg.error && { error: msg.error }),
@@ -1018,7 +1014,6 @@ const uiUtils = {
             }
         }
         
-        // ▼▼▼【ここから変更】▼▼▼
         // Function Calling 実行履歴の表示
         if (role === 'model' && messageData && messageData.executedFunctions && messageData.executedFunctions.length > 0) {
             const details = document.createElement('details');
@@ -1040,7 +1035,6 @@ const uiUtils = {
             details.appendChild(list);
             contentDiv.appendChild(details); // コンテンツの最後に追加
         }
-        // ▲▲▲【ここまで変更】▲▲▲
 
         const editArea = document.createElement('div');
         editArea.classList.add('message-edit-area', 'hidden');
@@ -3029,7 +3023,6 @@ const appLogic = {
                     throw new Error("リクエストがキャンセルされました。");
                 }
 
-                // ▼▼▼【ここから変更】▼▼▼
                 if (attempt > 0) {
                     const delay = INITIAL_RETRY_DELAY * Math.pow(2, attempt - 1);
                     // リトライ時にインジケーターのテキストを更新
@@ -3046,7 +3039,6 @@ const appLogic = {
                 } else {
                     uiUtils.setLoadingIndicatorText(`校正を${attempt}回目の再試行中...`);
                 }
-                // ▲▲▲【ここまで変更】▲▲▲
 
                 const response = await fetch(endpoint, {
                     method: 'POST',
@@ -3252,13 +3244,11 @@ const appLogic = {
                 await dbUtils.saveChat();
             }
 
-            // ▼▼▼【ここから変更】▼▼▼
             // whileループが上限に達した場合の処理
             if (loopCount >= MAX_LOOPS) {
                 console.error("Function Callingの最大ループ回数に達しました。処理を中断します。");
                 throw new Error("AIが同じ操作を繰り返しているようです。処理を中断しました。");
             }
-            // ▲▲▲【ここまで変更】▲▲▲
 
         } catch(error) {
             console.error("--- handleSend: 最終catchブロックでエラー捕捉 ---", error);
@@ -3357,9 +3347,7 @@ const appLogic = {
                 const newChatData = {
                     messages: importedMessages,
                     systemPrompt: importedSystemPrompt || '', // インポートされたシステムプロンプト
-                    // ▼▼▼【ここから変更】▼▼▼
                     persistentMemory: importedMemory || {}, // インポートされた永続メモリ
-                    // ▲▲▲【ここまで変更】▲▲▲
                     updatedAt: Date.now(),
                     createdAt: Date.now(),
                     title: newTitle.substring(0, 100) // 100文字制限
@@ -4352,7 +4340,6 @@ const appLogic = {
                     throw new Error("リクエストがキャンセルされました。");
                 }
 
-                // ▼▼▼【ここから変更】▼▼▼
                 // リトライ時に待機処理（初回は待機しない）
                 if (attempt > 0) {
                     const delay = INITIAL_RETRY_DELAY * Math.pow(2, attempt - 1);
@@ -4371,7 +4358,6 @@ const appLogic = {
                 } else if (attempt > 1) {
                     uiUtils.setLoadingIndicatorText(`${attempt}回目の再試行中...`);
                 }
-                // ▲▲▲【ここまで変更】▲▲▲
 
                 const response = await apiUtils.callGeminiApi(messagesForApi, generationConfig, systemInstruction, tools);
 

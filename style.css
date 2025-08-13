@@ -555,14 +555,12 @@ body.dark-mode #chat-screen::before {
     align-self: flex-end;
     border-bottom-right-radius: 5px;
 }
-/* ▼▼▼【ここから修正】▼▼▼ */
 body:not(.dark-mode) .message.user {
     color: #333;
 }
 body.dark-mode .message.user {
     color: #e0e0e0;
 }
-/* ▲▲▲【ここまで修正】▲▲▲ */
 .message.model {
     background-color: var(--bg-model-message);
     align-self: flex-start;
