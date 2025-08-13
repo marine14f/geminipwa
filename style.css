@@ -33,6 +33,7 @@
     --header-color-default: #4a90e2; /* ライトモードのデフォルト色を定義 */
     --bg-header: var(--header-color-custom, var(--header-color-default)); /* カスタム色を優先 */
     --bg-message-actions: rgba(255, 255, 255, 0.8);
+    --message-bubble-opacity: 1; /* 0.0〜1.0。メッセージの濃さ(=不透明度) */
     --bg-overlay-light: rgba(255, 255, 255, 0.65); /* ライトモード用オーバーレイ */
     /* カスケードコントロール用 */
     --bg-cascade-button: var(--bg-button-action);
@@ -553,7 +554,7 @@ body.dark-mode #chat-screen::before {
     transition: opacity 0.2s ease;
 }
 .message.user {
-    background-color: var(--bg-user-message);
+    background-color: color-mix(in srgb, var(--bg-user-message) calc(var(--message-bubble-opacity, 1) * 100%), transparent);
     align-self: flex-end;
     border-bottom-right-radius: 5px;
 }
@@ -564,7 +565,7 @@ body.dark-mode .message.user {
     color: #e0e0e0;
 }
 .message.model {
-    background-color: var(--bg-model-message);
+    background-color: color-mix(in srgb, var(--bg-model-message) calc(var(--message-bubble-opacity, 1) * 100%), transparent);
     align-self: flex-start;
     border-bottom-left-radius: 5px;
     max-width: 90%;

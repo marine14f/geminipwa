@@ -129,6 +129,7 @@ const elements = {
     backToChatFromSettingsBtn: document.getElementById('back-to-chat-from-settings'),
     newChatBtn: document.getElementById('new-chat-btn'),
     saveSettingsBtns: document.querySelectorAll('.js-save-settings-btn'),
+    messageOpacity: (Number(elements.messageOpacitySlider?.value ?? 100) / 100),
     updateAppBtn: document.getElementById('update-app-btn'),
     clearDataBtn: document.getElementById('clear-data-btn'),
     importHistoryBtn: document.getElementById('import-history-btn'),
@@ -166,7 +167,8 @@ const elements = {
     overlayOpacityValue: document.getElementById('overlay-opacity-value'),
     headerColorInput: document.getElementById('header-color-input'),
     resetHeaderColorBtn: document.getElementById('reset-header-color-btn'),
-    
+    messageOpacitySlider: document.getElementById('message-opacity-slider'),
+    messageOpacityValue:  document.getElementById('message-opacity-value'),
 };
 
 // --- アプリ状態 ---
@@ -537,6 +539,26 @@ const dbUtils = {
 
 
                 console.log("設定読み込み完了:", { ...state.settings, backgroundImageBlob: state.settings.backgroundImageBlob ? '[Blob]' : null });
+                {
+                    // 0.0〜1.0（未設定は1＝不透明）
+                    const v = Number(state.settings?.messageOpacity ?? 1);
+                    const pct = Math.round(v * 100);
+                  
+                    // elements を参照せず、直接 DOM を取る（TDZ回避）
+                    const sliderEl = document.getElementById('message-opacity-slider');
+                    const valueEl  = document.getElementById('message-opacity-value');
+                  
+                    if (sliderEl) sliderEl.value = Math.max(10, Math.min(100, pct)); // 10〜100 に制限
+                    if (valueEl)  valueEl.textContent = `${pct}%`;
+                  
+                    // CSS変数へ即反映（style.css で --message-bubble-opacity を参照している想定）
+                    document.documentElement.style.setProperty('--message-bubble-opacity', String(v));
+                  
+                    // state に既定値を保持（未保存のときに備えて）
+                    if (state.settings && state.settings.messageOpacity == null) {
+                      state.settings.messageOpacity = v;
+                    }
+                  }
                 resolve(state.settings);
             };
             request.onerror = (event) => reject(`設定読み込みエラー: ${event.target.error}`);
@@ -544,8 +566,6 @@ const dbUtils = {
     },
 
     // チャットを保存 (タイトル指定可)
-    // dbUtils オブジェクト内の saveChat 関数を置き換えてください
-    // dbUtils オブジェクト内の saveChat 関数を置き換えてください
     async saveChat(optionalTitle = null, chatObjectToSave = null) { // 第2引数を追加
         await this.openDB();
         
@@ -2418,18 +2438,21 @@ const appLogic = {
         });
         elements.deleteBackgroundBtn.addEventListener('click', () => this.confirmDeleteBackgroundImage());
 
-        if (elements.overlayOpacitySlider) {
-            elements.overlayOpacitySlider.addEventListener('input', () => {
-                const raw = Number(elements.overlayOpacitySlider.value) || 0;   // 0〜95
-                const clamped = Math.max(0, Math.min(95, raw));
-                const opacityValue = clamped / 100;                             // 0.00〜0.95
-                state.settings.overlayOpacity = opacityValue;                   // stateをリアルタイム更新
-                if (elements.overlayOpacityValue) {
-                    elements.overlayOpacityValue.textContent = `${clamped}%`;
-                }
-                uiUtils.applyOverlayOpacity();                                  // CSS変数をリアルタイム更新
+        if (elements.messageOpacitySlider) {
+            elements.messageOpacitySlider.addEventListener('input', (e) => {
+              const raw = Number(e.target.value) || 100;     // 10〜100
+              const clamped = Math.max(10, Math.min(100, raw));
+              const v = clamped / 100;                       // 0.10〜1.00
+              // 画面の表示
+              if (elements.messageOpacityValue) {
+                elements.messageOpacityValue.textContent = `${clamped}%`;
+              }
+              // CSS変数に即反映
+              document.documentElement.style.setProperty('--message-bubble-opacity', String(v));
+              // state も即時更新（あなたの保存ロジックに合わせて）
+              if (state?.settings) state.settings.messageOpacity = v;
             });
-        }
+          }
         
 
         // ヘッダーカラーピッカーのリアルタイム更新
