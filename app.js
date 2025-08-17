@@ -1,3 +1,4 @@
+// app.js
 // --- 定数 ---
 const DB_NAME = 'GeminiPWA_DB';
 const DB_VERSION = 8; // スキーマ変更なしのため据え置き
@@ -320,22 +321,21 @@ function fileToBase64(file) {
 function registerServiceWorker() {
     if ('serviceWorker' in navigator) {
         // Service Workerの更新（コントローラーの変更）を監視
-        navigator.serviceWorker.addEventListener('controllerchange', () => {
-            // 新しいService Workerが有効になったので、ページをリロードして更新を適用する
-            alert('アプリが更新されました。ページをリロードします。');
-            window.location.reload();
+        navigator.serviceworker.addEventListener('controllerchange', () => {
+            uiUtils.showCustomAlert('アプリが更新されました。ページをリロードします。')
+                .then(() => {
+                    window.location.reload();
+                });
         });
 
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('./sw.js')
                 .then(registration => {
                     console.log('ServiceWorker登録成功 スコープ: ', registration.scope);
-                    // ここでの 'message' リスナーは、キャッシュクリア後のリロード命令など、
-                    // 他の用途でまだ必要かもしれないので残しておく。
-                    // ただし、'reloadPage' アクションは controllerchange で処理するため、ここでは不要。
+                    // 'message' リスナーはキャッシュクリア完了のログ表示などに使用できますが、
+                    // ページリロードは controllerchange で行うため、ここでのリロード処理は不要です。
                     navigator.serviceWorker.addEventListener('message', event => {
                         if (event.data && event.data.action === 'cacheCleared') {
-                            // 例：キャッシュクリア成功の通知など
                             console.log('Service Workerからキャッシュクリア完了のメッセージを受信');
                         }
                     });
@@ -3834,18 +3834,18 @@ const appLogic = {
             const registration = await navigator.serviceWorker.ready;
             
             if (registration && registration.active) {
+                // Service Workerにキャッシュクリアを指示するだけにします。
+                // この後のリロード処理は controllerchange イベントが検知して自動的に行います。
                 registration.active.postMessage({ action: 'clearCache' });
-                navigator.serviceWorker.addEventListener('message', function handler(event) {
-                    if (event.data && event.data.action === 'cacheCleared') {
-                        navigator.serviceWorker.removeEventListener('message', handler);
-                        window.location.reload();
+                
+                // 新しいバージョンのService Workerがないか確認を促す
+                registration.update().then(newRegistration => {
+                    if (newRegistration.installing || newRegistration.waiting) {
+                        console.log("新しいService Workerのインストールが進行中です。");
+                    } else {
+                        console.log("現在、新しいService Workerはありません。キャッシュクリア後にリロードされます。");
                     }
                 });
-
-                setTimeout(() => {
-                    console.warn("Service Workerからの応答がタイムアウトしました。強制的にリロードします。");
-                    window.location.reload();
-                }, 5000);
 
             } else {
                 await uiUtils.showCustomAlert("アクティブなService Workerが見つかりませんでした。ページを強制的に再読み込みします。");
