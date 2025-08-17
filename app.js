@@ -2405,8 +2405,8 @@ const appLogic = {
         elements.gotoHistoryBtn.addEventListener('click', () => uiUtils.showScreen('history'));
         elements.gotoSettingsBtn.addEventListener('click', () => uiUtils.showScreen('settings'));
         // 戻るボタンは history.back() を使用
-        elements.backToChatFromHistoryBtn.addEventListener('click', () => history.back());
-        elements.backToChatFromSettingsBtn.addEventListener('click', () => history.back());
+        elements.backToChatFromHistoryBtn.addEventListener('click', () => uiUtils.showScreen('chat'));
+        elements.backToChatFromSettingsBtn.addEventListener('click', () => uiUtils.showScreen('chat'));
 
         // チャットアクション
         elements.newChatBtn.addEventListener('click', async () => {
