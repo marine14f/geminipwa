@@ -1954,12 +1954,10 @@ const apiUtils = {
         };
         
         let finalTools = [];
-        // 優先度1: Function Callingが設定で有効になっているかチェック
         if (state.settings.geminiEnableFunctionCalling) {
             finalTools = window.functionDeclarations || [];
             console.log("Function Calling を有効にしてAPIを呼び出します。");
         } 
-        // 優先度2: Function Callingが無効で、Google Searchが有効になっているかチェック
         else if (state.settings.geminiEnableGrounding) {
             finalTools.push({ "google_search": {} });
             console.log("グラウンディング (Google Search) を有効にしてAPIを呼び出します。");
@@ -2128,7 +2126,6 @@ const apiUtils = {
                 if (chunkJson.candidates && chunkJson.candidates.length > 0) {
                     lastCandidateInfo = chunkJson.candidates[0];
                     if (lastCandidateInfo?.content?.parts) {
-                        // parts配列をループして、thought, text, functionCallをすべて抽出する
                         lastCandidateInfo.content.parts.forEach(part => {
                             if (part.text) {
                                 if (part.thought === true) {
@@ -2173,31 +2170,29 @@ const apiUtils = {
             }
         }
     },
+
     /**
      * テキストを日本語に翻訳する関数
      * @param {string} textToTranslate - 翻訳対象の英語テキスト
-     * @param {string} modelName - 翻訳に使用するモデル名 
+     * @param {string} translationModelName - 翻訳に使用するモデル名
      * @returns {Promise<string>} 翻訳された日本語テキスト。失敗した場合は元の英語テキストを返す。
      */
-     async translateText(textToTranslate) {
+    async translateText(textToTranslate, translationModelName) {
         if (!textToTranslate || textToTranslate.trim() === '') {
             return textToTranslate;
         }
 
-        // 日本語文字の割合を計算して、翻訳をスキップするか判断する
         const japaneseChars = textToTranslate.match(/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/g) || [];
         const japaneseRatio = japaneseChars.length / textToTranslate.length;
 
-        // 日本語の割合が50%を超える場合は、既に翻訳済みとみなしてスキップ
         if (japaneseRatio > 0.5) {
             console.log(`翻訳スキップ: 日本語の文字が${Math.round(japaneseRatio * 100)}%含まれているため、翻訳済みと判断しました。`);
             return textToTranslate;
         }
-        // ★★★ 修正ここまで ★★★
 
         console.log("--- 思考プロセスの翻訳処理開始 ---");
-        const modelToUse = translationModelName || 'gemini-2.5-flash-lite';
         
+        const modelToUse = translationModelName || 'gemini-2.5-flash-lite';
         const apiKey = state.settings.apiKey;
         if (!apiKey) {
             console.warn("翻訳スキップ: APIキーが設定されていません。");
@@ -3411,8 +3406,7 @@ const appLogic = {
         if (state.isEditingSystemPrompt) { await uiUtils.showCustomAlert("システムプロンプトを編集中です。"); return; }
 
         uiUtils.setSendingState(true);
-
-        // 最終的に翻訳対象となる思考プロセスを格納する変数
+        
         let finalModelMessageIndex = -1;
         
         try {
@@ -3500,7 +3494,6 @@ const appLogic = {
                 
                 let finalContent = result.content;
 
-                // 校正処理は翻訳の前に行う
                 if (state.settings.enableProofreading && finalContent && finalContent.trim() !== '') {
                     try {
                         const proofreadContent = await this.proofreadText(finalContent);
@@ -3514,7 +3507,7 @@ const appLogic = {
                 const modelMessage = {
                     role: 'model',
                     content: finalContent,
-                    thoughtSummary: result.thoughtSummary, // この時点では英語の原文
+                    thoughtSummary: result.thoughtSummary,
                     tool_calls: result.toolCalls,
                     timestamp: Date.now(),
                     finishReason: result.finishReason,
@@ -3541,15 +3534,12 @@ const appLogic = {
                     }
 
                     state.currentMessages.push(modelMessage);
-                    // ★★★ 変更点 ★★★
-                    // 最終応答メッセージのインデックスを保存
                     finalModelMessageIndex = state.currentMessages.length - 1;
                     
-                    // この時点ではまだ翻訳されていない思考プロセスで一度表示
                     await dbUtils.saveChat();
                     uiUtils.renderChatMessages();
                     uiUtils.scrollToBottom();
-                    break; // ループを抜ける
+                    break;
                 }
 
                 modelMessage.tool_calls = result.toolCalls;
@@ -3585,12 +3575,10 @@ const appLogic = {
         } finally {
             console.log("--- handleSend: finallyブロック実行 ---");
             
-            // すべての処理が完了したこのタイミングで翻訳を実行
-            if (finalModelMessageIndex !== -1 && state.settings.enableThoughtTranslation) { // 翻訳が有効かチェック
+            if (finalModelMessageIndex !== -1 && state.settings.enableThoughtTranslation) {
                 const finalMessage = state.currentMessages[finalModelMessageIndex];
                 if (finalMessage && finalMessage.thoughtSummary) {
                     uiUtils.setLoadingIndicatorText('思考プロセスを翻訳中...');
-                    // 設定されたモデル名を渡して翻訳を実行
                     const translatedThought = await apiUtils.translateText(finalMessage.thoughtSummary, state.settings.thoughtTranslationModel);
                     
                     finalMessage.thoughtSummary = translatedThought;
