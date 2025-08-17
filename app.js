@@ -320,23 +320,32 @@ function fileToBase64(file) {
 // --- Service Worker関連 ---
 function registerServiceWorker() {
     if ('serviceWorker' in navigator) {
-        // Service Workerの更新（コントローラーの変更）を監視
-        navigator.serviceWorker.addEventListener('controllerchange', () => {
+        // リロード処理が重複しないように制御するフラグ
+        let isReloading = false;
+
+        const reloadPage = () => {
+            if (isReloading) return;
+            isReloading = true;
             uiUtils.showCustomAlert('アプリが更新されました。ページをリロードします。')
                 .then(() => {
                     window.location.reload();
                 });
-        });
+        };
+
+        // 1. Service Workerの自動更新を監視
+        navigator.serviceWorker.addEventListener('controllerchange', reloadPage);
 
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('./sw.js')
                 .then(registration => {
                     console.log('ServiceWorker登録成功 スコープ: ', registration.scope);
-                    // 'message' リスナーはキャッシュクリア完了のログ表示などに使用できますが、
-                    // ページリロードは controllerchange で行うため、ここでのリロード処理は不要です。
+                    
+                    // 2. 手動更新完了のメッセージを監視
                     navigator.serviceWorker.addEventListener('message', event => {
-                        if (event.data && event.data.action === 'cacheCleared') {
-                            console.log('Service Workerからキャッシュクリア完了のメッセージを受信');
+                        // sw.jsからキャッシュクリア完了のメッセージを受け取ったらリロード
+                        if (event.data && event.data.status === 'cacheCleared') {
+                            console.log('Service Workerからキャッシュクリア完了のメッセージを受信。リロードを実行します。');
+                            reloadPage();
                         }
                     });
                 })
@@ -3834,18 +3843,13 @@ const appLogic = {
             const registration = await navigator.serviceWorker.ready;
             
             if (registration && registration.active) {
-                // Service Workerにキャッシュクリアを指示するだけにします。
-                // この後のリロード処理は controllerchange イベントが検知して自動的に行います。
+                // Service Workerにキャッシュクリアを指示します。
+                // リロード処理は、sw.jsからの完了メッセージを 'message' リスナーが受け取って実行します。
                 registration.active.postMessage({ action: 'clearCache' });
                 
-                // 新しいバージョンのService Workerがないか確認を促す
-                registration.update().then(newRegistration => {
-                    if (newRegistration.installing || newRegistration.waiting) {
-                        console.log("新しいService Workerのインストールが進行中です。");
-                    } else {
-                        console.log("現在、新しいService Workerはありません。キャッシュクリア後にリロードされます。");
-                    }
-                });
+                // registration.update() はここでは不要です。
+                // 目的はキャッシュの強制クリアとリロードのため、
+                // Service Worker自体の更新チェックはブラウザの標準的なライフサイクルに任せます。
 
             } else {
                 await uiUtils.showCustomAlert("アクティブなService Workerが見つかりませんでした。ページを強制的に再読み込みします。");
