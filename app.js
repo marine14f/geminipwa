@@ -249,10 +249,9 @@ function updateMessageMaxWidthVar() {
 }
 
 let resizeTimer;
-window.addEventListener('resize', () => {
-    clearTimeout(resizeTimer);
-    // Debounce処理: リサイズ完了後に一度だけ実行
-    resizeTimer = setTimeout(updateMessageMaxWidthVar, 150);
+window.addEventListener('DOMContentLoaded', (event) => {
+    console.log("DOM fully loaded and parsed. Initializing app...");
+    appLogic.initializeApp();
 });
 
 // --- ユーティリティ関数 ---
