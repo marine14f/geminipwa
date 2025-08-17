@@ -321,7 +321,7 @@ function fileToBase64(file) {
 function registerServiceWorker() {
     if ('serviceWorker' in navigator) {
         // Service Workerの更新（コントローラーの変更）を監視
-        navigator.serviceworker.addEventListener('controllerchange', () => {
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
             uiUtils.showCustomAlert('アプリが更新されました。ページをリロードします。')
                 .then(() => {
                     window.location.reload();
