@@ -107,6 +107,9 @@ const elements = {
     frequencyPenaltyInput: document.getElementById('frequency-penalty'),
     thinkingBudgetInput: document.getElementById('thinking-budget'),
     includeThoughtsToggle: document.getElementById('include-thoughts-toggle'),
+    thoughtTranslationOptionsDiv: document.getElementById('thought-translation-options'),
+    enableThoughtTranslationCheckbox: document.getElementById('enable-thought-translation'),
+    thoughtTranslationModelSelect: document.getElementById('thought-translation-model'),
     dummyUserInput: document.getElementById('dummy-user'),
     dummyModelInput: document.getElementById('dummy-model'),
     concatDummyModelCheckbox: document.getElementById('concat-dummy-model'),
@@ -192,6 +195,8 @@ const state = {
         frequencyPenalty: null,
         thinkingBudget: null,
         includeThoughts: true,
+        enableThoughtTranslation: true, // 思考プロセスの翻訳を有効にするか
+        thoughtTranslationModel: 'gemini-2.5-flash-lite',
         dummyUser: '',
         dummyModel: '',
         concatDummyModel: false,
@@ -1493,6 +1498,11 @@ const uiUtils = {
         elements.frequencyPenaltyInput.value = state.settings.frequencyPenalty === null ? '' : state.settings.frequencyPenalty;
         elements.thinkingBudgetInput.value = state.settings.thinkingBudget === null ? '' : state.settings.thinkingBudget;
         elements.includeThoughtsToggle.checked = state.settings.includeThoughts;
+        elements.enableThoughtTranslationCheckbox.checked = state.settings.enableThoughtTranslation;
+        elements.thoughtTranslationModelSelect.value = state.settings.thoughtTranslationModel || 'gemini-2.5-flash-lite';
+        // 「Include Thoughts」が有効な場合のみ翻訳オプションを表示
+        elements.thoughtTranslationOptionsDiv.classList.toggle('hidden', !state.settings.includeThoughts);
+        elements.dummyUserInput.value = state.settings.dummyUser || '';
         elements.dummyUserInput.value = state.settings.dummyUser || '';
         elements.dummyModelInput.value = state.settings.dummyModel || '';
         elements.concatDummyModelCheckbox.checked = state.settings.concatDummyModel;
@@ -2166,6 +2176,7 @@ const apiUtils = {
     /**
      * テキストを日本語に翻訳する関数
      * @param {string} textToTranslate - 翻訳対象の英語テキスト
+     * @param {string} modelName - 翻訳に使用するモデル名 
      * @returns {Promise<string>} 翻訳された日本語テキスト。失敗した場合は元の英語テキストを返す。
      */
      async translateText(textToTranslate) {
@@ -2173,7 +2184,6 @@ const apiUtils = {
             return textToTranslate;
         }
 
-        // ★★★ ここからが修正箇所です ★★★
         // 日本語文字の割合を計算して、翻訳をスキップするか判断する
         const japaneseChars = textToTranslate.match(/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/g) || [];
         const japaneseRatio = japaneseChars.length / textToTranslate.length;
@@ -2186,8 +2196,7 @@ const apiUtils = {
         // ★★★ 修正ここまで ★★★
 
         console.log("--- 思考プロセスの翻訳処理開始 ---");
-        // ユーザー指定を尊重し、モデル名を 'gemini-2.5-flash-lite' にします
-        const model = 'gemini-2.5-flash-lite'; 
+        const model = modelName || 'gemini-2.5-flash-lite';
         const apiKey = state.settings.apiKey;
         if (!apiKey) {
             console.warn("翻訳スキップ: APIキーが設定されていません。");
@@ -2552,6 +2561,12 @@ const appLogic = {
             const file = event.target.files[0];
             if (file) this.handleHistoryImport(file);
             event.target.value = null; // 同じファイルを選択できるようにリセット
+        });
+
+        // 「Include Thoughts」トグルの変更を監視
+        elements.includeThoughtsToggle.addEventListener('change', () => {
+            const isEnabled = elements.includeThoughtsToggle.checked;
+            elements.thoughtTranslationOptionsDiv.classList.toggle('hidden', !isEnabled);
         });
 
         // 設定アクション
@@ -3572,16 +3587,15 @@ const appLogic = {
             console.log("--- handleSend: finallyブロック実行 ---");
             
             // すべての処理が完了したこのタイミングで翻訳を実行
-            if (finalModelMessageIndex !== -1) {
+            if (finalModelMessageIndex !== -1 && state.settings.enableThoughtTranslation) { // 翻訳が有効かチェック
                 const finalMessage = state.currentMessages[finalModelMessageIndex];
                 if (finalMessage && finalMessage.thoughtSummary) {
                     uiUtils.setLoadingIndicatorText('思考プロセスを翻訳中...');
-                    const translatedThought = await apiUtils.translateText(finalMessage.thoughtSummary);
+                    // 設定されたモデル名を渡して翻訳を実行
+                    const translatedThought = await apiUtils.translateText(finalMessage.thoughtSummary, state.settings.thoughtTranslationModel);
                     
-                    // 翻訳結果をstateに反映
                     finalMessage.thoughtSummary = translatedThought;
                     
-                    // UIを再描画して翻訳結果を表示し、DBに最終結果を保存
                     uiUtils.renderChatMessages();
                     await dbUtils.saveChat();
                     console.log("翻訳された思考プロセスを反映し、再保存しました。");
@@ -3868,6 +3882,10 @@ const appLogic = {
             frequencyPenalty: elements.frequencyPenaltyInput.value === '' ? null : parseFloat(elements.frequencyPenaltyInput.value),
             thinkingBudget: elements.thinkingBudgetInput.value === '' ? null : parseInt(elements.thinkingBudgetInput.value, 10),
             includeThoughts: elements.includeThoughtsToggle.checked,
+            enableThoughtTranslation: elements.enableThoughtTranslationCheckbox.checked,
+            thoughtTranslationModel: elements.thoughtTranslationModelSelect.value,
+
+            dummyUser: elements.dummyUserInput.value.trim(),
             dummyUser: elements.dummyUserInput.value.trim(),
             dummyModel: elements.dummyModelInput.value.trim(),
             concatDummyModel: elements.concatDummyModelCheckbox.checked,
