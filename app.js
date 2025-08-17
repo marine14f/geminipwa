@@ -319,6 +319,8 @@ function fileToBase64(file) {
 // --- Service Worker関連 ---
 function registerServiceWorker() {
     if ('serviceWorker' in navigator) {
+        let reloading = false; // リロード処理中かどうかのフラグ
+
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('./sw.js')
                 .then(registration => {
@@ -326,6 +328,9 @@ function registerServiceWorker() {
                     // Service Workerからのメッセージ受信
                     navigator.serviceWorker.addEventListener('message', event => {
                         if (event.data && event.data.action === 'reloadPage') {
+                            // 重複してリロード処理が走らないようにフラグで制御
+                            if (reloading) return;
+                            reloading = true;
                             alert('アプリが更新されました。ページをリロードします。');
                             window.location.reload();
                         }
