@@ -25,6 +25,7 @@ const ZOOM_THRESHOLD = 1.01; // ズーム状態と判定するスケールの閾
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 最大ファイルサイズ (例: 10MB)
 const MAX_TOTAL_ATTACHMENT_SIZE = 50 * 1024 * 1024; // 1メッセージあたりの合計添付ファイルサイズ上限 (例: 50MB) - API制限も考慮
 const INITIAL_RETRY_DELAY = 100; // 初期リトライ遅延時間 (ミリ秒)
+let appIsReloading = false;
 
 // 添付を確定する処理
 const extensionToMimeTypeMap = {
@@ -319,7 +320,7 @@ function fileToBase64(file) {
 // --- Service Worker関連 ---
 function registerServiceWorker() {
     if ('serviceWorker' in navigator) {
-        let reloading = false; // リロード処理中かどうかのフラグ
+        // 関数内のローカルなフラグ宣言は削除
 
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('./sw.js')
@@ -327,13 +328,15 @@ function registerServiceWorker() {
                     console.log('ServiceWorker登録成功 スコープ: ', registration.scope);
                     // Service Workerからのメッセージ受信
                     navigator.serviceWorker.addEventListener('message', event => {
+                        // ▼▼▼【ここから変更】▼▼▼
                         if (event.data && event.data.action === 'reloadPage') {
-                            // 重複してリロード処理が走らないようにフラグで制御
-                            if (reloading) return;
-                            reloading = true;
+                            // グローバルフラグで重複実行を制御
+                            if (appIsReloading) return;
+                            appIsReloading = true;
                             alert('アプリが更新されました。ページをリロードします。');
                             window.location.reload();
                         }
+                        // ▲▲▲【ここまで変更】▲▲▲
                     });
                 })
                 .catch(err => {
