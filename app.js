@@ -2169,22 +2169,33 @@ const apiUtils = {
      * @returns {Promise<string>} 翻訳された日本語テキスト。失敗した場合は元の英語テキストを返す。
      */
      async translateText(textToTranslate) {
-        // 翻訳対象が空か、日本語の可能性が高い場合は翻訳をスキップ
-        if (!textToTranslate || textToTranslate.trim() === '' || textToTranslate.match(/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/)) {
+        if (!textToTranslate || textToTranslate.trim() === '') {
             return textToTranslate;
         }
 
+        // ★★★ ここからが修正箇所です ★★★
+        // 日本語文字の割合を計算して、翻訳をスキップするか判断する
+        const japaneseChars = textToTranslate.match(/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/g) || [];
+        const japaneseRatio = japaneseChars.length / textToTranslate.length;
+
+        // 日本語の割合が50%を超える場合は、既に翻訳済みとみなしてスキップ
+        if (japaneseRatio > 0.5) {
+            console.log(`翻訳スキップ: 日本語の文字が${Math.round(japaneseRatio * 100)}%含まれているため、翻訳済みと判断しました。`);
+            return textToTranslate;
+        }
+        // ★★★ 修正ここまで ★★★
+
         console.log("--- 思考プロセスの翻訳処理開始 ---");
-        const model = 'gemini-2.5-flash-lite'; // 翻訳には高速なモデルを使用
+        // ユーザー指定を尊重し、モデル名を 'gemini-2.5-flash-lite' にします
+        const model = 'gemini-2.5-flash-lite'; 
         const apiKey = state.settings.apiKey;
         if (!apiKey) {
             console.warn("翻訳スキップ: APIキーが設定されていません。");
-            return textToTranslate; // APIキーがない場合は原文を返す
+            return textToTranslate;
         }
 
         const endpoint = `${GEMINI_API_BASE_URL}${model}:generateContent?key=${apiKey}`;
         
-        // 翻訳専用のシンプルなシステムプロンプト
         const systemInstruction = {
             parts: [{ text: "You are a professional translator. Translate the given English text into natural Japanese. Do not add any extra comments or explanations. Just output the translated Japanese text." }]
         };
@@ -2196,9 +2207,9 @@ const apiUtils = {
             }],
             systemInstruction,
             generationConfig: {
-                temperature: 0.1, // 翻訳の安定性を高めるため低めに設定
+                temperature: 0.1,
             },
-            safetySettings: [ // 安全性設定はすべて許可
+            safetySettings: [
                 { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
                 { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
                 { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
@@ -2207,7 +2218,6 @@ const apiUtils = {
         };
 
         try {
-            // 翻訳APIはタイムアウトを短めに設定 (例: 15秒)
             const abortController = new AbortController();
             const timeoutId = setTimeout(() => abortController.abort(), 15000);
 
@@ -2218,9 +2228,13 @@ const apiUtils = {
                 signal: abortController.signal
             });
 
-            clearTimeout(timeoutId); // タイムアウト解除
+            clearTimeout(timeoutId);
 
             if (!response.ok) {
+                // APIからのエラーレスポンスを詳しくログに出力
+                let errorBody = await response.text();
+                try { errorBody = JSON.parse(errorBody); } catch(e) { /* ignore */ }
+                console.error(`翻訳APIエラー (${response.status})`, errorBody);
                 throw new Error(`翻訳APIエラー (${response.status})`);
             }
 
@@ -2230,11 +2244,16 @@ const apiUtils = {
                 console.log("--- 翻訳処理成功 ---");
                 return translatedText;
             } else {
+                console.warn("翻訳APIの応答形式が不正、またはコンテンツが空です。", responseData);
+                // promptFeedbackがある場合はその情報もログに出力
+                if(responseData.promptFeedback) {
+                    console.warn("翻訳がブロックされた可能性があります:", responseData.promptFeedback);
+                }
                 throw new Error("翻訳APIの応答形式が不正です。");
             }
         } catch (error) {
             console.error("思考プロセスの翻訳中にエラーが発生しました。原文を返します。", error);
-            return textToTranslate; // エラー時は原文を返す
+            return textToTranslate;
         }
     }
 };
