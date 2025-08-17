@@ -317,28 +317,42 @@ function fileToBase64(file) {
 }
 
 // --- Service Worker関連 ---
-function registerServiceWorker() {
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('./sw.js')
-                .then(registration => {
-                    console.log('ServiceWorker登録成功 スコープ: ', registration.scope);
-                    // Service Workerからのメッセージ受信
-                    navigator.serviceWorker.addEventListener('message', event => {
-                        if (event.data && event.data.action === 'reloadPage') {
-                            alert('アプリが更新されました。ページをリロードします。');
-                            window.location.reload();
-                        }
-                    });
-                })
-                .catch(err => {
-                    console.error('ServiceWorker登録失敗: ', err);
-                });
+if ('serviceWorker' in navigator) {
+    (async () => {
+      try {
+        // sw.js 側の CACHE_VERSION と同じ世代にする（例: v7）
+        const reg = await navigator.serviceWorker.register('./sw.js?v=7');
+  
+        // すでに waiting がいれば即時アクティベート
+        if (reg.waiting) {
+          reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        }
+  
+        reg.addEventListener('updatefound', () => {
+          const sw = reg.installing;
+          if (!sw) return;
+          sw.addEventListener('statechange', () => {
+            if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+              // 既存タブへ即時適用
+              sw.postMessage({ type: 'SKIP_WAITING' });
+            }
+          });
         });
-    } else {
-        console.warn('このブラウザはService Workerをサポートしていません。');
-    }
-}
+  
+        // コントローラ切替時に一度だけ自動リロード（世代ズレ即解消）
+        let reloaded = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (reloaded) return;
+          reloaded = true;
+          location.reload();
+        });
+  
+        console.log('ServiceWorker登録成功 スコープ: ', reg.scope);
+      } catch (err) {
+        console.warn('ServiceWorker登録失敗', err);
+      }
+    })();
+  }
 
 // --- IndexedDBユーティリティ (dbUtils) ---
 const dbUtils = {
