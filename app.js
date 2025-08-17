@@ -2196,14 +2196,15 @@ const apiUtils = {
         // ★★★ 修正ここまで ★★★
 
         console.log("--- 思考プロセスの翻訳処理開始 ---");
-        const model = modelName || 'gemini-2.5-flash-lite';
+        const modelToUse = translationModelName || 'gemini-2.5-flash-lite';
+        
         const apiKey = state.settings.apiKey;
         if (!apiKey) {
             console.warn("翻訳スキップ: APIキーが設定されていません。");
             return textToTranslate;
         }
 
-        const endpoint = `${GEMINI_API_BASE_URL}${model}:generateContent?key=${apiKey}`;
+        const endpoint = `${GEMINI_API_BASE_URL}${modelToUse}:generateContent?key=${apiKey}`;
         
         const systemInstruction = {
             parts: [{ text: "You are a professional translator. Translate the given English text into natural Japanese. Do not add any extra comments or explanations. Just output the translated Japanese text." }]
@@ -2240,7 +2241,6 @@ const apiUtils = {
             clearTimeout(timeoutId);
 
             if (!response.ok) {
-                // APIからのエラーレスポンスを詳しくログに出力
                 let errorBody = await response.text();
                 try { errorBody = JSON.parse(errorBody); } catch(e) { /* ignore */ }
                 console.error(`翻訳APIエラー (${response.status})`, errorBody);
@@ -2254,7 +2254,6 @@ const apiUtils = {
                 return translatedText;
             } else {
                 console.warn("翻訳APIの応答形式が不正、またはコンテンツが空です。", responseData);
-                // promptFeedbackがある場合はその情報もログに出力
                 if(responseData.promptFeedback) {
                     console.warn("翻訳がブロックされた可能性があります:", responseData.promptFeedback);
                 }
