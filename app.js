@@ -2163,6 +2163,80 @@ const apiUtils = {
             }
         }
     },
+    /**
+     * テキストを日本語に翻訳する関数
+     * @param {string} textToTranslate - 翻訳対象の英語テキスト
+     * @returns {Promise<string>} 翻訳された日本語テキスト。失敗した場合は元の英語テキストを返す。
+     */
+     async translateText(textToTranslate) {
+        // 翻訳対象が空か、日本語の可能性が高い場合は翻訳をスキップ
+        if (!textToTranslate || textToTranslate.trim() === '' || textToTranslate.match(/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/)) {
+            return textToTranslate;
+        }
+
+        console.log("--- 思考プロセスの翻訳処理開始 ---");
+        const model = 'gemini-2.5-flash-lite'; // 翻訳には高速なモデルを使用
+        const apiKey = state.settings.apiKey;
+        if (!apiKey) {
+            console.warn("翻訳スキップ: APIキーが設定されていません。");
+            return textToTranslate; // APIキーがない場合は原文を返す
+        }
+
+        const endpoint = `${GEMINI_API_BASE_URL}${model}:generateContent?key=${apiKey}`;
+        
+        // 翻訳専用のシンプルなシステムプロンプト
+        const systemInstruction = {
+            parts: [{ text: "You are a professional translator. Translate the given English text into natural Japanese. Do not add any extra comments or explanations. Just output the translated Japanese text." }]
+        };
+
+        const requestBody = {
+            contents: [{
+                role: 'user',
+                parts: [{ text: textToTranslate }]
+            }],
+            systemInstruction,
+            generationConfig: {
+                temperature: 0.1, // 翻訳の安定性を高めるため低めに設定
+            },
+            safetySettings: [ // 安全性設定はすべて許可
+                { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+            ]
+        };
+
+        try {
+            // 翻訳APIはタイムアウトを短めに設定 (例: 15秒)
+            const abortController = new AbortController();
+            const timeoutId = setTimeout(() => abortController.abort(), 15000);
+
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody),
+                signal: abortController.signal
+            });
+
+            clearTimeout(timeoutId); // タイムアウト解除
+
+            if (!response.ok) {
+                throw new Error(`翻訳APIエラー (${response.status})`);
+            }
+
+            const responseData = await response.json();
+            if (responseData.candidates?.[0]?.content?.parts?.[0]?.text) {
+                const translatedText = responseData.candidates[0].content.parts[0].text;
+                console.log("--- 翻訳処理成功 ---");
+                return translatedText;
+            } else {
+                throw new Error("翻訳APIの応答形式が不正です。");
+            }
+        } catch (error) {
+            console.error("思考プロセスの翻訳中にエラーが発生しました。原文を返します。", error);
+            return textToTranslate; // エラー時は原文を返す
+        }
+    }
 };
 
 function updateCurrentSystemPrompt() {
@@ -3304,6 +3378,9 @@ const appLogic = {
         if (state.isEditingSystemPrompt) { await uiUtils.showCustomAlert("システムプロンプトを編集中です。"); return; }
 
         uiUtils.setSendingState(true);
+
+        // 最終的に翻訳対象となる思考プロセスを格納する変数
+        let finalModelMessageIndex = -1;
         
         try {
             if (!isRetry && !isAutoTrigger) {
@@ -3390,6 +3467,7 @@ const appLogic = {
                 
                 let finalContent = result.content;
 
+                // 校正処理は翻訳の前に行う
                 if (state.settings.enableProofreading && finalContent && finalContent.trim() !== '') {
                     try {
                         const proofreadContent = await this.proofreadText(finalContent);
@@ -3403,7 +3481,7 @@ const appLogic = {
                 const modelMessage = {
                     role: 'model',
                     content: finalContent,
-                    thoughtSummary: result.thoughtSummary,
+                    thoughtSummary: result.thoughtSummary, // この時点では英語の原文
                     tool_calls: result.toolCalls,
                     timestamp: Date.now(),
                     finishReason: result.finishReason,
@@ -3430,10 +3508,15 @@ const appLogic = {
                     }
 
                     state.currentMessages.push(modelMessage);
+                    // ★★★ 変更点 ★★★
+                    // 最終応答メッセージのインデックスを保存
+                    finalModelMessageIndex = state.currentMessages.length - 1;
+                    
+                    // この時点ではまだ翻訳されていない思考プロセスで一度表示
                     await dbUtils.saveChat();
                     uiUtils.renderChatMessages();
                     uiUtils.scrollToBottom();
-                    break;
+                    break; // ループを抜ける
                 }
 
                 modelMessage.tool_calls = result.toolCalls;
@@ -3451,7 +3534,6 @@ const appLogic = {
                 await dbUtils.saveChat();
             }
 
-            // whileループが上限に達した場合の処理
             if (loopCount >= MAX_LOOPS) {
                 console.error("Function Callingの最大ループ回数に達しました。処理を中断します。");
                 throw new Error("AIが同じ操作を繰り返しているようです。処理を中断しました。");
@@ -3468,7 +3550,25 @@ const appLogic = {
                 console.log("--- handleSend: リクエストが正常にキャンセルされました。---");
             }
         } finally {
-            console.log("--- handleSend: finallyブロック実行。送信状態を解除します。 ---");
+            console.log("--- handleSend: finallyブロック実行 ---");
+            
+            // すべての処理が完了したこのタイミングで翻訳を実行
+            if (finalModelMessageIndex !== -1) {
+                const finalMessage = state.currentMessages[finalModelMessageIndex];
+                if (finalMessage && finalMessage.thoughtSummary) {
+                    uiUtils.setLoadingIndicatorText('思考プロセスを翻訳中...');
+                    const translatedThought = await apiUtils.translateText(finalMessage.thoughtSummary);
+                    
+                    // 翻訳結果をstateに反映
+                    finalMessage.thoughtSummary = translatedThought;
+                    
+                    // UIを再描画して翻訳結果を表示し、DBに最終結果を保存
+                    uiUtils.renderChatMessages();
+                    await dbUtils.saveChat();
+                    console.log("翻訳された思考プロセスを反映し、再保存しました。");
+                }
+            }
+
             uiUtils.setSendingState(false);
             state.abortController = null;
             state.partialStreamContent = '';

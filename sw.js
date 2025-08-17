@@ -1,6 +1,6 @@
 // sw.js
 
-const CACHE_NAME = 'gemini-pwa-cache-v1'; // キャッシュ名を変更すると強制的に更新がかかる場合がある
+const CACHE_NAME = 'gemini-pwa-cache-v0.321'; // 更新後はここも変更
 const urlsToCache = [
   './', // ルートパス (index.html を指すことが多い)
   './index.html',
@@ -113,7 +113,6 @@ self.addEventListener('message', (event) => {
       );
     }).then(() => {
       console.log('SW: Cache cleared.');
-      // ★★★ 変更点 ★★★
       // Service Workerの登録解除(unregister)やリロード命令を削除します。
       // キャッシュクリアが完了したことをクライアントに通知するだけに留めます。
       self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
