@@ -492,62 +492,56 @@ const dbUtils = {
                     loadedSettings[item.key] = item.value;
                 });
 
-                // stateから初期のデフォルト設定を取得
                 const defaultSettings = { ...state.settings };
-
-                // state.settingsをデフォルトにリセットしてから読み込んだ値を適用
                 state.settings = { ...defaultSettings };
 
-                // デフォルト値の上に読み込んだ値を適用し、型安全性を確保
                 for (const key in loadedSettings) {
-                     if (key in defaultSettings) { // デフォルト状態に存在するキーのみ処理
+                        if (key in defaultSettings) {
                         const loadedValue = loadedSettings[key];
                         const defaultValue = defaultSettings[key];
 
                         if (key === 'backgroundImageBlob') {
-                            // 背景画像はBlobまたはnullのみ受け入れる
                             if (loadedValue instanceof Blob) {
-                                 state.settings[key] = loadedValue;
+                                    state.settings[key] = loadedValue;
                             } else {
-                                 if (loadedValue !== null) console.warn(`読み込んだ 'backgroundImageBlob' がBlobではありません。nullに設定します。型: ${typeof loadedValue}`);
-                                 state.settings[key] = null; // Blobでないか明示的にnullならnullを使用
+                                    if (loadedValue !== null) console.warn(`読み込んだ 'backgroundImageBlob' がBlobではありません。nullに設定します。型: ${typeof loadedValue}`);
+                                    state.settings[key] = null;
                             }
                         } else if (
+                            // ★★★ ここから修正 ★★★
+                            // 真偽値のリストに新しい設定項目を追加
                             key === 'darkMode' || key === 'streamingOutput' || 
                             key === 'pseudoStreaming' || key === 'enterToSend' || 
                             key === 'concatDummyModel' || key === 'hideSystemPromptInChat' ||
                             key === 'enableSwipeNavigation' || key === 'includeThoughts' ||
                             key === 'geminiEnableGrounding' || key === 'geminiEnableFunctionCalling' ||
-                            key === 'enableProofreading' || key === 'enableAutoRetry'
+                            key === 'enableProofreading' || key === 'enableAutoRetry' ||
+                            key === 'enableThoughtTranslation' // ← 追加
+                            // ★★★ 修正ここまで ★★★
                         ) {
-                             // その他の真偽値: 厳密にtrueかチェック
-                             state.settings[key] = loadedValue === true;
+                                state.settings[key] = loadedValue === true;
                         } else if (key === 'thinkingBudget') {
                             const num = parseInt(loadedValue, 10);
-                            if (isNaN(num) || num < 0) { // 整数かつ0以上かチェック
-                                state.settings[key] = null; // 不正値はnull
+                            if (isNaN(num) || num < 0) {
+                                state.settings[key] = null;
                             } else {
                                 state.settings[key] = num;
                             }
                         } else if (typeof defaultValue === 'number' || defaultValue === null) {
-                             // 数値 (オプションのものはnullを扱う)
-                             let num;
-                             if (key === 'temperature' || key === 'topP' || key === 'presencePenalty' || key === 'frequencyPenalty' || key === 'overlayOpacity' || key === 'messageOpacity') {
+                                let num;
+                                if (key === 'temperature' || key === 'topP' || key === 'presencePenalty' || key === 'frequencyPenalty' || key === 'overlayOpacity' || key === 'messageOpacity') {
                                 num = parseFloat(loadedValue);
-                            } else { // streamingSpeed, maxTokens, topK
+                            } else {
                                 num = parseInt(loadedValue, 10);
                             }
 
-                             // パース失敗、またはオプションパラメータがnull/空で読み込まれたかチェック
-                             if (isNaN(num)) {
-                                 // パース失敗した場合、オプションパラメータで元々null/空が意図されていたかチェック
-                                 if ((key === 'temperature' || key === 'maxTokens' || key === 'topK' || key === 'topP' || key === 'presencePenalty' || key === 'frequencyPenalty') && (loadedValue === null || loadedValue === '')) {
-                                      state.settings[key] = null; // nullのままにする
-                                 } else {
-                                      state.settings[key] = defaultValue; // 不正な必須数値ならデフォルトにリセット
-                                 }
-                             } else {
-                                  // 範囲を持つ数値のバリデーション (オプション)
+                                if (isNaN(num)) {
+                                    if ((key === 'temperature' || key === 'maxTokens' || key === 'topK' || key === 'topP' || key === 'presencePenalty' || key === 'frequencyPenalty') && (loadedValue === null || loadedValue === '')) {
+                                        state.settings[key] = null;
+                                    } else {
+                                        state.settings[key] = defaultValue;
+                                    }
+                                } else {
                                     if (key === 'temperature' && (num < 0 || num > 2)) num = defaultValue;
                                     if (key === 'maxTokens' && num < 1) num = defaultValue;
                                     if (key === 'topK' && num < 1) num = defaultValue;
@@ -557,58 +551,50 @@ const dbUtils = {
                                     if (key === 'overlayOpacity')   num = Math.min(1, Math.max(0,    num));
                                     if (key === 'messageOpacity')   num = Math.min(1, Math.max(0.10, num));
                                     state.settings[key] = num;
-                             }
+                                }
                         } else if (typeof defaultValue === 'string') {
-                             // 文字列: 読み込んだ値が文字列なら使用、そうでなければデフォルト
-                             state.settings[key] = typeof loadedValue === 'string' ? loadedValue : defaultValue;
+                                state.settings[key] = typeof loadedValue === 'string' ? loadedValue : defaultValue;
                         } else {
-                            // defaultSettingsが適切に定義されていればここには来ないはず
+                            // この警告は '予期しない設定タイプ' として残す
                             console.warn(`予期しない設定タイプ キー: ${key}`);
                             state.settings[key] = loadedValue;
                         }
                     } else {
-                        console.warn(`DBから読み込んだ未知の設定を無視: ${key}`);
+                        // DBに存在するがstateのデフォルトにないキーは無視
+                        // console.warn(`DBから読み込んだ未知の設定を無視: ${key}`);
                     }
                 }
 
-                // 設定が明示的にtrueとして保存されていない場合、OSのダークモード設定を初期適用
                 if (state.settings.darkMode !== true && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-                     console.log("OSのダークモード設定を初期適用");
-                     state.settings.darkMode = true;
-                     // 注意: これはDBにはすぐ保存しない。ユーザーが切り替えて保存する必要がある
+                        console.log("OSのダークモード設定を初期適用");
+                        state.settings.darkMode = true;
                 }
-
 
                 console.log("設定読み込み完了:", { ...state.settings, backgroundImageBlob: state.settings.backgroundImageBlob ? '[Blob]' : null });
                 {
                     uiUtils.applyOverlayOpacity();
-                    // --- オーバーレイ（保存値 0.0〜1.0）---
                     const ov = Number(state.settings?.overlayOpacity ?? 0.65);
                     const ovPct = Math.round(ov * 100);
-                    // UI（スライダーと％表示）
-                    const ovSlider = document.getElementById('overlay-opacity-slider');   // 0〜95, step 5
+                    const ovSlider = document.getElementById('overlay-opacity-slider');
                     const ovValue  = document.getElementById('overlay-opacity-value');
                     if (ovSlider) {
-                      const clamped = Math.max(0, Math.min(95, Math.round(ovPct / 5) * 5));
-                      ovSlider.value = clamped;
+                        const clamped = Math.max(0, Math.min(95, Math.round(ovPct / 5) * 5));
+                        ovSlider.value = clamped;
                     }
                     if (ovValue) ovValue.textContent = `${ovPct}%`;
-                    // CSS変数（#chat-screen::before で使用）
-                    document.documentElement.style.setProperty('--overlay-opacity', String(ov)); // :contentReference[oaicite:0]{index=0}
-                  
-                    // --- メッセージバブル（保存値 0.0〜1.0）---
+                    document.documentElement.style.setProperty('--overlay-opacity', String(ov));
+                    
                     const mv = Number(state.settings?.messageOpacity ?? 1);
                     const mvPct = Math.round(mv * 100);
-                    const msgSlider = document.getElementById('message-opacity-slider');  // 10〜100, step 5
+                    const msgSlider = document.getElementById('message-opacity-slider');
                     const msgValue  = document.getElementById('message-opacity-value');
                     if (msgSlider) {
-                      const clamped = Math.max(10, Math.min(100, Math.round(mvPct / 5) * 5));
-                      msgSlider.value = clamped;
+                        const clamped = Math.max(10, Math.min(100, Math.round(mvPct / 5) * 5));
+                        msgSlider.value = clamped;
                     }
                     if (msgValue) msgValue.textContent = `${mvPct}%`;
-                    // CSS変数（style.css の色合成で使用）
                     document.documentElement.style.setProperty('--message-bubble-opacity', String(mv));
-                  }
+                    }
                 resolve(state.settings);
             };
             request.onerror = (event) => reject(`設定読み込みエラー: ${event.target.error}`);
@@ -3407,8 +3393,6 @@ const appLogic = {
 
         uiUtils.setSendingState(true);
         
-        let finalModelMessageIndex = -1;
-        
         try {
             if (!isRetry && !isAutoTrigger) {
                 const text = elements.userInput.value.trim();
@@ -3432,6 +3416,9 @@ const appLogic = {
             let loopCount = 0;
             const MAX_LOOPS = 10;
             const executedFunctionNamesInTurn = [];
+            
+            // ★★★ ここから修正 ★★★
+            let finalModelMessage = null; // 最終的なモデルメッセージを一時的に保持
 
             while (loopCount < MAX_LOOPS) {
                 loopCount++;
@@ -3532,13 +3519,8 @@ const appLogic = {
                             originalResponse.isSelected = false;
                         }
                     }
-
-                    state.currentMessages.push(modelMessage);
-                    finalModelMessageIndex = state.currentMessages.length - 1;
                     
-                    await dbUtils.saveChat();
-                    uiUtils.renderChatMessages();
-                    uiUtils.scrollToBottom();
+                    finalModelMessage = modelMessage; // 最終メッセージを保持してループを抜ける
                     break;
                 }
 
@@ -3561,6 +3543,24 @@ const appLogic = {
                 console.error("Function Callingの最大ループ回数に達しました。処理を中断します。");
                 throw new Error("AIが同じ操作を繰り返しているようです。処理を中断しました。");
             }
+            
+            // 翻訳処理と最終的なUI更新
+            if (finalModelMessage) {
+                if (state.settings.enableThoughtTranslation && finalModelMessage.thoughtSummary) {
+                    uiUtils.setLoadingIndicatorText('思考プロセスを翻訳中...');
+                    const translatedThought = await apiUtils.translateText(finalModelMessage.thoughtSummary, state.settings.thoughtTranslationModel);
+                    finalModelMessage.thoughtSummary = translatedThought;
+                }
+                
+                // 翻訳が完了（または不要）な最終メッセージをstateに追加
+                state.currentMessages.push(finalModelMessage);
+                
+                // 画面に一度だけ表示
+                uiUtils.renderChatMessages();
+                await dbUtils.saveChat();
+                console.log("最終的なメッセージを表示し、保存しました。");
+            }
+            // ★★★ 修正ここまで ★★★
 
         } catch(error) {
             console.error("--- handleSend: 最終catchブロックでエラー捕捉 ---", error);
@@ -3575,20 +3575,8 @@ const appLogic = {
         } finally {
             console.log("--- handleSend: finallyブロック実行 ---");
             
-            if (finalModelMessageIndex !== -1 && state.settings.enableThoughtTranslation) {
-                const finalMessage = state.currentMessages[finalModelMessageIndex];
-                if (finalMessage && finalMessage.thoughtSummary) {
-                    uiUtils.setLoadingIndicatorText('思考プロセスを翻訳中...');
-                    const translatedThought = await apiUtils.translateText(finalMessage.thoughtSummary, state.settings.thoughtTranslationModel);
-                    
-                    finalMessage.thoughtSummary = translatedThought;
-                    
-                    uiUtils.renderChatMessages();
-                    await dbUtils.saveChat();
-                    console.log("翻訳された思考プロセスを反映し、再保存しました。");
-                }
-            }
-
+            // finallyブロックからは翻訳処理を削除
+            
             uiUtils.setSendingState(false);
             state.abortController = null;
             state.partialStreamContent = '';
