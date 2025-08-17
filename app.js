@@ -236,6 +236,59 @@ const state = {
     currentStyleProfiles: {},
 };
 
+// ===== Service Worker: safe shim (registerServiceWorker) =====
+// 既にどこかで定義されていたら上書きしない
+if (typeof window.registerServiceWorker !== 'function') {
+    window.registerServiceWorker = (async () => {
+      // 二重呼び出し防止フラグ
+      if (window.__swRegistered) return;
+      window.__swRegistered = true;
+  
+      if (!('serviceWorker' in navigator)) {
+        console.warn('Service Worker unsupported');
+        return;
+      }
+  
+      try {
+        // ★ sw.js 側の CACHE_VERSION に合わせてクエリを更新してください（例: v=7）
+        const reg = await navigator.serviceWorker.register('./sw.js?v=7');
+  
+        // すでに waiting がいれば即時アクティベート
+        if (reg.waiting) {
+          reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        }
+  
+        reg.addEventListener('updatefound', () => {
+          const sw = reg.installing;
+          if (!sw) return;
+          sw.addEventListener('statechange', () => {
+            if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+              // 既存タブへ即時適用
+              sw.postMessage({ type: 'SKIP_WAITING' });
+            }
+          });
+        });
+  
+        // controllerchange は 1回だけリロード（世代ズレ即解消）
+        if (!window.__swReloadHookAdded) {
+          window.__swReloadHookAdded = true;
+          let reloaded = false;
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (reloaded) return;
+            reloaded = true;
+            location.reload();
+          });
+        }
+  
+        console.log('ServiceWorker登録成功 スコープ: ', reg.scope);
+      } catch (err) {
+        window.__swRegistered = false; // 失敗時はフラグ解除して次回再試行可
+        console.warn('ServiceWorker登録失敗', err);
+      }
+    });
+  }
+  
+
 function updateMessageMaxWidthVar() {
     const container = elements.messageContainer; // messageContainer要素を取得
     if (!container) return;
