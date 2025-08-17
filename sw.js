@@ -118,15 +118,8 @@ self.addEventListener('activate', (event) => {
     }).then(() => {
       console.log('SW: Activating new version and claiming clients...');
       // 新しいService Workerがアクティブになったら、すぐにクライアントを制御する
+      // この後、クライアント側で 'controllerchange' イベントが発火する
       return self.clients.claim();
-    }).then(() => {
-      // 制御下にあるすべてのクライアント（開いているタブ）にリロードを促すメッセージを送信
-      console.log('SW: Posting "reloadPage" message to all clients.');
-      self.clients.matchAll({ type: 'window' }).then(clients => {
-        clients.forEach(client => {
-          client.postMessage({ action: 'reloadPage' });
-        });
-      });
     })
   );
 });
