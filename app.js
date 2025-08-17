@@ -19,7 +19,7 @@ const DUPLICATE_SUFFIX = ' (コピー)';
 const IMPORT_PREFIX = '(取込) ';
 const LIGHT_THEME_COLOR = '#4a90e2';
 const DARK_THEME_COLOR = '#007aff';
-const APP_VERSION = "0.31";
+const APP_VERSION = "0.32";
 const SWIPE_THRESHOLD = 50; // スワイプ判定の閾値 (px)
 const ZOOM_THRESHOLD = 1.01; // ズーム状態と判定するスケールの閾値 (誤差考慮)
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 最大ファイルサイズ (例: 10MB)
@@ -2101,15 +2101,15 @@ const apiUtils = {
                 if (chunkJson.candidates && chunkJson.candidates.length > 0) {
                     lastCandidateInfo = chunkJson.candidates[0];
                     if (lastCandidateInfo?.content?.parts) {
+                        // parts配列をループして、thought, text, functionCallをすべて抽出する
                         lastCandidateInfo.content.parts.forEach(part => {
-                            if (typeof part.text === 'string') {
+                            if (part.text) {
                                 if (part.thought === true) {
                                     thoughtText = (thoughtText || '') + part.text;
                                 } else {
                                     contentText = (contentText || '') + part.text;
                                 }
-                            }
-                            if (part.functionCall) {
+                            } else if (part.functionCall) {
                                 if (!currentToolCalls) currentToolCalls = [];
                                 currentToolCalls.push({ functionCall: part.functionCall });
                             }
@@ -4631,18 +4631,32 @@ const appLogic = {
                     
                     const candidate = responseData.candidates[0];
                     const parts = candidate.content?.parts || [];
-                    const textPart = parts.find(p => p.text);
-                    const toolCallParts = parts.filter(p => p.functionCall);
+                    let finalContent = '';
+                    let finalThoughtSummary = '';
+                    let finalToolCalls = [];
+
+                    parts.forEach(part => {
+                        if (part.text) {
+                            if (part.thought === true) {
+                                finalThoughtSummary += part.text;
+                            } else {
+                                finalContent += part.text;
+                            }
+                        } else if (part.functionCall) {
+                            finalToolCalls.push({ functionCall: part.functionCall });
+                        }
+                    });
 
                     // 空応答（テキストもツール呼び出しもない）の場合、リトライ対象のエラーとして扱う
-                    if (!textPart && toolCallParts.length === 0) {
+                    if (!finalContent && finalToolCalls.length === 0) {
                         throw new Error("APIから空の応答が返されました。");
                     }
 
                     // 正常な応答の戻り値
                     return {
-                        content: textPart?.text || '',
-                        toolCalls: toolCallParts.length > 0 ? toolCallParts : null,
+                        content: finalContent,
+                        thoughtSummary: finalThoughtSummary || null,
+                        toolCalls: finalToolCalls.length > 0 ? finalToolCalls : null,
                         finishReason: candidate.finishReason,
                         safetyRatings: candidate.safetyRatings,
                         usageMetadata: responseData.usageMetadata,
