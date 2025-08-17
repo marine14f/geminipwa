@@ -236,59 +236,6 @@ const state = {
     currentStyleProfiles: {},
 };
 
-// ===== Service Worker: safe shim (registerServiceWorker) =====
-// 既にどこかで定義されていたら上書きしない
-if (typeof window.registerServiceWorker !== 'function') {
-    window.registerServiceWorker = (async () => {
-      // 二重呼び出し防止フラグ
-      if (window.__swRegistered) return;
-      window.__swRegistered = true;
-  
-      if (!('serviceWorker' in navigator)) {
-        console.warn('Service Worker unsupported');
-        return;
-      }
-  
-      try {
-        // ★ sw.js 側の CACHE_VERSION に合わせてクエリを更新してください（例: v=7）
-        const reg = await navigator.serviceWorker.register('./sw.js?v=7');
-  
-        // すでに waiting がいれば即時アクティベート
-        if (reg.waiting) {
-          reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-        }
-  
-        reg.addEventListener('updatefound', () => {
-          const sw = reg.installing;
-          if (!sw) return;
-          sw.addEventListener('statechange', () => {
-            if (sw.state === 'installed' && navigator.serviceWorker.controller) {
-              // 既存タブへ即時適用
-              sw.postMessage({ type: 'SKIP_WAITING' });
-            }
-          });
-        });
-  
-        // controllerchange は 1回だけリロード（世代ズレ即解消）
-        if (!window.__swReloadHookAdded) {
-          window.__swReloadHookAdded = true;
-          let reloaded = false;
-          navigator.serviceWorker.addEventListener('controllerchange', () => {
-            if (reloaded) return;
-            reloaded = true;
-            location.reload();
-          });
-        }
-  
-        console.log('ServiceWorker登録成功 スコープ: ', reg.scope);
-      } catch (err) {
-        window.__swRegistered = false; // 失敗時はフラグ解除して次回再試行可
-        console.warn('ServiceWorker登録失敗', err);
-      }
-    });
-  }
-  
-
 function updateMessageMaxWidthVar() {
     const container = elements.messageContainer; // messageContainer要素を取得
     if (!container) return;
@@ -369,52 +316,29 @@ function fileToBase64(file) {
     });
 }
 
-// ===== Safe helpers for DOM operations =====
-const Safe = {
-    value: (el, v) => { if (el) el.value = v; else console.warn('[Safe.value] missing element'); },
-    checked: (el, v) => { if (el) el.checked = !!v; else console.warn('[Safe.checked] missing element'); },
-    text: (el, v) => { if (el) el.textContent = v; else console.warn('[Safe.text] missing element'); },
-    toggleHidden: (el, hidden) => { if (el) el.classList.toggle('hidden', !!hidden); },
-    on: (el, evt, fn, opts) => { if (el) el.addEventListener(evt, fn, opts); else console.warn('[Safe.on] missing element for', evt); },
-  };
-
 // --- Service Worker関連 ---
-if ('serviceWorker' in navigator) {
-    (async () => {
-      try {
-        // sw.js 側の CACHE_VERSION と同じ世代にする（例: v7）
-        const reg = await navigator.serviceWorker.register('./sw.js?v=7');
-  
-        // すでに waiting がいれば即時アクティベート
-        if (reg.waiting) {
-          reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-        }
-  
-        reg.addEventListener('updatefound', () => {
-          const sw = reg.installing;
-          if (!sw) return;
-          sw.addEventListener('statechange', () => {
-            if (sw.state === 'installed' && navigator.serviceWorker.controller) {
-              // 既存タブへ即時適用
-              sw.postMessage({ type: 'SKIP_WAITING' });
-            }
-          });
+function registerServiceWorker() {
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js')
+                .then(registration => {
+                    console.log('ServiceWorker登録成功 スコープ: ', registration.scope);
+                    // Service Workerからのメッセージ受信
+                    navigator.serviceWorker.addEventListener('message', event => {
+                        if (event.data && event.data.action === 'reloadPage') {
+                            alert('アプリが更新されました。ページをリロードします。');
+                            window.location.reload();
+                        }
+                    });
+                })
+                .catch(err => {
+                    console.error('ServiceWorker登録失敗: ', err);
+                });
         });
-  
-        // コントローラ切替時に一度だけ自動リロード（世代ズレ即解消）
-        let reloaded = false;
-        navigator.serviceWorker.addEventListener('controllerchange', () => {
-          if (reloaded) return;
-          reloaded = true;
-          location.reload();
-        });
-  
-        console.log('ServiceWorker登録成功 スコープ: ', reg.scope);
-      } catch (err) {
-        console.warn('ServiceWorker登録失敗', err);
-      }
-    })();
-  }
+    } else {
+        console.warn('このブラウザはService Workerをサポートしていません。');
+    }
+}
 
 // --- IndexedDBユーティリティ (dbUtils) ---
 const dbUtils = {
@@ -1538,58 +1462,61 @@ const uiUtils = {
 
     // 設定をUIに適用
     applySettingsToUI() {
-        const s = state.settings;
-      
-        // 入力系（存在しない要素があっても落ちない）
-        Safe.value(elements.apiKeyInput, s.apiKey || '');
-        Safe.value(elements.modelNameSelect, s.modelName || DEFAULT_MODEL);
-        Safe.checked(elements.streamingOutputCheckbox, s.streamingOutput);
-        Safe.value(elements.streamingSpeedInput, s.streamingSpeed ?? DEFAULT_STREAMING_SPEED);
-        Safe.value(elements.systemPromptDefaultTextarea, s.systemPrompt || '');
-        Safe.value(elements.temperatureInput, s.temperature === null ? '' : s.temperature);
-        Safe.value(elements.maxTokensInput, s.maxTokens === null ? '' : s.maxTokens);
-        Safe.value(elements.topKInput, s.topK === null ? '' : s.topK);
-        Safe.value(elements.topPInput, s.topP === null ? '' : s.topP);
-        Safe.value(elements.presencePenaltyInput, s.presencePenalty === null ? '' : s.presencePenalty);
-        Safe.value(elements.frequencyPenaltyInput, s.frequencyPenalty === null ? '' : s.frequencyPenalty);
-        Safe.value(elements.thinkingBudgetInput, s.thinkingBudget === null ? '' : s.thinkingBudget);
-      
-        Safe.checked(elements.includeThoughtsToggle, s.includeThoughts);
-        Safe.value(elements.dummyUserInput, s.dummyUser || '');
-        Safe.value(elements.dummyModelInput, s.dummyModel || '');
-        Safe.checked(elements.concatDummyModelCheckbox, s.concatDummyModel);
-        Safe.value(elements.additionalModelsTextarea, s.additionalModels || '');
-        Safe.checked(elements.pseudoStreamingCheckbox, s.pseudoStreaming);
-        Safe.checked(elements.enterToSendCheckbox, s.enterToSend);
-        Safe.value(elements.historySortOrderSelect, s.historySortOrder || 'updatedAt');
-      
-        Safe.checked(elements.darkModeToggle, s.darkMode);
-        Safe.value(elements.fontFamilyInput, s.fontFamily || '');
-        Safe.checked(elements.hideSystemPromptToggle, s.hideSystemPromptInChat);
-      
-        // Grounding / Function Calling / Proofreading / AutoRetry などの設定
-        Safe.checked(elements.geminiEnableGroundingToggle, s.geminiEnableGrounding);
-        Safe.checked(elements.geminiEnableFunctionCallingToggle, s.geminiEnableFunctionCalling);
-        Safe.checked(elements.swipeNavigationToggle, s.enableSwipeNavigation);
-        Safe.checked(elements.enableProofreadingCheckbox, s.enableProofreading);
-        Safe.value(elements.proofreadingModelNameSelect, s.proofreadingModelName || 'gemini-2.5-flash');
-        Safe.value(elements.proofreadingSystemInstructionTextarea, s.proofreadingSystemInstruction || '');
-        Safe.toggleHidden(elements.proofreadingOptionsDiv, !s.enableProofreading);
-      
-        Safe.checked(elements.enableAutoRetryCheckbox, s.enableAutoRetry);
-        Safe.value(elements.maxRetriesInput, s.maxRetries);
-        Safe.toggleHidden(elements.autoRetryOptionsDiv, !s.enableAutoRetry);
-      
-        // 依存するUIの適用（存在チェック付きで呼ぶ）
-        this.updateUserModelOptions?.();
-        this.updateBackgroundSettingsUI?.();
-        this.applyDarkMode?.();
-        this.applyFontFamily?.();
-        this.toggleSystemPromptVisibility?.();
-        this.applyOverlayOpacity?.();
-        this.applyHeaderColor?.();
-      },
-      
+        elements.apiKeyInput.value = state.settings.apiKey || '';
+        elements.modelNameSelect.value = state.settings.modelName || DEFAULT_MODEL;
+        elements.streamingOutputCheckbox.checked = state.settings.streamingOutput;
+        elements.streamingSpeedInput.value = state.settings.streamingSpeed ?? DEFAULT_STREAMING_SPEED;
+        elements.systemPromptDefaultTextarea.value = state.settings.systemPrompt || '';
+        elements.temperatureInput.value = state.settings.temperature === null ? '' : state.settings.temperature;
+        elements.maxTokensInput.value = state.settings.maxTokens === null ? '' : state.settings.maxTokens;
+        elements.topKInput.value = state.settings.topK === null ? '' : state.settings.topK;
+        elements.topPInput.value = state.settings.topP === null ? '' : state.settings.topP;
+        elements.presencePenaltyInput.value = state.settings.presencePenalty === null ? '' : state.settings.presencePenalty;
+        elements.frequencyPenaltyInput.value = state.settings.frequencyPenalty === null ? '' : state.settings.frequencyPenalty;
+        elements.thinkingBudgetInput.value = state.settings.thinkingBudget === null ? '' : state.settings.thinkingBudget;
+        elements.includeThoughtsToggle.checked = state.settings.includeThoughts;
+        elements.dummyUserInput.value = state.settings.dummyUser || '';
+        elements.dummyModelInput.value = state.settings.dummyModel || '';
+        elements.concatDummyModelCheckbox.checked = state.settings.concatDummyModel;
+        elements.additionalModelsTextarea.value = state.settings.additionalModels || '';
+        elements.pseudoStreamingCheckbox.checked = state.settings.pseudoStreaming;
+        elements.enterToSendCheckbox.checked = state.settings.enterToSend;
+        elements.historySortOrderSelect.value = state.settings.historySortOrder || 'updatedAt';
+        elements.darkModeToggle.checked = state.settings.darkMode;
+        elements.fontFamilyInput.value = state.settings.fontFamily || '';
+        elements.hideSystemPromptToggle.checked = state.settings.hideSystemPromptInChat;
+        elements.geminiEnableGroundingToggle.checked = state.settings.geminiEnableGrounding;
+        elements.geminiEnableFunctionCallingToggle.checked = state.settings.geminiEnableFunctionCalling;
+        elements.swipeNavigationToggle.checked = state.settings.enableSwipeNavigation;
+        elements.enableProofreadingCheckbox.checked = state.settings.enableProofreading;
+        elements.proofreadingModelNameSelect.value = state.settings.proofreadingModelName || 'gemini-2.5-flash';
+        elements.proofreadingSystemInstructionTextarea.value = state.settings.proofreadingSystemInstruction || '';
+        elements.proofreadingOptionsDiv.classList.toggle('hidden', !state.settings.enableProofreading);
+        elements.enableAutoRetryCheckbox.checked = state.settings.enableAutoRetry;
+        elements.maxRetriesInput.value = state.settings.maxRetries;
+        elements.autoRetryOptionsDiv.classList.toggle('hidden', !state.settings.enableAutoRetry);
+        elements.googleSearchApiKeyInput.value = state.settings.googleSearchApiKey || '';
+        elements.googleSearchEngineIdInput.value = state.settings.googleSearchEngineId || '';
+        const opacityPercent = Math.round((state.settings.overlayOpacity ?? 0.65) * 100);
+        if (elements.overlayOpacitySlider) elements.overlayOpacitySlider.value = opacityPercent;
+        if (elements.overlayOpacityValue)  elements.overlayOpacityValue.textContent = `${opacityPercent}%`;
+        // メッセージバブルの濃さ（UI と CSS へ）
+        const msgPercent = Math.round((state.settings.messageOpacity ?? 1) * 100);
+        if (elements.messageOpacitySlider) elements.messageOpacitySlider.value = msgPercent;
+        if (elements.messageOpacityValue)  elements.messageOpacityValue.textContent = `${msgPercent}%`;
+        document.documentElement.style.setProperty('--message-bubble-opacity', String(state.settings.messageOpacity ?? 1));
+
+        const defaultHeaderColor = state.settings.darkMode ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
+        elements.headerColorInput.value = state.settings.headerColor || defaultHeaderColor;
+
+        this.updateUserModelOptions();
+        this.updateBackgroundSettingsUI();
+        this.applyDarkMode();
+        this.applyFontFamily();
+        this.toggleSystemPromptVisibility();
+        this.applyOverlayOpacity();
+        this.applyHeaderColor();
+    },
 
     // ユーザー指定モデルをコンボボックスに反映
     updateUserModelOptions() {
@@ -2465,118 +2392,252 @@ const appLogic = {
     },
 
     // イベントリスナーを設定
-    setupEventListeners: function() {
-        // 設定画面の保存ボタン
-        const saveButton = document.getElementById('save-settings');
-        if (saveButton) {
-            saveButton.addEventListener('click', () => {
-                this.saveSettingsFromUI();
-            });
-        }
-    
-        // 閉じるボタン
-        const closeButton = document.getElementById('close-settings');
-        if (closeButton) {
-            closeButton.addEventListener('click', () => {
-                this.closeSettings();
-            });
-        }
-    
-        // 設定メニュー開くボタン
-        const settingsButton = document.getElementById('settings-button');
-        if (settingsButton) {
-            settingsButton.addEventListener('click', () => {
-                this.openSettings();
-            });
-        }
-    
-        // テーマ切り替え
-        const themeToggle = document.getElementById('theme-toggle');
-        if (themeToggle) {
-            themeToggle.addEventListener('change', (e) => {
-                this.settings.darkMode = e.target.checked;
-                this.applyTheme(this.settings.darkMode);
-                this.saveSettings();
-            });
-        }
-    
-        // オーバーレイスライダー
-        const overlaySlider = document.getElementById('overlay-opacity-slider');
-        if (overlaySlider) {
-            overlaySlider.addEventListener('input', (e) => {
-                const val = parseFloat(e.target.value) / 100;
-                this.settings.overlayOpacity = val;
-                this.applyOverlayOpacity(val);
-                this.saveSettings();
-            });
-        }
-    
-        // プロンプト保存ボタン
-        const savePromptBtn = document.getElementById('save-prompt-button');
-        if (savePromptBtn) {
-            savePromptBtn.addEventListener('click', () => {
-                if (typeof this.updateCurrentSystemPrompt === "function") {
-                    this.updateCurrentSystemPrompt();
-                } else {
-                    console.warn("updateCurrentSystemPrompt が未定義です");
-                }
-            });
-        }
-    
-        // チャット送信フォーム
-        const form = document.getElementById('chat-form');
-        if (form) {
-            form.addEventListener('submit', (e) => {
-                e.preventDefault();
-                if (typeof this.handleUserMessage === "function") {
-                    this.handleUserMessage();
-                } else {
-                    console.warn("handleUserMessage が未定義です");
-                }
-            });
-        }
-    
-        // クリアボタン
-        const clearBtn = document.getElementById('clear-chat');
-        if (clearBtn) {
-            clearBtn.addEventListener('click', () => {
-                if (typeof this.clearChat === "function") {
-                    this.clearChat();
-                } else {
-                    console.warn("clearChat が未定義です");
-                }
-            });
-        }
-    
-        // ファイルアップロード
-        const fileInput = document.getElementById('file-input');
-        if (fileInput) {
-            fileInput.addEventListener('change', (e) => {
-                if (typeof this.handleFileUpload === "function") {
-                    this.handleFileUpload(e);
-                } else {
-                    console.warn("handleFileUpload が未定義です");
-                }
-            });
-        }
-    
-        // PWA install イベント
-        window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
-            this.deferredPrompt = e;
-            console.log("beforeinstallprompt イベントを抑制しました。");
+    setupEventListeners() {
+        // ナビゲーションボタン
+        elements.gotoHistoryBtn.addEventListener('click', () => uiUtils.showScreen('history'));
+        elements.gotoSettingsBtn.addEventListener('click', () => uiUtils.showScreen('settings'));
+        // 戻るボタンは history.back() を使用
+        elements.backToChatFromHistoryBtn.addEventListener('click', () => history.back());
+        elements.backToChatFromSettingsBtn.addEventListener('click', () => history.back());
+
+        // チャットアクション
+        elements.newChatBtn.addEventListener('click', async () => {
+            // 現在のチャットを保存するか確認
+            const confirmed = await uiUtils.showCustomConfirm("現在のチャットを保存して新規チャットを開始しますか？");
+            if (confirmed) this.confirmStartNewChat();
         });
-    
-        // Service Worker 更新
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.addEventListener('controllerchange', () => {
-                console.log("ServiceWorker コントローラ変更検知。リロード推奨。");
+        elements.sendButton.addEventListener('click', () => {
+            if (state.isSending) this.abortRequest(); // 送信中なら中断
+            else this.handleSend(); // そうでなければ送信
+        });
+        elements.userInput.addEventListener('input', () => uiUtils.adjustTextareaHeight()); // 入力時に高さ調整
+        elements.userInput.addEventListener('keypress', (e) => {
+            // Enterで送信 (Shift+Enterは除く)
+            if (state.settings.enterToSend && e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault(); // デフォルトの改行動作を抑制
+                if (!elements.sendButton.disabled) this.handleSend(); // 送信ボタンが有効なら送信
+            }
+        });
+
+        // システムプロンプトUIアクション
+        elements.systemPromptDetails.addEventListener('toggle', (event) => {
+            if (event.target.open) {
+                // 開いたときに編集モードに入る
+                this.startEditSystemPrompt();
+            } else if (state.isEditingSystemPrompt) {
+                // 閉じられたときに編集中だったらキャンセル
+                this.cancelEditSystemPrompt();
+            }
+        });
+        elements.saveSystemPromptBtn.addEventListener('click', () => this.saveCurrentSystemPrompt());
+        elements.cancelSystemPromptBtn.addEventListener('click', () => this.cancelEditSystemPrompt());
+        elements.systemPromptEditor.addEventListener('input', () => {
+            uiUtils.adjustTextareaHeight(elements.systemPromptEditor, 200); // 高さ調整
+        });
+
+        // 履歴アクション
+        elements.importHistoryBtn.addEventListener('click', () => elements.importHistoryInput.click());
+        elements.importHistoryInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) this.handleHistoryImport(file);
+            event.target.value = null; // 同じファイルを選択できるようにリセット
+        });
+
+        // 設定アクション
+        elements.saveSettingsBtns.forEach(button => {
+            button.addEventListener('click', () => this.saveSettings());
+        });
+        if (elements.overlayOpacitySlider) {
+            elements.overlayOpacitySlider.addEventListener('input', (e) => {
+                const raw = Number(e.target.value) || 0;      // 0〜95（あなたのUI仕様）
+                const clamped = Math.max(0, Math.min(95, raw));
+                const v = clamped / 100;                      // 0.00〜0.95
+                state.settings.overlayOpacity = v;
+                dbUtils.saveSetting('overlayOpacity', v).catch(console.error);
+          
+              // パーセント表示を即更新
+              if (elements.overlayOpacityValue) {
+                elements.overlayOpacityValue.textContent = `${Math.round(v * 100)}%`;
+              }
+          
+              // state にも反映（保存は「設定を保存」で）
+              if (state?.settings) state.settings.overlayOpacity = v;
+          
+              // 見た目へ即反映（あなたの実装を呼ぶ）
+              if (typeof uiUtils?.applyOverlayOpacity === 'function') {
+                uiUtils.applyOverlayOpacity();
+              } else {
+                // 念のため：直接CSS変数を更新（関数が無い場合）
+                document.documentElement.style.setProperty('--overlay-opacity', String(v));
+              }
+            });
+          }
+        // メッセージ濃さのリアルタイム反映
+        if (elements.messageOpacitySlider) {
+            elements.messageOpacitySlider.addEventListener('input', (e) => {
+            const raw = Number(e.target.value) || 100;   // 10〜100
+            const clamped = Math.max(10, Math.min(100, raw));
+            const v = clamped / 100;                     // 0.10〜1.00
+            state.settings.messageOpacity = v;
+            dbUtils.saveSetting('messageOpacity', v).catch(console.error);
+        
+            if (elements.messageOpacityValue) {
+                elements.messageOpacityValue.textContent = `${clamped}%`;
+            }
+            // CSS変数へ即反映（style.css 側で --message-bubble-opacity を使用）
+            document.documentElement.style.setProperty('--message-bubble-opacity', String(v));
+        
+            // state にも即時反映（保存は「設定を保存」で行う）
+            if (state?.settings) state.settings.messageOpacity = v;
             });
         }
-    
-        console.log("イベントリスナー登録完了");
+        
+        elements.updateAppBtn.addEventListener('click', () => this.updateApp());
+        elements.clearDataBtn.addEventListener('click', () => this.confirmClearAllData());
+
+        elements.enableProofreadingCheckbox.addEventListener('change', () => {
+            const isEnabled = elements.enableProofreadingCheckbox.checked;
+            elements.proofreadingOptionsDiv.classList.toggle('hidden', !isEnabled);
+        });
+
+        // ダークモード切り替えリスナー
+        elements.darkModeToggle.addEventListener('change', () => {
+            state.settings.darkMode = elements.darkModeToggle.checked; // stateを即時更新
+            uiUtils.applyDarkMode(); // テーマを即時適用
+            // 注意: 変更は「設定を保存」ボタンクリック時にDBに保存される
+        });
+
+         // 背景画像ボタンリスナー
+        elements.uploadBackgroundBtn.addEventListener('click', () => elements.backgroundImageInput.click()); // ファイル選択ダイアログを開く
+        elements.backgroundImageInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) this.handleBackgroundImageUpload(file);
+            event.target.value = null; // 同じファイルを選択できるようにリセット
+        });
+        elements.deleteBackgroundBtn.addEventListener('click', () => this.confirmDeleteBackgroundImage());
+
+        if (elements.messageOpacitySlider) {
+            elements.messageOpacitySlider.addEventListener('input', (e) => {
+              const raw = Number(e.target.value) || 100;     // 10〜100
+              const clamped = Math.max(10, Math.min(100, raw));
+              const v = clamped / 100;                       // 0.10〜1.00
+              // 画面の表示
+              if (elements.messageOpacityValue) {
+                elements.messageOpacityValue.textContent = `${clamped}%`;
+              }
+              // CSS変数に即反映
+              document.documentElement.style.setProperty('--message-bubble-opacity', String(v));
+              // state も即時更新（あなたの保存ロジックに合わせて）
+              if (state?.settings) state.settings.messageOpacity = v;
+            });
+          }
+        
+
+        // ヘッダーカラーピッカーのリアルタイム更新
+        elements.headerColorInput.addEventListener('input', () => {
+            const newColor = elements.headerColorInput.value;
+            state.settings.headerColor = newColor; // stateをリアルタイム更新
+            uiUtils.applyHeaderColor(); // CSS変数をリアルタイム更新
+        });
+
+        // ヘッダーカラーリセットボタン
+        elements.resetHeaderColorBtn.addEventListener('click', () => {
+            state.settings.headerColor = ''; // stateをリセット
+            // UIをデフォルト値に戻して再適用
+            elements.headerColorInput.value = state.settings.darkMode ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
+            uiUtils.applyHeaderColor();
+        });
+
+        // SP非表示トグルリスナー
+        elements.hideSystemPromptToggle.addEventListener('change', () => {
+            state.settings.hideSystemPromptInChat = elements.hideSystemPromptToggle.checked;
+            uiUtils.toggleSystemPromptVisibility(); // UIを即時更新
+            // 注意: DBへの保存は「設定を保存」ボタンで行われる
+        });
+        
+        // --- メッセージクリックで操作ボックス表示/非表示 ---
+        elements.messageContainer.addEventListener('click', (event) => {
+            const clickedMessage = event.target.closest('.message');
+
+            // 操作ボックス内のボタンがクリックされた場合は何もしない
+            if (event.target.closest('.message-actions button, .message-cascade-controls button')) {
+                return;
+            }
+
+            // クリックされたのがメッセージ要素の場合
+            if (clickedMessage) {
+                // すでに表示されている他のメッセージがあれば非表示にする
+                const currentlyShown = elements.messageContainer.querySelector('.message.show-actions');
+                if (currentlyShown && currentlyShown !== clickedMessage) {
+                    currentlyShown.classList.remove('show-actions');
+                }
+
+                // クリックされたメッセージの表示状態をトグル
+                // (編集中はトグルしないようにする)
+                if (!clickedMessage.classList.contains('editing')) {
+                    clickedMessage.classList.toggle('show-actions');
+                }
+            } else {
+                // メッセージコンテナ内だがメッセージ要素以外がクリックされた場合
+                // (メッセージ間の余白など)
+                // 表示中の操作ボックスがあれば非表示にする
+                const currentlyShown = elements.messageContainer.querySelector('.message.show-actions');
+                if (currentlyShown) {
+                    currentlyShown.classList.remove('show-actions');
+                }
+            }
+        });
+
+        // --- メッセージコンテナ外クリックで操作ボックスを非表示 ---
+        document.body.addEventListener('click', (event) => {
+            // クリックがメッセージコンテナの外で発生した場合
+            if (!elements.messageContainer.contains(event.target)) {
+                // 表示中の操作ボックスがあれば非表示にする
+                const currentlyShown = elements.messageContainer.querySelector('.message.show-actions');
+                if (currentlyShown) {
+                    currentlyShown.classList.remove('show-actions');
+                }
+            }
+            // メッセージコンテナ内のクリックは上記のリスナーで処理される
+        }, true); 
+
+        // スワイプイベントリスナー (チャット画面のみ)
+        // passive: false にして preventDefault を呼べるようにする (必要に応じて)
+        elements.chatScreen.addEventListener('touchstart', this.handleTouchStart.bind(this), { passive: true }); // passive: trueのまま、moveで必要なら変更
+        elements.chatScreen.addEventListener('touchmove', this.handleTouchMove.bind(this), { passive: false }); // 横スワイプ判定時にpreventDefaultするため false
+        elements.chatScreen.addEventListener('touchend', this.handleTouchEnd.bind(this));
+
+        // VisualViewport APIリスナー (ズーム状態監視)
+        if ('visualViewport' in window) {
+            window.visualViewport.addEventListener('resize', this.updateZoomState.bind(this));
+            window.visualViewport.addEventListener('scroll', this.updateZoomState.bind(this));
+        } else {
+            console.warn("VisualViewport API is not supported in this browser.");
+            // フォールバックが必要な場合の処理 (例: ピンチジェスチャーを簡易的に検出するなど)
+        }
+
+        // popstate イベントリスナー (戻るボタン/ジェスチャー対応)
+        window.addEventListener('popstate', this.handlePopState.bind(this));
+        console.log("popstate listener added.");
+        
+        // ファイルアップロード関連のイベントリスナー
+        elements.attachFileBtn.addEventListener('click', () => uiUtils.showFileUploadDialog());
+        elements.selectFilesBtn.addEventListener('click', () => elements.fileInput.click());
+         // fileInput の change イベントリスナー
+        elements.fileInput.addEventListener('change', (event) => {
+            this.handleFileSelection(event.target.files);
+            // 処理が終わったら input の値をリセットする
+            event.target.value = null;
+        });
+        elements.confirmAttachBtn.addEventListener('click', () => this.confirmAttachment());
+        elements.cancelAttachBtn.addEventListener('click', () => this.cancelAttachment());
+        // ダイアログ自体を閉じた時もキャンセル扱い
+        elements.fileUploadDialog.addEventListener('close', () => {
+            if (elements.fileUploadDialog.returnValue !== 'ok') {
+                this.cancelAttachment(); // OK以外で閉じたらキャンセル
+            }
+        });
     },
-    
 
     // popstateイベントハンドラ (戻るボタン/ジェスチャー)
     handlePopState(event) {
