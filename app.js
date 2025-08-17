@@ -318,51 +318,36 @@ function fileToBase64(file) {
 
 // --- Service Worker関連 ---
 function registerServiceWorker() {
-    if (!('serviceWorker' in navigator)) {
-        console.warn('このブラウザはService Workerをサポートしていません。');
-        return;
-    }
-
-    // 二重リロード防止フラグ
-    let reloadedOnce = false;
-    const reloadOnce = () => {
-        if (reloadedOnce) return;
-        reloadedOnce = true;
-        // ここではアラートを出さない（重複の原因になるため）
-        location.reload();
-    };
-
-    // SW からのメッセージでリロード（正式ルート）
-    navigator.serviceWorker.addEventListener('message', (event) => {
-        const data = event.data || {};
-        // sw.js は status:'cacheCleared' と action:'reloadPage' の両方を投げる
-        if (data.action === 'reloadPage' || data.status === 'cacheCleared') {
-        // ユーザー通知は message 受信側で 1 回だけ行う
-        if (!reloadedOnce) {
+    if ('serviceWorker' in navigator) {
+        // Service Workerの更新（コントローラーの変更）を監視
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+            // 新しいService Workerが有効になったので、ページをリロードして更新を適用する
             alert('アプリが更新されました。ページをリロードします。');
-        }
-        reloadOnce();
-        }
-    }, { once: false });
-
-    // フォールバック：controllerchange では静かに 1 回だけリロード（通知なし）
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-        reloadOnce();
-    }, { once: true });
-
-    // 登録
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-        .then(registration => {
-            console.log('ServiceWorker登録成功 スコープ: ', registration.scope);
-        })
-        .catch(err => {
-            console.error('ServiceWorker登録失敗: ', err);
+            window.location.reload();
         });
-    });
+
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js')
+                .then(registration => {
+                    console.log('ServiceWorker登録成功 スコープ: ', registration.scope);
+                    // ここでの 'message' リスナーは、キャッシュクリア後のリロード命令など、
+                    // 他の用途でまだ必要かもしれないので残しておく。
+                    // ただし、'reloadPage' アクションは controllerchange で処理するため、ここでは不要。
+                    navigator.serviceWorker.addEventListener('message', event => {
+                        if (event.data && event.data.action === 'cacheCleared') {
+                            // 例：キャッシュクリア成功の通知など
+                            console.log('Service Workerからキャッシュクリア完了のメッセージを受信');
+                        }
+                    });
+                })
+                .catch(err => {
+                    console.error('ServiceWorker登録失敗: ', err);
+                });
+        });
+    } else {
+        console.warn('このブラウザはService Workerをサポートしていません。');
+    }
 }
-  
-  
 
 // --- IndexedDBユーティリティ (dbUtils) ---
 const dbUtils = {
@@ -3838,36 +3823,40 @@ const appLogic = {
     // アプリを更新 (キャッシュクリア)
     async updateApp() {
         if (!('serviceWorker' in navigator)) {
-          await uiUtils.showCustomAlert("お使いのブラウザはService Workerをサポートしていません。");
-          return;
+            await uiUtils.showCustomAlert("お使いのブラウザはService Workerをサポートしていません。");
+            return;
         }
-      
-        const confirmed = await uiUtils.showCustomConfirm(
-          "アプリのキャッシュをクリアして最新版を再取得しますか？ (ページがリロードされます)"
-        );
+        
+        const confirmed = await uiUtils.showCustomConfirm("アプリのキャッシュをクリアして最新版を再取得しますか？ (ページがリロードされます)");
         if (!confirmed) return;
-      
+
         try {
-          const registration = await navigator.serviceWorker.ready;
-      
-          if (registration && registration.active) {
-            // SW にキャッシュクリアを依頼。リロード指示は SW -> message で来る。
-            registration.active.postMessage({ action: 'clearCache' });
-      
-            // ★ここで「タイムアウトでの強制リロード」はしない
-            // リロードは registerServiceWorker() の message/controllerchange で 1 回だけ行う
-          } else {
-            // まれに active がいない場合のフォールバック
-            await uiUtils.showCustomAlert("アクティブなService Workerが見つかりませんでした。ページを再読み込みします。");
-            location.reload();
-          }
+            const registration = await navigator.serviceWorker.ready;
+            
+            if (registration && registration.active) {
+                registration.active.postMessage({ action: 'clearCache' });
+                navigator.serviceWorker.addEventListener('message', function handler(event) {
+                    if (event.data && event.data.action === 'cacheCleared') {
+                        navigator.serviceWorker.removeEventListener('message', handler);
+                        window.location.reload();
+                    }
+                });
+
+                setTimeout(() => {
+                    console.warn("Service Workerからの応答がタイムアウトしました。強制的にリロードします。");
+                    window.location.reload();
+                }, 5000);
+
+            } else {
+                await uiUtils.showCustomAlert("アクティブなService Workerが見つかりませんでした。ページを強制的に再読み込みします。");
+                window.location.reload(true);
+            }
         } catch (error) {
-          console.error("Service Workerの処理中にエラー:", error);
-          await uiUtils.showCustomAlert(`エラーが発生しました。ページを再読み込みします。\nエラー: ${error.message}`);
-          location.reload();
+            console.error("Service Workerの処理中にエラー:", error);
+            await uiUtils.showCustomAlert(`Service Workerの処理中にエラーが発生しました。ページを強制的に再読み込みします。\nエラー: ${error.message}`);
+            window.location.reload(true);
         }
     },
-  
 
     // 全データ削除の確認と実行
     async confirmClearAllData() {
