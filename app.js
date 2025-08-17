@@ -4670,19 +4670,13 @@ const appLogic = {
                     throw new Error("リクエストがキャンセルされました。");
                 }
 
-                // リトライ時に待機処理（初回は待機しない）
                 if (attempt > 0) {
                     const delay = INITIAL_RETRY_DELAY * Math.pow(2, attempt - 1);
-                    
-                    // ユーザーにリトライ中であることを通知
                     uiUtils.setLoadingIndicatorText(`APIエラー 再試行(${attempt}回目)... ${delay}ms待機`);
                     console.log(`API呼び出し失敗。${delay}ms後にリトライします... (試行 ${attempt + 1}/${maxRetries + 1})`);
-                    
                     await interruptibleSleep(delay, state.abortController.signal);
                 }
 
-                // API通信中のステータスメッセージを設定
-                // handleSendで"応答中..."が設定されているため、attempt > 0 の場合のみ上書き
                 if (attempt === 1) {
                     uiUtils.setLoadingIndicatorText('再試行中...');
                 } else if (attempt > 1) {
@@ -4691,17 +4685,15 @@ const appLogic = {
 
                 const response = await apiUtils.callGeminiApi(messagesForApi, generationConfig, systemInstruction, tools);
 
-                // --- レスポンス内容のチェック ---
                 if (useStreaming) {
-                    // ストリーミングの場合、チャンクを処理しながらエラーを検知
                     let fullContent = '';
                     let fullThoughtSummary = '';
                     let toolCalls = null;
                     let finalMetadata = {};
 
+                    // ストリーミング応答の処理 (ここは変更なし)
                     for await (const chunk of apiUtils.handleStreamingResponse(response)) {
                         if (chunk.type === 'error') {
-                            // ストリーム内のエラーを検知したら、リトライ対象のエラーとしてスロー
                             throw new Error(chunk.message || 'ストリーム内でエラーが発生しました');
                         }
                         if (chunk.type === 'chunk') {
@@ -4713,12 +4705,10 @@ const appLogic = {
                         }
                     }
 
-                    // 空応答（テキストもツール呼び出しもない）の場合、リトライ対象のエラーとして扱う
                     if (!fullContent && !toolCalls) {
                         throw new Error("APIから空の応答が返されました。");
                     }
 
-                     // ストリーミングが正常に完了した場合の戻り値
                     return { 
                         content: fullContent, 
                         thoughtSummary: fullThoughtSummary,
@@ -4728,15 +4718,12 @@ const appLogic = {
                     };
 
                 } else {
-                    // 非ストリーミングの場合、レスポンスボディをパースしてチェック
                     const responseData = await response.json();
                     
-                    // コンテンツブロックを検知
                     if (responseData.promptFeedback) {
                         const blockReason = responseData.promptFeedback.blockReason || 'SAFETY';
                         throw new Error(`APIが応答をブロックしました (理由: ${blockReason})`);
                     }
-                    // 候補がない場合もエラーとして扱う
                     if (!responseData.candidates || responseData.candidates.length === 0) {
                         throw new Error("API応答に有効な候補が含まれていません。");
                     }
@@ -4744,11 +4731,13 @@ const appLogic = {
                     const candidate = responseData.candidates[0];
                     const parts = candidate.content?.parts || [];
                     let finalContent = '';
-                    let finalThoughtSummary = '';
+                    let finalThoughtSummary = ''; // 思考プロセスを格納する変数を追加
                     let finalToolCalls = [];
 
+                    // parts配列をループして、思考とそれ以外を分離する
                     parts.forEach(part => {
                         if (part.text) {
+                            // part.thoughtプロパティの有無で判断
                             if (part.thought === true) {
                                 finalThoughtSummary += part.text;
                             } else {
@@ -4759,15 +4748,25 @@ const appLogic = {
                         }
                     });
 
-                    // 空応答（テキストもツール呼び出しもない）の場合、リトライ対象のエラーとして扱う
+                    // 思考プロセスが別のフィールド `candidate.thoughts` に含まれる場合も考慮
+                    if (candidate.thoughts?.parts) {
+                        candidate.thoughts.parts.forEach(part => {
+                            if (part.text) {
+                                finalThoughtSummary += part.text;
+                            }
+                        });
+                    }
+                    
+                    // 空応答チェック
                     if (!finalContent && finalToolCalls.length === 0) {
+                        // 思考プロセスのみ返ってきた場合は、それをコンテンツとして扱うか、エラーとするか
+                        // ここではエラーとしてリトライを促す
                         throw new Error("APIから空の応答が返されました。");
                     }
 
-                    // 正常な応答の戻り値
                     return {
                         content: finalContent,
-                        thoughtSummary: finalThoughtSummary || null,
+                        thoughtSummary: finalThoughtSummary.trim() || null, // trimして空ならnull
                         toolCalls: finalToolCalls.length > 0 ? finalToolCalls : null,
                         finishReason: candidate.finishReason,
                         safetyRatings: candidate.safetyRatings,
@@ -4780,19 +4779,18 @@ const appLogic = {
                 lastError = error;
                 if (error.name === 'AbortError') {
                     console.error("待機中に中断されました。リトライを中止します。", error);
-                    throw error; // 中断エラーは即座にスロー
+                    throw error;
                 }
-                // 4xx系のクライアントエラーはリトライしない
                 if (error.status && error.status >= 400 && error.status < 500) {
                     console.error(`リトライ不可のエラー (ステータス: ${error.status})。リトライを中止します。`, error);
                     throw error;
                 }
                 console.warn(`API呼び出し/処理試行 ${attempt + 1} が失敗しました。`, error);
             }
-        } // forループ終了
+        }
 
         console.error("最大リトライ回数に達しました。最終的なエラーをスローします。");
-        throw lastError; // 最終的なエラーをスロー
+        throw lastError;
     },
 }; // appLogic終了
 
