@@ -190,7 +190,16 @@
                    <h3>アドバンスド</h3>
                    <label for="dummy-user">ダミー User プロンプト (送信時のみ追加):</label>
                    <textarea id="dummy-user" placeholder="API送信直前に user ロールとして履歴末尾に追加されます" aria-label="ダミー User プロンプト"></textarea>
-
+                   <div style="margin-left: 15px; margin-top: -5px; margin-bottom: 10px;">
+                    <label class="checkbox-label" style="font-size: 12px;">
+                        <input type="checkbox" id="apply-dummy-to-proofread">
+                        校正時にも適用する
+                    </label>
+                    <label class="checkbox-label" style="font-size: 12px;">
+                        <input type="checkbox" id="apply-dummy-to-translate">
+                        思考プロセス翻訳時にも適用する
+                    </label>
+                    </div>
                    <label for="dummy-model">ダミー Model プロンプト (送信時のみ追加):</label>
                    <textarea id="dummy-model" placeholder="API送信直前に model ロールとして履歴最末尾に追加されます" aria-label="ダミー Model プロンプト"></textarea>
 
