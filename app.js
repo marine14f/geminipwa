@@ -164,6 +164,11 @@ const elements = {
     enableAutoRetryCheckbox: document.getElementById('enable-auto-retry'),
     maxRetriesInput: document.getElementById('max-retries'),
     autoRetryOptionsDiv: document.getElementById('auto-retry-options'),
+    useFixedRetryDelayCheckbox: document.getElementById('use-fixed-retry-delay'),
+    fixedRetryDelayContainer: document.getElementById('fixed-retry-delay-container'),
+    fixedRetryDelayInput: document.getElementById('fixed-retry-delay-seconds'),
+    maxBackoffDelayContainer: document.getElementById('max-backoff-delay-container'),
+    maxBackoffDelayInput: document.getElementById('max-backoff-delay-seconds'),
     googleSearchApiKeyInput: document.getElementById('google-search-api-key'),
     googleSearchEngineIdInput: document.getElementById('google-search-engine-id'),
     overlayOpacitySlider: document.getElementById('overlay-opacity-slider'),
@@ -211,6 +216,9 @@ const state = {
         enableSwipeNavigation: true,
         enableAutoRetry: true,
         maxRetries: 30, 
+        useFixedRetryDelay: false,
+        fixedRetryDelaySeconds: 15,
+        maxBackoffDelaySeconds: 60,
         enableProofreading: false,
         proofreadingModelName: 'gemini-2.5-flash',
         proofreadingSystemInstruction: 'あなたはプロの編集者です。受け取った文章の過剰な読点を抑制し、日本語として違和感のない読点の使用量に校正してください。承知しました等の応答は行わず、校正後の文章のみ出力して下さい。読点の抑制以外の編集は禁止です。読点以外の文章には絶対に手を付けないで下さい。',
@@ -508,16 +516,14 @@ const dbUtils = {
                                     state.settings[key] = null;
                             }
                         } else if (
-                            // ★★★ ここから修正 ★★★
-                            // 真偽値のリストに新しい設定項目を追加
                             key === 'darkMode' || key === 'streamingOutput' || 
                             key === 'pseudoStreaming' || key === 'enterToSend' || 
                             key === 'concatDummyModel' || key === 'hideSystemPromptInChat' ||
                             key === 'enableSwipeNavigation' || key === 'includeThoughts' ||
                             key === 'geminiEnableGrounding' || key === 'geminiEnableFunctionCalling' ||
                             key === 'enableProofreading' || key === 'enableAutoRetry' ||
-                            key === 'enableThoughtTranslation' // ← 追加
-                            // ★★★ 修正ここまで ★★★
+                            key === 'useFixedRetryDelay' ||
+                            key === 'enableThoughtTranslation'
                         ) {
                                 state.settings[key] = loadedValue === true;
                         } else if (key === 'thinkingBudget') {
@@ -1509,6 +1515,12 @@ const uiUtils = {
         elements.enableAutoRetryCheckbox.checked = state.settings.enableAutoRetry;
         elements.maxRetriesInput.value = state.settings.maxRetries;
         elements.autoRetryOptionsDiv.classList.toggle('hidden', !state.settings.enableAutoRetry);
+        elements.useFixedRetryDelayCheckbox.checked = state.settings.useFixedRetryDelay;
+        elements.fixedRetryDelayInput.value = state.settings.fixedRetryDelaySeconds;
+        elements.maxBackoffDelayInput.value = state.settings.maxBackoffDelaySeconds;
+        // チェック状態に応じて表示を切り替える
+        elements.fixedRetryDelayContainer.classList.toggle('hidden', !state.settings.useFixedRetryDelay);
+        elements.maxBackoffDelayContainer.classList.toggle('hidden', state.settings.useFixedRetryDelay);
         elements.googleSearchApiKeyInput.value = state.settings.googleSearchApiKey || '';
         elements.googleSearchEngineIdInput.value = state.settings.googleSearchEngineId || '';
         const opacityPercent = Math.round((state.settings.overlayOpacity ?? 0.65) * 100);
@@ -2488,6 +2500,11 @@ const appLogic = {
         }
         elements.enableAutoRetryCheckbox.addEventListener('change', () => {
             elements.autoRetryOptionsDiv.classList.toggle('hidden', !elements.enableAutoRetryCheckbox.checked);
+        });
+        elements.useFixedRetryDelayCheckbox.addEventListener('change', () => {
+            const useFixed = elements.useFixedRetryDelayCheckbox.checked;
+            elements.fixedRetryDelayContainer.classList.toggle('hidden', !useFixed);
+            elements.maxBackoffDelayContainer.classList.toggle('hidden', useFixed);
         });
     },
 
@@ -3876,6 +3893,9 @@ const appLogic = {
             enableSwipeNavigation: elements.swipeNavigationToggle.checked,
             enableAutoRetry: elements.enableAutoRetryCheckbox.checked,
             maxRetries: parseInt(elements.maxRetriesInput.value, 10) || 0,
+            useFixedRetryDelay: elements.useFixedRetryDelayCheckbox.checked,
+            fixedRetryDelaySeconds: parseInt(elements.fixedRetryDelayInput.value, 10) || 15,
+            maxBackoffDelaySeconds: parseInt(elements.maxBackoffDelayInput.value, 10) || 60,
             enableProofreading: elements.enableProofreadingCheckbox.checked,
             proofreadingModelName: elements.proofreadingModelNameSelect.value,
             proofreadingSystemInstruction: elements.proofreadingSystemInstructionTextarea.value.trim(),
@@ -3912,6 +3932,12 @@ const appLogic = {
         }
         if (isNaN(newSettings.maxRetries) || newSettings.maxRetries < 0) {
             newSettings.maxRetries = 0;
+        }
+        if (isNaN(newSettings.fixedRetryDelaySeconds) || newSettings.fixedRetryDelaySeconds < 0) {
+            newSettings.fixedRetryDelaySeconds = 15;
+        }
+        if (isNaN(newSettings.maxBackoffDelaySeconds) || newSettings.maxBackoffDelaySeconds < 0) {
+            newSettings.maxBackoffDelaySeconds = 60;
         }
 
         try {
@@ -4683,8 +4709,16 @@ const appLogic = {
                 }
 
                 if (attempt > 0) {
-                    const delay = INITIAL_RETRY_DELAY * Math.pow(2, attempt - 1);
-                    uiUtils.setLoadingIndicatorText(`APIエラー 再試行(${attempt}回目)... ${delay}ms待機`);
+                    let delay;
+                    if (state.settings.useFixedRetryDelay) {
+                        delay = state.settings.fixedRetryDelaySeconds * 1000;
+                    } else {
+                        const exponentialDelay = INITIAL_RETRY_DELAY * Math.pow(2, attempt - 1);
+                        const maxDelay = state.settings.maxBackoffDelaySeconds * 1000;
+                        delay = Math.min(exponentialDelay, maxDelay);
+                    }
+
+                    uiUtils.setLoadingIndicatorText(`APIエラー 再試行(${attempt}回目)... ${Math.round(delay/1000)}秒待機`);
                     console.log(`API呼び出し失敗。${delay}ms後にリトライします... (試行 ${attempt + 1}/${maxRetries + 1})`);
                     await interruptibleSleep(delay, state.abortController.signal);
                 }
