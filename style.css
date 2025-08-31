@@ -143,7 +143,7 @@ html, body {
     overscroll-behavior-y: contain;
     transition: background-color var(--transition-duration) var(--transition-timing), color var(--transition-duration) var(--transition-timing);
     overflow: hidden;
-    font-size: 16px;
+    font-size: 14px;
     line-height: 1.5;
 }
 button {
@@ -387,8 +387,8 @@ body.dark-mode #chat-screen::before {
     color: var(--text-primary);
     transition: background-color var(--transition-duration) var(--transition-timing), color var(--transition-duration) var(--transition-timing);
     box-shadow: var(--shadow-1);
-    margin-top: calc(var(--spacing-unit) * 6);
-    margin-bottom: calc(var(--spacing-unit) * 6);
+    margin-top: calc(var(--spacing-unit) * 3);
+    margin-bottom: calc(var(--spacing-unit) * 3);
 }
 .message:first-child { margin-top: 0; }
 .message.user {
