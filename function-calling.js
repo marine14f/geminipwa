@@ -870,6 +870,111 @@ async function manage_style_profile({ action, character_name, profile_name, over
   }
 }
 
+/**
+ * UIの透明度（オーバーレイ、メッセージバブル）を動的に変更します。
+ * @param {object} args - AIによって提供される引数オブジェクト
+ * @param {number} [args.overlay] - チャット画面背景のオーバーレイの濃さ (0.0で透明, 1.0で不透明)
+ * @param {number} [args.message_bubble] - メッセージ吹き出しの濃さ (0.1でほぼ透明, 1.0で不透明)
+ * @returns {Promise<object>} 操作結果を含むオブジェクトを返すPromise
+ */
+async function set_ui_opacity({ overlay, message_bubble }) {
+    console.log(`[Function Calling] set_ui_opacityが呼び出されました。`, { overlay, message_bubble });
+
+    if (window.state && window.state.settings.allowPromptUiChanges === false) {
+        return { error: "ユーザー設定により、プロンプトによるUIの変更は許可されていません。" };
+    }
+
+    const newOpacities = {};
+    const changedItems = [];
+    if (typeof overlay === 'number') {
+        newOpacities.overlay = Math.min(1.0, Math.max(0.0, overlay));
+        changedItems.push(`オーバーレイの濃さを${Math.round(newOpacities.overlay * 100)}%に`);
+    }
+    if (typeof message_bubble === 'number') {
+        newOpacities.message_bubble = Math.min(1.0, Math.max(0.1, message_bubble));
+        changedItems.push(`メッセージバブルの濃さを${Math.round(newOpacities.message_bubble * 100)}%に`);
+    }
+
+    if (Object.keys(newOpacities).length === 0) {
+        return { error: "変更する透明度の指定（overlayまたはmessage_bubble）がありません。" };
+    }
+
+    if (window.appLogic && typeof window.appLogic.updateOpacitySettings === 'function') {
+        const success = await window.appLogic.updateOpacitySettings(newOpacities);
+        if (success) {
+            const message = `${changedItems.join('、')}変更しました。`;
+            return { success: true, message: message };
+        } else {
+            return { error: "有効な値が指定されなかったため、UIは変更されませんでした。" };
+        }
+    } else {
+        return { error: "UI更新機能の呼び出しに失敗しました。" };
+    }
+}
+
+/**
+ * チャット画面の背景画像をURLから設定します。この変更は一時的なもので、リロードすると元に戻ります。
+ * @param {object} args - AIによって提供される引数オブジェクト
+ * @param {string} args.image_url - 表示したい画像のURL
+ * @returns {Promise<object>} 操作結果を含むオブジェクトを返すPromise
+ */
+async function set_background_image({ image_url }) {
+    console.log(`[Function Calling] set_background_imageが呼び出されました。`, { image_url });
+
+    if (window.state && window.state.settings.allowPromptUiChanges === false) {
+        return { error: "ユーザー設定により、プロンプトによるUIの変更は許可されていません。" };
+    }
+
+    if (!image_url || typeof image_url !== 'string') {
+        return { error: "引数 'image_url' は必須であり、文字列である必要があります。" };
+    }
+
+    if (window.appLogic && typeof window.appLogic.applyBackgroundImageFromUrl === 'function') {
+        const result = await window.appLogic.applyBackgroundImageFromUrl(image_url);
+        if (result === true) {
+            const message = `背景画像を一時的に変更しました。この変更はリロードするとリセットされます。`;
+            return { success: true, message: message };
+        } else {
+            // app.jsからエラーメッセージ(string)が返ってきた場合
+            return { error: result };
+        }
+    } else {
+        return { error: "UI更新機能の呼び出しに失敗しました。" };
+    }
+}
+
+/**
+ * 背景画像の上にキャラクター画像を重ねて、一つの画像としてメッセージに表示します。
+ * @param {object} args - AIによって提供される引数オブジェクト
+ * @param {string} args.character_url - 前景に表示するキャラクター画像のURL（必須）
+ * @param {string} [args.background_url] - 背景画像のURL。指定しない場合、現在のチャット背景が使われます。
+ * @returns {Promise<object>} 操作結果を含むオブジェクトを返すPromise
+ */
+ async function display_layered_image({ character_url, background_url }) {
+    console.log(`[Function Calling] display_layered_imageが呼び出されました。`, { character_url, background_url });
+
+    if (window.state && window.state.settings.allowPromptUiChanges === false) {
+        return { error: "ユーザー設定により、プロンプトによるUIの変更は許可されていません。" };
+    }
+    if (!character_url || typeof character_url !== 'string') {
+        return { error: "引数 'character_url' は必須です。" };
+    }
+
+    const imageData = {
+        character_url,
+        background_url: background_url || null,
+    };
+
+    return { 
+        success: true, 
+        message: "画像合成の描画をリクエストしました。",
+        _internal_ui_action: {
+            type: "display_layered_image",
+            data: imageData
+        }
+    };
+}
+
 window.functionCallingTools = {
   calculate: async function({ expression }) {
     console.log(`[Function Calling] calculateが呼び出されました。式: ${expression}`);
@@ -907,7 +1012,10 @@ window.functionCallingTools = {
   get_random_choice: get_random_choice,
   generate_random_string: generate_random_string,
   search_web: search_web,
-  manage_style_profile: manage_style_profile
+  manage_style_profile: manage_style_profile,
+  set_ui_opacity: set_ui_opacity,
+  set_background_image: set_background_image,
+  display_layered_image: display_layered_image
 };
 
 
@@ -1298,6 +1406,55 @@ window.functionDeclarations = [
                     }
                 },
                 "required": ["action"]
+            }
+          },
+          {
+            "name": "set_ui_opacity",
+            "description": "チャット画面のUI要素の透明度を変更し、物語の雰囲気を演出します。例えば、回想シーンで全体を白っぽくしたり、緊迫した場面で暗くしたりできます。",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "overlay": {
+                        "type": "NUMBER",
+                        "description": "背景画像上のオーバーレイの濃さ。0.0（完全に透明）から1.0（完全に不透明）の間の数値で指定します。"
+                    },
+                    "message_bubble": {
+                        "type": "NUMBER",
+                        "description": "メッセージ吹き出しの濃さ。0.1（ほぼ透明）から1.0（完全に不透明）の間の数値で指定します。"
+                    }
+                }
+            }
+          },
+          {
+            "name": "set_background_image",
+            "description": "チャット画面の背景画像を、指定されたURLの画像に変更します。物語のシーンに合わせた背景を表示することで、没入感を高めます。画像URLに指定出来るのはユーザーがプロンプトで指定したURLのみです。",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "image_url": {
+                        "type": "STRING",
+                        "description": "表示したい画像の完全なURL。例: 'https://example.com/images/scene1.png'"
+                    }
+                },
+                "required": ["image_url"]
+            }
+          },
+          {
+            "name": "display_layered_image",
+            "description": "キャラクター画像に背景を付けて、一枚の絵のようにメッセージとして表示します。キャラクターの立ち絵と背景を組み合わせたシーン描写に使用します。この関数を呼び出す際は、通常、ユーザーへの応答テキストも一緒に生成し、そのテキスト内に画像の挿入箇所を示す `[IMAGE_HERE]` という目印を配置してください。画像URLに指定出来るのはユーザーがプロンプトで指定したURLのみです。",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "character_url": {
+                        "type": "STRING",
+                        "description": "前景に表示するキャラクター画像のURL。この画像のサイズと縦横比が表示の基準になります。"
+                    },
+                    "background_url": {
+                        "type": "STRING",
+                        "description": "背景として表示する画像のURL。指定しない場合、現在のチャット全体の背景画像が自動的に使用されます。"
+                    }
+                },
+                "required": ["character_url"]
             }
           }
       ]

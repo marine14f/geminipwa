@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
     <!-- CSSファイルを外部から読み込む -->
     <link rel="stylesheet" href="style.css?v=0.34">
+    <link rel="stylesheet" href="prism.css" />
     <script src="marked.js" defer></script>
     <script src="function-calling.js?v=0.34" defer></script>
     <script src="app.js?v=0.34" defer></script>
@@ -22,6 +23,7 @@
 
         <!-- チャット画面 -->
         <div id="chat-screen" class="screen active">
+            <div id="chat-overlay"></div> 
             <header class="app-header">
                 <button id="goto-history-btn" class="header-button" title="履歴一覧へ"><span class="material-symbols-outlined">menu</span></button>
                 <h1 id="chat-title">新規チャット</h1>
@@ -101,7 +103,7 @@
                 <div class="settings-group">
                     <h3>基本設定</h3>
                     <label for="api-key">Gemini APIキー:</label>
-                    <input type="password" id="api-key" placeholder="APIキーを入力" aria-label="Gemini APIキー">
+                    <input type="password" autocomplete="new-password" id="api-key" placeholder="APIキーを入力" aria-label="Gemini APIキー">
 
                     <label for="model-name">モデル名:</label>
                     <select id="model-name" aria-label="モデル名">
@@ -293,6 +295,13 @@
                         ※ Gemini 2.0以降でのみ対応(1.5以前は互換なし。エラーになる)<br>
                         ※ 推論モデルは推論内で検索する場合があり、引用データが帰らない場合がある。
                     </p>
+                    <label class="checkbox-label" style="margin-top: 15px;">
+                        <input type="checkbox" id="allow-prompt-ui-changes">
+                        プロンプトによるUI変更を許可する
+                    </label>
+                    <p style="font-size: 11px; color: var(--text-secondary); margin-top: -5px; margin-bottom: 15px;">
+                        ※ Function Callingを使い、プロンプトの指示で背景画像やUIの透明度を変更できるようにします。
+                    </p>
                 </div>
 
 
@@ -409,6 +418,9 @@
                      <p style="text-align: center; color: var(--text-secondary); font-size: 12px; margin-bottom: 10px;">
                          バージョン: <span id="app-version"></span>
                      </p>
+                     <p style="text-align: center; color: var(--text-secondary); font-size: 12px; margin-top: -5px; margin-bottom: 10px;">
+                        <a href="https://github.com/kinkan04/Gemini-PWA-Mk-II" target="_blank" rel="noopener noreferrer" style="color: var(--text-link); text-decoration: none;">GitHub Repository</a>
+                    </p>
                      <button id="update-app-btn">アプリを更新 (キャッシュクリア)</button>
                      <p style="font-size: 11px; color: var(--text-secondary); margin-bottom: 10px; text-align:center;">
                          ※ サーバー側のhtmlファイルなどはブラウザにキャッシュされるため、<BR>
@@ -475,6 +487,6 @@
         <img id="image-modal-img" src="" alt="拡大画像">
     </div>
 
-    
+    <script src="prism.js" data-autoloader-path="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/" defer></script>
 </body>
 </html>

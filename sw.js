@@ -31,12 +31,15 @@ self.addEventListener('install', (event) => {
 self.addEventListener('fetch', (event) => {
   const requestUrl = new URL(event.request.url);
 
-  // APIリクエスト (Google APIへのPOST) はキャッシュ戦略から除外し、常にネットワークへ
-  if (requestUrl.hostname === 'generativela' + 'nguage.googleapis.com' && event.request.method === 'POST') {
-    // 'generativelanguage'を分割して、意図しないキーワードとして検知されるのを防ぐ
-    event.respondWith(fetch(event.request));
-    return; // このリクエストに対するService Workerの処理はここで終了
+  // ▼▼▼ ここからが修正箇所です ▼▼▼
+  // APIリクエスト (Google APIへのPOST) はService Workerの処理から完全に除外する
+  if (requestUrl.hostname === 'generativelanguage.googleapis.com' && event.request.method === 'POST') {
+    // event.respondWith() を "呼び出さない" ことで、
+    // このリクエストはService Workerに無視され、ブラウザの通常のネットワーク処理にフォールバックします。
+    // これにより、巨大なリクエストボディによるService Workerのクラッシュを回避します。
+    return; 
   }
+  // ▲▲▲ ここまでが修正箇所です ▲▲▲
 
   // それ以外のリクエスト (主にGET) はキャッシュ優先戦略 (Cache falling back to network)
   event.respondWith(

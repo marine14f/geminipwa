@@ -56,7 +56,8 @@
     --bg-header: var(--header-color-custom, var(--header-color-default));
     --bg-message-actions: rgba(255, 255, 255, 0.9);
     --message-bubble-opacity: 1;
-    --bg-overlay-light: rgba(255, 255, 255, 0.75);
+    --overlay-opacity-value: 0.75;
+    --bg-overlay-light: rgba(255, 255, 255, var(--overlay-opacity-value));
 
     --text-primary: #212121;
     --text-secondary: #757575;
@@ -111,7 +112,7 @@ body.dark-mode {
     --header-color-default: #1e1e1e;
     --bg-header: var(--header-color-custom, var(--header-color-default));
     --bg-message-actions: rgba(40, 40, 40, 0.9);
-    --bg-overlay-dark: rgba(18, 18, 18, 0.75);
+    --bg-overlay-dark: rgba(18, 18, 18, var(--overlay-opacity-value));
 
     --text-primary: #e0e0e0;
     --text-secondary: #bdbdbd;
@@ -317,22 +318,30 @@ body.dark-mode .new-chat-button {
 
 /* --- Chat Screen --- */
 #chat-screen {
-    background-image: var(--chat-background-image);
+    position: relative;
+    z-index: 0;
     background-size: cover;
-    background-position: center center;
+    background-position: center;
+    background-image: var(--chat-background-image-main);
+    /* フェードインは一旦廃止し、シンプルな切り替えにする */
+    transition: background-image 0.3s ease-in-out; 
 }
-#chat-screen::before {
+
+#chat-overlay {
     content: '';
     position: absolute;
     inset: 0;
-    background-color: var(--bg-overlay-light);
-    z-index: -1;
-    transition: background-color var(--transition-duration) var(--transition-timing);
     pointer-events: none;
+    background-color: var(--bg-overlay-light);
+    opacity: var(--overlay-opacity-value, 0.75);
+    transition: opacity 0.5s ease-in-out, background-color var(--transition-duration) var(--transition-timing);
+    z-index: 0; /* コンテンツより後ろ、背景より手前 */
 }
-body.dark-mode #chat-screen::before {
+
+body.dark-mode #chat-overlay {
     background-color: var(--bg-overlay-dark);
 }
+
 .main-content {
     flex-grow: 1;
     overflow-y: auto;
@@ -779,4 +788,91 @@ body.dark-mode .message-cascade-controls .cascade-delete-btn {
 }
 .message.retrying-hidden {
     display: none !important;
+}
+/* --- Layered Image Display --- */
+.layered-image-container {
+    position: relative;
+    display: block;
+    overflow: hidden;
+    border-radius: var(--border-radius-md);
+    background-color: var(--bg-tertiary);
+    max-width: 80%;
+    margin: var(--spacing-unit) auto;
+    cursor: pointer; /* クリック可能であることを示す */
+    /* aspect-ratio はJavaScriptによって動的に設定されます */
+}
+
+.layered-background-image {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-size: cover;
+    background-position: center;
+    z-index: 1;
+}
+
+.layered-character-image {
+    position: relative; /* 背景の上に重なるように */
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    z-index: 2;
+}
+
+.layered-image-error {
+    padding: var(--spacing-unit);
+    color: var(--text-error);
+    background-color: var(--bg-error-message);
+    border: 1px solid var(--border-danger);
+    border-radius: var(--border-radius-sm);
+    font-size: 0.8rem;
+    text-align: center;
+}
+
+.thought-summary-details {
+    margin-bottom: 10px;
+    font-size: 13px;
+    border: 1px solid var(--border-tertiary);
+    border-radius: 5px;
+    background-color: var(--bg-tertiary);
+}
+.thought-summary-details summary {
+    cursor: pointer;
+    font-weight: 500;
+    color: var(--text-secondary);
+    list-style: none;
+    padding: 6px 10px;
+    outline: none;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    user-select: none;
+}
+.thought-summary-details summary::before {
+    content: '🧠';
+    font-size: 14px;
+    display: inline-block;
+}
+.thought-summary-details {
+    margin-bottom: 10px;
+    font-size: 13px;
+    border: 1px solid var(--border-tertiary);
+    border-radius: 5px;
+    background-color: var(--bg-secondary);
+}
+
+.thought-summary-content ul,
+.thought-summary-content ol {
+    padding-left: 2em; 
+}
+
+.thought-summary-content {
+    padding: 8px 10px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-primary);
+    word-wrap: break-word;
 }
