@@ -2637,10 +2637,24 @@ const appLogic = {
             const confirmed = await uiUtils.showCustomConfirm("現在のチャットを保存して新規チャットを開始しますか？");
             if (confirmed) this.confirmStartNewChat();
         });
+        let lastSendButtonClickTime = 0;
+        const sendButtonDebounceTime = 500; // 500ミリ秒以内の連続クリックを無視
+
         elements.sendButton.addEventListener('click', () => {
-            if (state.isSending) this.abortRequest(); // 送信中なら中断
-            else this.handleSend(); // そうでなければ送信
+            const now = Date.now();
+            if (now - lastSendButtonClickTime < sendButtonDebounceTime) {
+                console.log("短時間での連続クリックを検出、処理を無視します。");
+                return;
+            }
+            lastSendButtonClickTime = now;
+
+            if (state.isSending) {
+                this.abortRequest(); // 送信中なら中断
+            } else {
+                this.handleSend(); // そうでなければ送信
+            }
         });
+        
         elements.userInput.addEventListener('input', () => uiUtils.adjustTextareaHeight()); // 入力時に高さ調整
         elements.userInput.addEventListener('keydown', (e) => {
             // Ctrl+Enter で強制送信
