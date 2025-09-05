@@ -2044,8 +2044,17 @@ const apiUtils = {
         
         if (isImageGenModel) {
             finalGenerationConfig.responseModalities = ['IMAGE', 'TEXT'];
-
             delete finalGenerationConfig.thinkingConfig;
+
+            // nano-bananaでサポートされていないパラメータを削除
+            delete finalGenerationConfig.maxOutputTokens;
+            delete finalGenerationConfig.topK;
+            delete finalGenerationConfig.topP;
+            delete finalGenerationConfig.temperature;
+            // presencePenalty, frequencyPenaltyなども念のため削除
+            delete finalGenerationConfig.presencePenalty;
+            delete finalGenerationConfig.frequencyPenalty;
+
         } else {
             if (state.settings.thinkingBudget !== null || state.settings.includeThoughts) {
                 finalGenerationConfig.thinkingConfig = finalGenerationConfig.thinkingConfig || {};
@@ -2072,7 +2081,15 @@ const apiUtils = {
             ]
         };
 
-        if (!isImageGenModel) {
+        if (isImageGenModel) {
+            // nano-bananaの場合、SafetySettingsを強制的にBLOCK_NONEに設定
+            requestBody.safetySettings = [
+                { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+            ];
+        } else {
             if (systemInstruction && systemInstruction.parts && systemInstruction.parts.length > 0 && systemInstruction.parts[0].text) {
                 requestBody.systemInstruction = systemInstruction;
             }
