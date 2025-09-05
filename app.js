@@ -178,6 +178,7 @@ const elements = {
     resetHeaderColorBtn: document.getElementById('reset-header-color-btn'),
     messageOpacitySlider: document.getElementById('message-opacity-slider'),
     messageOpacityValue:  document.getElementById('message-opacity-value'),
+    modelWarningMessage: document.getElementById('model-warning-message')
 };
 
 // --- アプリ状態 ---
@@ -642,6 +643,7 @@ const dbUtils = {
                 ...(msg.attachments && msg.attachments.length > 0 && { attachments: msg.attachments }),
                 ...(msg.usageMetadata && { usageMetadata: msg.usageMetadata }),
                 ...(msg.executedFunctions && { executedFunctions: msg.executedFunctions }),
+                ...(msg.generated_images && msg.generated_images.length > 0 && { generated_images: msg.generated_images }),
                 ...(msg.isHidden === true && { isHidden: true }),
                 ...(msg.isAutoTrigger === true && { isAutoTrigger: true })
             }));
@@ -1100,7 +1102,7 @@ const uiUtils = {
                 console.error(`引用元/検索クエリ表示の生成中にエラーが発生しました (index: ${index}):`, e);
             }
         }
-        // --- ツール使用 (Function Call) ブロック ---
+        
         if (role === 'model' && messageData && messageData.executedFunctions && messageData.executedFunctions.length > 0) {
             const details = document.createElement('details');
             details.classList.add('function-call-details');
@@ -1123,16 +1125,14 @@ const uiUtils = {
             }
         }
 
-        // --- Web検索結果ブロック ---
         if (role === 'model' && messageData && messageData.search_web_results && messageData.search_web_results.length > 0) {
             const details = document.createElement('details');
-            details.classList.add('function-call-details'); // スタイルを統一
+            details.classList.add('function-call-details');
             const summary = document.createElement('summary');
-            summary.innerHTML = `🌐 Web検索結果 (${messageData.search_web_results.length}件)`; // アイコンとテキストを変更
+            summary.innerHTML = `🌐 Web検索結果 (${messageData.search_web_results.length}件)`;
             details.appendChild(summary);
-
             const list = document.createElement('ul');
-            list.classList.add('function-call-list'); // スタイルを統一
+            list.classList.add('function-call-list');
             messageData.search_web_results.forEach(result => {
                 const listItem = document.createElement('li');
                 const link = document.createElement('a');
@@ -1150,6 +1150,20 @@ const uiUtils = {
             } else {
                 messageDiv.appendChild(details);
             }
+        }
+
+        if (role === 'model' && messageData && messageData.generated_images && messageData.generated_images.length > 0) {
+            messageData.generated_images.forEach(imageData => {
+                if (imageData.data) {
+                    const img = document.createElement('img');
+                    img.src = `data:${imageData.mimeType};base64,${imageData.data}`;
+                    img.alt = '生成された画像';
+                    img.style.maxWidth = '100%';
+                    img.style.borderRadius = 'var(--border-radius-md)';
+                    img.style.marginTop = '8px';
+                    contentDiv.appendChild(img);
+                }
+            });
         }
 
         const editArea = document.createElement('div');
@@ -1580,6 +1594,7 @@ const uiUtils = {
         this.toggleSystemPromptVisibility();
         this.applyOverlayOpacity();
         this.applyHeaderColor();
+        this.updateModelWarningMessage();
     },
 
     // ユーザー指定モデルをコンボボックスに反映
@@ -1985,6 +2000,12 @@ const uiUtils = {
             charImg.src = imageData.character_url;
         });
     },
+    // モデル選択に応じた警告メッセージの表示/非表示を切り替え
+    updateModelWarningMessage() {
+        const selectedModel = elements.modelNameSelect.value;
+        const isNanoBanana = selectedModel === 'gemini-2.5-flash-image-preview';
+        elements.modelWarningMessage.classList.toggle('hidden', !isNanoBanana);
+    },
 };
 
 // --- APIユーティリティ (apiUtils) ---
@@ -2002,10 +2023,18 @@ const apiUtils = {
         const model = state.settings.modelName || DEFAULT_MODEL;
         const apiKey = state.settings.apiKey;
 
-        let endpointMethod = useStreaming
-            ? (usePseudo ? 'generateContent?alt=sse&' : 'streamGenerateContent?alt=sse&')
-            : 'generateContent?';
-        console.log(`使用モード: ${useStreaming ? (usePseudo ? '疑似ストリーミング' : 'リアルタイムストリーミング') : '非ストリーミング'}`);
+        const isImageGenModel = model === 'gemini-2.5-flash-image-preview';
+
+        let endpointMethod;
+        if (isImageGenModel) {
+            endpointMethod = 'streamGenerateContent?alt=sse&';
+            console.log("使用モード: 画像生成ストリーミング (nano-banana)");
+        } else {
+            endpointMethod = useStreaming
+                ? (usePseudo ? 'generateContent?alt=sse&' : 'streamGenerateContent?alt=sse&')
+                : 'generateContent?';
+            console.log(`使用モード: ${useStreaming ? (usePseudo ? '疑似ストリーミング' : 'リアルタイムストリーミング') : '非ストリーミング'}`);
+        }
 
         const endpoint = `${GEMINI_API_BASE_URL}${model}:${endpointMethod}key=${apiKey}`;
         
@@ -2013,23 +2042,28 @@ const apiUtils = {
         if (state.settings.presencePenalty !== null) finalGenerationConfig.presencePenalty = state.settings.presencePenalty;
         if (state.settings.frequencyPenalty !== null) finalGenerationConfig.frequencyPenalty = state.settings.frequencyPenalty;
         
-        if (state.settings.thinkingBudget !== null || state.settings.includeThoughts) {
-            finalGenerationConfig.thinkingConfig = finalGenerationConfig.thinkingConfig || {};
-            if (state.settings.thinkingBudget !== null && Number.isInteger(state.settings.thinkingBudget) && state.settings.thinkingBudget >= 0) {
-                finalGenerationConfig.thinkingConfig.thinkingBudget = state.settings.thinkingBudget;
-            }
-            if (state.settings.includeThoughts) {
-                finalGenerationConfig.thinkingConfig.includeThoughts = true;
-            }
-            if (Object.keys(finalGenerationConfig.thinkingConfig).length === 0) {
-                delete finalGenerationConfig.thinkingConfig;
+        if (isImageGenModel) {
+            finalGenerationConfig.responseModalities = ['IMAGE', 'TEXT'];
+
+            delete finalGenerationConfig.thinkingConfig;
+        } else {
+            if (state.settings.thinkingBudget !== null || state.settings.includeThoughts) {
+                finalGenerationConfig.thinkingConfig = finalGenerationConfig.thinkingConfig || {};
+                if (state.settings.thinkingBudget !== null && Number.isInteger(state.settings.thinkingBudget) && state.settings.thinkingBudget >= 0) {
+                    finalGenerationConfig.thinkingConfig.thinkingBudget = state.settings.thinkingBudget;
+                }
+                if (state.settings.includeThoughts) {
+                    finalGenerationConfig.thinkingConfig.includeThoughts = true;
+                }
+                if (Object.keys(finalGenerationConfig.thinkingConfig).length === 0) {
+                    delete finalGenerationConfig.thinkingConfig;
+                }
             }
         }
 
         const requestBody = {
             contents: messagesForApi,
             ...(Object.keys(finalGenerationConfig).length > 0 && { generationConfig: finalGenerationConfig }),
-            ...(systemInstruction && systemInstruction.parts && systemInstruction.parts.length > 0 && systemInstruction.parts[0].text && { systemInstruction }),
             safetySettings : [
                 { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
                 { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
@@ -2037,19 +2071,25 @@ const apiUtils = {
                 { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
             ]
         };
-        
-        let finalTools = [];
-        if (state.settings.geminiEnableFunctionCalling) {
-            finalTools = window.functionDeclarations || [];
-            console.log("Function Calling を有効にしてAPIを呼び出します。");
-        } 
-        else if (state.settings.geminiEnableGrounding) {
-            finalTools.push({ "google_search": {} });
-            console.log("グラウンディング (Google Search) を有効にしてAPIを呼び出します。");
-        }
-        
-        if (finalTools.length > 0) {
-            requestBody.tools = finalTools;
+
+        if (!isImageGenModel) {
+            if (systemInstruction && systemInstruction.parts && systemInstruction.parts.length > 0 && systemInstruction.parts[0].text) {
+                requestBody.systemInstruction = systemInstruction;
+            }
+
+            let finalTools = [];
+            if (state.settings.geminiEnableFunctionCalling) {
+                finalTools = window.functionDeclarations || [];
+                console.log("Function Calling を有効にしてAPIを呼び出します。");
+            } 
+            else if (state.settings.geminiEnableGrounding) {
+                finalTools.push({ "google_search": {} });
+                console.log("グラウンディング (Google Search) を有効にしてAPIを呼び出します。");
+            }
+            
+            if (finalTools.length > 0) {
+                requestBody.tools = finalTools;
+            }
         }
 
         console.log("Geminiへの送信データ:", JSON.stringify(requestBody, (key, value) => {
@@ -2193,6 +2233,7 @@ const apiUtils = {
         }
 
         function parseSseDataForYield(jsonString) {
+            
             try {
                 const chunkJson = JSON.parse(jsonString);
                 if (chunkJson.error) {
@@ -2204,6 +2245,7 @@ const apiUtils = {
 
                 let contentText = null;
                 let thoughtText = null;
+                let imageData = null;
                 let currentGroundingMetadata = null;
                 let currentUsageMetadata = null;
                 let currentToolCalls = null;
@@ -2221,6 +2263,8 @@ const apiUtils = {
                             } else if (part.functionCall) {
                                 if (!currentToolCalls) currentToolCalls = [];
                                 currentToolCalls.push({ functionCall: part.functionCall });
+                            } else if (part.inlineData) {
+                                imageData = part.inlineData;
                             }
                         });
                     }
@@ -2238,11 +2282,12 @@ const apiUtils = {
                     currentUsageMetadata = chunkJson.usageMetadata;
                 }
 
-                if (contentText !== null || thoughtText !== null || currentGroundingMetadata || currentUsageMetadata || currentToolCalls) {
+                if (contentText !== null || thoughtText !== null || imageData !== null || currentGroundingMetadata || currentUsageMetadata || currentToolCalls) {
                     return {
                         type: 'chunk',
                         contentText,
                         thoughtText,
+                        imageData, 
                         groundingMetadata: currentGroundingMetadata,
                         usageMetadata: currentUsageMetadata,
                         toolCalls: currentToolCalls
@@ -2517,17 +2562,15 @@ const appLogic = {
     // アプリ初期化
     async initializeApp() {
         if (typeof marked !== 'undefined') {
-            // marked.jsのレンダラーをカスタマイズ
             const renderer = new marked.Renderer();
             const originalLinkRenderer = renderer.link;
             renderer.link = (href, title, text) => {
                 const html = originalLinkRenderer.call(renderer, href, title, text);
-                // target="_blank" を追加して新しいタブで開くようにする
                 return html.replace(/^<a /, '<a target="_blank" rel="noopener noreferrer" ');
             };
 
             marked.setOptions({
-                renderer: renderer, // カスタムレンダラーを設定
+                renderer: renderer,
                 breaks: true,
                 gfm: true,
                 sanitize: true,
@@ -2537,16 +2580,12 @@ const appLogic = {
         } else {
             console.error("Marked.jsライブラリが読み込まれていません！");
         }
-        // バージョン表示
         elements.appVersionSpan.textContent = APP_VERSION;
-        // PWAインストールプロンプトのデフォルト動作を抑制
         window.addEventListener('beforeinstallprompt', (event) => {
             event.preventDefault();
             console.log('beforeinstallpromptイベントを抑制しました。');
-            // ここで独自のインストールボタンを表示するロジックを追加可能
         });
 
-        // デバッグ用ヘルパー関数をコンソールに登録
         window.debug = {
             getState: () => console.log(state),
             getMemory: () => console.log(state.currentPersistentMemory),
@@ -2554,22 +2593,19 @@ const appLogic = {
         };
         console.log("デバッグ用ヘルパーを登録しました。コンソールで `debug.getMemory()` を実行できます。");
 
-        // 初期画面をチャットに設定 (UI表示のみ、state更新と履歴操作は後で)
         uiUtils.showScreen('chat');
 
-        registerServiceWorker(); // Service Worker登録
+        registerServiceWorker();
 
         try {
-            await dbUtils.openDB(); // DBを開く
-            await dbUtils.loadSettings(); // 設定を読み込む (stateに反映)
+            await dbUtils.openDB();
+            await dbUtils.loadSettings();
 
             updateCurrentSystemPrompt();
 
-            // 読み込んだ設定に基づいて初期テーマとフォントを適用
             uiUtils.applyDarkMode();
             uiUtils.applyFontFamily();
 
-            // 読み込んだ設定に基づいて背景画像を適用
             if (state.settings.backgroundImageBlob instanceof Blob) {
                 uiUtils.revokeExistingObjectUrl();
                 try {
@@ -2585,100 +2621,47 @@ const appLogic = {
             }
 
             uiUtils.applyOverlayOpacity();
-
-            // 読み込んだ全設定をUIフィールドに適用
             uiUtils.applySettingsToUI();
 
-            // 最新のチャットを読み込むか、新規チャットを開始
             const chats = await dbUtils.getAllChats(state.settings.historySortOrder);
             if (chats && chats.length > 0) {
-                await this.loadChat(chats[0].id); // 最新チャットを読み込み
+                await this.loadChat(chats[0].id);
             } else {
-                this.startNewChat(); // 履歴がなければ新規チャット
+                this.startNewChat();
             }
 
-            // 初期状態を履歴スタックに設定 (loadChat/startNewChatの後)
             history.replaceState({ screen: 'chat' }, '', '#chat');
-            state.currentScreen = 'chat'; // stateも初期化
+            state.currentScreen = 'chat';
             console.log("Initial history state set to #chat");
 
         } catch (error) {
             console.error("初期化失敗:", error);
             await uiUtils.showCustomAlert(`アプリの初期化に失敗しました: ${error}`);
-            // 致命的なエラーの場合はアプリ内容をエラー表示に置き換え
             elements.appContainer.innerHTML = `<p style="padding: 20px; text-align: center; color: red;">アプリの起動に失敗しました。</p>`;
         } finally {
-            // max-widthの固定幅をpxで算出
             updateMessageMaxWidthVar();
-            // イベントリスナーを設定 (初期履歴設定後)
             this.setupEventListeners();
-            // ズーム状態を初期化
             this.updateZoomState();
-            // UI調整
             uiUtils.adjustTextareaHeight();
-            uiUtils.setSendingState(false); // 送信状態をリセット
+            uiUtils.setSendingState(false);
             uiUtils.scrollToBottom();
         }
-        // --- 画像クリックでモーダル表示 ---
-        elements.messageContainer.addEventListener('click', (event) => {
-            // クリックされたのが画像(IMGタグ)で、かつメッセージコンテント内であるか確認
-            if (event.target.tagName === 'IMG' && event.target.closest('.message-content')) {
-                // Step 1で追加したHTML要素を取得
-                const modalOverlay = document.getElementById('image-modal-overlay');
-                const modalImg = document.getElementById('image-modal-img');
-                
-                if (modalOverlay && modalImg) {
-                    modalImg.src = event.target.src; // クリックされた画像のURLをモーダルにセット
-                    modalOverlay.classList.remove('hidden'); // モーダルを表示する
-                }
-            }
-        });
-
-        // --- モーダルを閉じるイベントリスナー ---
-        const modalOverlay = document.getElementById('image-modal-overlay');
-        const modalCloseBtn = document.getElementById('image-modal-close');
-        
-        if (modalOverlay && modalCloseBtn) {
-            // 右上の「×」ボタンをクリックした時の処理
-            modalCloseBtn.addEventListener('click', () => {
-                modalOverlay.classList.add('hidden');
-            });
-            
-            // オーバーレイの背景部分をクリックした時の処理
-            modalOverlay.addEventListener('click', (event) => {
-                // 画像自体をクリックした場合は閉じないようにする
-                if (event.target === modalOverlay) {
-                    modalOverlay.classList.add('hidden');
-                }
-            });
-        }
-        elements.enableAutoRetryCheckbox.addEventListener('change', () => {
-            elements.autoRetryOptionsDiv.classList.toggle('hidden', !elements.enableAutoRetryCheckbox.checked);
-        });
-        elements.useFixedRetryDelayCheckbox.addEventListener('change', () => {
-            const useFixed = elements.useFixedRetryDelayCheckbox.checked;
-            elements.fixedRetryDelayContainer.classList.toggle('hidden', !useFixed);
-            elements.maxBackoffDelayContainer.classList.toggle('hidden', useFixed);
-        });
     },
 
     // イベントリスナーを設定
     setupEventListeners() {
-        // ナビゲーションボタン
         elements.gotoHistoryBtn.addEventListener('click', () => uiUtils.showScreen('history'));
         elements.gotoSettingsBtn.addEventListener('click', () => uiUtils.showScreen('settings'));
-        // 戻るボタンは history.back() を使用
         elements.backToChatFromHistoryBtn.addEventListener('click', () => uiUtils.showScreen('chat'));
         elements.backToChatFromSettingsBtn.addEventListener('click', () => uiUtils.showScreen('chat'));
 
-        // チャットアクション
         elements.newChatBtn.addEventListener('click', async () => {
-            // 現在のチャットを保存するか確認
             const confirmed = await uiUtils.showCustomConfirm("現在のチャットを保存して新規チャットを開始しますか？");
             if (confirmed) this.confirmStartNewChat();
         });
+
         let lastSendButtonClickTime = 0;
-        const sendButtonDebounceTime = 500; // 500ミリ秒以内の連続クリックを無視
+        const sendButtonDebounceTime = 500;
 
         elements.sendButton.addEventListener('click', () => {
             const now = Date.now();
@@ -2689,15 +2672,14 @@ const appLogic = {
             lastSendButtonClickTime = now;
 
             if (state.isSending) {
-                this.abortRequest(); // 送信中なら中断
+                this.abortRequest();
             } else {
-                this.handleSend(); // そうでなければ送信
+                this.handleSend();
             }
         });
         
-        elements.userInput.addEventListener('input', () => uiUtils.adjustTextareaHeight()); // 入力時に高さ調整
+        elements.userInput.addEventListener('input', () => uiUtils.adjustTextareaHeight());
         elements.userInput.addEventListener('keydown', (e) => {
-            // Ctrl+Enter で強制送信
             if (e.ctrlKey && e.key === 'Enter') {
                 e.preventDefault();
                 if (!elements.sendButton.disabled) {
@@ -2706,7 +2688,6 @@ const appLogic = {
                 return;
             }
 
-            // Enterのみで送信（設定が有効な場合）
             if (state.settings.enterToSend && e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
                 e.preventDefault();
                 if (!elements.sendButton.disabled) {
@@ -2715,37 +2696,31 @@ const appLogic = {
             }
         });
 
-        // システムプロンプトUIアクション
         elements.systemPromptDetails.addEventListener('toggle', (event) => {
             if (event.target.open) {
-                // 開いたときに編集モードに入る
                 this.startEditSystemPrompt();
             } else if (state.isEditingSystemPrompt) {
-                // 閉じられたときに編集中だったらキャンセル
                 this.cancelEditSystemPrompt();
             }
         });
         elements.saveSystemPromptBtn.addEventListener('click', () => this.saveCurrentSystemPrompt());
         elements.cancelSystemPromptBtn.addEventListener('click', () => this.cancelEditSystemPrompt());
         elements.systemPromptEditor.addEventListener('input', () => {
-            uiUtils.adjustTextareaHeight(elements.systemPromptEditor, 200); // 高さ調整
+            uiUtils.adjustTextareaHeight(elements.systemPromptEditor, 200);
         });
 
-        // 履歴アクション
         elements.importHistoryBtn.addEventListener('click', () => elements.importHistoryInput.click());
         elements.importHistoryInput.addEventListener('change', (event) => {
             const file = event.target.files[0];
             if (file) this.handleHistoryImport(file);
-            event.target.value = null; // 同じファイルを選択できるようにリセット
+            event.target.value = null;
         });
 
-        // 「Include Thoughts」トグルの変更を監視
         elements.includeThoughtsToggle.addEventListener('change', () => {
             const isEnabled = elements.includeThoughtsToggle.checked;
             elements.thoughtTranslationOptionsDiv.classList.toggle('hidden', !isEnabled);
         });
 
-        // 設定アクション
         elements.saveSettingsBtns.forEach(button => {
             button.addEventListener('click', () => this.saveSettings());
         });
@@ -2758,31 +2733,22 @@ const appLogic = {
                 if (elements.overlayOpacityValue) {
                     elements.overlayOpacityValue.textContent = `${clamped}%`;
                 }
-                // CSS変数へ即反映
                 document.documentElement.style.setProperty('--overlay-opacity-value', v);
-                // state も即時更新（保存は「設定を保存」で行う）
                 if (state?.settings) state.settings.overlayOpacity = v;
             });
         }
-        // メッセージ濃さのリアルタイム反映
         if (elements.messageOpacitySlider) {
             elements.messageOpacitySlider.addEventListener('input', (e) => {
-            const raw = Number(e.target.value) || 100;   // 10〜100
-            const clamped = Math.max(10, Math.min(100, raw));
-            const v = clamped / 100;                     // 0.10〜1.00
-            state.settings.messageOpacity = v;
-            dbUtils.saveSetting('messageOpacity', v).catch(console.error);
-        
-            if (elements.messageOpacityValue) {
+              const raw = Number(e.target.value) || 100;
+              const clamped = Math.max(10, Math.min(100, raw));
+              const v = clamped / 100;
+              if (elements.messageOpacityValue) {
                 elements.messageOpacityValue.textContent = `${clamped}%`;
-            }
-            // CSS変数へ即反映（style.css 側で --message-bubble-opacity を使用）
-            document.documentElement.style.setProperty('--message-bubble-opacity', String(v));
-        
-            // state にも即時反映（保存は「設定を保存」で行う）
-            if (state?.settings) state.settings.messageOpacity = v;
+              }
+              document.documentElement.style.setProperty('--message-bubble-opacity', String(v));
+              if (state?.settings) state.settings.messageOpacity = v;
             });
-        }
+          }
         
         elements.updateAppBtn.addEventListener('click', () => this.updateApp());
         elements.clearDataBtn.addEventListener('click', () => this.confirmClearAllData());
@@ -2792,141 +2758,82 @@ const appLogic = {
             elements.proofreadingOptionsDiv.classList.toggle('hidden', !isEnabled);
         });
 
-        // ダークモード切り替えリスナー
         elements.darkModeToggle.addEventListener('change', () => {
-            state.settings.darkMode = elements.darkModeToggle.checked; // stateを即時更新
-            uiUtils.applyDarkMode(); // テーマを即時適用
-            // 注意: 変更は「設定を保存」ボタンクリック時にDBに保存される
+            state.settings.darkMode = elements.darkModeToggle.checked;
+            uiUtils.applyDarkMode();
         });
 
-         // 背景画像ボタンリスナー
-        elements.uploadBackgroundBtn.addEventListener('click', () => elements.backgroundImageInput.click()); // ファイル選択ダイアログを開く
+        elements.uploadBackgroundBtn.addEventListener('click', () => elements.backgroundImageInput.click());
         elements.backgroundImageInput.addEventListener('change', (event) => {
             const file = event.target.files[0];
             if (file) this.handleBackgroundImageUpload(file);
-            event.target.value = null; // 同じファイルを選択できるようにリセット
+            event.target.value = null;
         });
         elements.deleteBackgroundBtn.addEventListener('click', () => this.confirmDeleteBackgroundImage());
-
-        if (elements.messageOpacitySlider) {
-            elements.messageOpacitySlider.addEventListener('input', (e) => {
-              const raw = Number(e.target.value) || 100;     // 10〜100
-              const clamped = Math.max(10, Math.min(100, raw));
-              const v = clamped / 100;                       // 0.10〜1.00
-              // 画面の表示
-              if (elements.messageOpacityValue) {
-                elements.messageOpacityValue.textContent = `${clamped}%`;
-              }
-              // CSS変数に即反映
-              document.documentElement.style.setProperty('--message-bubble-opacity', String(v));
-              // state も即時更新（あなたの保存ロジックに合わせて）
-              if (state?.settings) state.settings.messageOpacity = v;
-            });
-          }
         
-
-        // ヘッダーカラーピッカーのリアルタイム更新
         elements.headerColorInput.addEventListener('input', () => {
             const newColor = elements.headerColorInput.value;
-            state.settings.headerColor = newColor; // stateをリアルタイム更新
-            uiUtils.applyHeaderColor(); // CSS変数をリアルタイム更新
+            state.settings.headerColor = newColor;
+            uiUtils.applyHeaderColor();
         });
 
-        // ヘッダーカラーリセットボタン
         elements.resetHeaderColorBtn.addEventListener('click', () => {
-            state.settings.headerColor = ''; // stateをリセット
-            // UIをデフォルト値に戻して再適用
+            state.settings.headerColor = '';
             elements.headerColorInput.value = state.settings.darkMode ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
             uiUtils.applyHeaderColor();
         });
 
-        // SP非表示トグルリスナー
         elements.hideSystemPromptToggle.addEventListener('change', () => {
             state.settings.hideSystemPromptInChat = elements.hideSystemPromptToggle.checked;
-            uiUtils.toggleSystemPromptVisibility(); // UIを即時更新
-            // 注意: DBへの保存は「設定を保存」ボタンで行われる
+            uiUtils.toggleSystemPromptVisibility();
         });
         
-        // --- メッセージクリックで操作ボックス表示/非表示 ---
         elements.messageContainer.addEventListener('click', (event) => {
-            const clickedMessage = event.target.closest('.message');
-
-            // 操作ボックス内のボタンがクリックされた場合は何もしない
-            if (event.target.closest('.message-actions button, .message-cascade-controls button')) {
-                return;
-            }
-
-            // クリックされたのがメッセージ要素の場合
-            if (clickedMessage) {
-                // すでに表示されている他のメッセージがあれば非表示にする
-                const currentlyShown = elements.messageContainer.querySelector('.message.show-actions');
-                if (currentlyShown && currentlyShown !== clickedMessage) {
-                    currentlyShown.classList.remove('show-actions');
-                }
-
-                // クリックされたメッセージの表示状態をトグル
-                // (編集中はトグルしないようにする)
-                if (!clickedMessage.classList.contains('editing')) {
-                    clickedMessage.classList.toggle('show-actions');
-                }
-            } else {
-                // メッセージコンテナ内だがメッセージ要素以外がクリックされた場合
-                // (メッセージ間の余白など)
-                // 表示中の操作ボックスがあれば非表示にする
-                const currentlyShown = elements.messageContainer.querySelector('.message.show-actions');
-                if (currentlyShown) {
-                    currentlyShown.classList.remove('show-actions');
+            if (event.target.tagName === 'IMG' && event.target.closest('.message-content')) {
+                const modalOverlay = document.getElementById('image-modal-overlay');
+                const modalImg = document.getElementById('image-modal-img');
+                
+                if (modalOverlay && modalImg) {
+                    modalImg.src = event.target.src;
+                    modalOverlay.classList.remove('hidden');
                 }
             }
         });
 
-        // --- メッセージコンテナ外クリックで操作ボックスを非表示 ---
         document.body.addEventListener('click', (event) => {
-            // クリックがメッセージコンテナの外で発生した場合
             if (!elements.messageContainer.contains(event.target)) {
-                // 表示中の操作ボックスがあれば非表示にする
                 const currentlyShown = elements.messageContainer.querySelector('.message.show-actions');
                 if (currentlyShown) {
                     currentlyShown.classList.remove('show-actions');
                 }
             }
-            // メッセージコンテナ内のクリックは上記のリスナーで処理される
         }, true); 
 
-        // スワイプイベントリスナー (チャット画面のみ)
-        // passive: false にして preventDefault を呼べるようにする (必要に応じて)
-        elements.chatScreen.addEventListener('touchstart', this.handleTouchStart.bind(this), { passive: true }); // passive: trueのまま、moveで必要なら変更
-        elements.chatScreen.addEventListener('touchmove', this.handleTouchMove.bind(this), { passive: false }); // 横スワイプ判定時にpreventDefaultするため false
+        elements.chatScreen.addEventListener('touchstart', this.handleTouchStart.bind(this), { passive: true });
+        elements.chatScreen.addEventListener('touchmove', this.handleTouchMove.bind(this), { passive: false });
         elements.chatScreen.addEventListener('touchend', this.handleTouchEnd.bind(this));
 
-        // VisualViewport APIリスナー (ズーム状態監視)
         if ('visualViewport' in window) {
             window.visualViewport.addEventListener('resize', this.updateZoomState.bind(this));
             window.visualViewport.addEventListener('scroll', this.updateZoomState.bind(this));
         } else {
             console.warn("VisualViewport API is not supported in this browser.");
-            // フォールバックが必要な場合の処理 (例: ピンチジェスチャーを簡易的に検出するなど)
         }
 
-        // popstate イベントリスナー (戻るボタン/ジェスチャー対応)
         window.addEventListener('popstate', this.handlePopState.bind(this));
         console.log("popstate listener added.");
         
-        // ファイルアップロード関連のイベントリスナー
         elements.attachFileBtn.addEventListener('click', () => uiUtils.showFileUploadDialog());
         elements.selectFilesBtn.addEventListener('click', () => elements.fileInput.click());
-         // fileInput の change イベントリスナー
         elements.fileInput.addEventListener('change', (event) => {
             this.handleFileSelection(event.target.files);
-            // 処理が終わったら input の値をリセットする
             event.target.value = null;
         });
         elements.confirmAttachBtn.addEventListener('click', () => this.confirmAttachment());
         elements.cancelAttachBtn.addEventListener('click', () => this.cancelAttachment());
-        // ダイアログ自体を閉じた時もキャンセル扱い
         elements.fileUploadDialog.addEventListener('close', () => {
             if (elements.fileUploadDialog.returnValue !== 'ok') {
-                this.cancelAttachment(); // OK以外で閉じたらキャンセル
+                this.cancelAttachment();
             }
         });
         document.addEventListener('click', (e) => {
@@ -2935,13 +2842,11 @@ const appLogic = {
                 this.createRipple(e, button);
             }
         });
-        // --- Delayed Menu Hiding Logic ---
         let menuHideTimer = null;
-        const MENU_HIDE_DELAY = 300; // 300ミリ秒の遅延
+        const MENU_HIDE_DELAY = 300;
 
         const showMenu = (messageElement) => {
             clearTimeout(menuHideTimer);
-            // 他のメニューが表示されていれば非表示にする
             const currentlyShown = elements.messageContainer.querySelector('.message.show-actions');
             if (currentlyShown && currentlyShown !== messageElement) {
                 currentlyShown.classList.remove('show-actions');
@@ -2969,7 +2874,6 @@ const appLogic = {
         elements.messageContainer.addEventListener('mouseout', (event) => {
             const messageElement = event.target.closest('.message');
             if (messageElement) {
-                // マウスがメニュー自体に移動した場合も考慮
                 const relatedTarget = event.relatedTarget;
                 if (!relatedTarget || (!messageElement.contains(relatedTarget) && !relatedTarget.closest('.message-actions') && !relatedTarget.closest('.message-cascade-controls'))) {
                     hideMenu(messageElement);
@@ -2977,13 +2881,12 @@ const appLogic = {
             }
         });
 
-        // メニュー自体にマウスが入った/出た時の処理も追加
         elements.messageContainer.addEventListener('mouseover', (event) => {
             const menuElement = event.target.closest('.message-actions, .message-cascade-controls');
             if (menuElement) {
                 const messageElement = menuElement.closest('.message');
                 if (messageElement) {
-                    showMenu(messageElement); // タイマーをクリア
+                    showMenu(messageElement);
                 }
             }
         });
@@ -2999,13 +2902,11 @@ const appLogic = {
             }
         });
 
-        // --- Drag and Drop ファイル添付リスナー ---
         const chatScreen = elements.chatScreen;
 
         chatScreen.addEventListener('dragover', (event) => {
-            event.preventDefault(); // デフォルト動作をキャンセル
+            event.preventDefault();
             event.stopPropagation();
-            // 送信中でなければドラッグ中のUIを表示
             if (!state.isSending) {
                 chatScreen.classList.add('drag-over');
             }
@@ -3014,25 +2915,65 @@ const appLogic = {
         chatScreen.addEventListener('dragleave', (event) => {
             event.preventDefault();
             event.stopPropagation();
-            // ドラッグが画面外に出た場合のみUIを消す
             if (event.relatedTarget === null || !chatScreen.contains(event.relatedTarget)) {
                 chatScreen.classList.remove('drag-over');
             }
         });
 
         chatScreen.addEventListener('drop', (event) => {
-            event.preventDefault(); // デフォルト動作（ファイルを開くなど）をキャンセル
+            event.preventDefault();
             event.stopPropagation();
             chatScreen.classList.remove('drag-over');
 
-            if (state.isSending) return; // 送信中はドロップを無視
+            if (state.isSending) return;
 
             const files = event.dataTransfer.files;
             if (files && files.length > 0) {
                 console.log(`${files.length}個のファイルがドロップされました。`);
-                this.handleFileSelection(files); // 既存のファイル選択処理を呼び出す
-                uiUtils.showFileUploadDialog(); // 添付確認ダイアログを表示
+                this.handleFileSelection(files);
+                uiUtils.showFileUploadDialog();
             }
+        });
+
+        // --- ▼▼▼ ここから追加 ▼▼▼ ---
+        elements.messageContainer.addEventListener('click', (event) => {
+            if (event.target.tagName === 'IMG' && event.target.closest('.message-content')) {
+                const modalOverlay = document.getElementById('image-modal-overlay');
+                const modalImg = document.getElementById('image-modal-img');
+                
+                if (modalOverlay && modalImg) {
+                    modalImg.src = event.target.src;
+                    modalOverlay.classList.remove('hidden');
+                }
+            }
+        });
+
+        const modalOverlay = document.getElementById('image-modal-overlay');
+        const modalCloseBtn = document.getElementById('image-modal-close');
+        
+        if (modalOverlay && modalCloseBtn) {
+            modalCloseBtn.addEventListener('click', () => {
+                modalOverlay.classList.add('hidden');
+            });
+            
+            modalOverlay.addEventListener('click', (event) => {
+                if (event.target === modalOverlay) {
+                    modalOverlay.classList.add('hidden');
+                }
+            });
+        }
+        elements.enableAutoRetryCheckbox.addEventListener('change', () => {
+            elements.autoRetryOptionsDiv.classList.toggle('hidden', !elements.enableAutoRetryCheckbox.checked);
+        });
+        elements.useFixedRetryDelayCheckbox.addEventListener('change', () => {
+            const useFixed = elements.useFixedRetryDelayCheckbox.checked;
+            elements.fixedRetryDelayContainer.classList.toggle('hidden', !useFixed);
+            elements.maxBackoffDelayContainer.classList.toggle('hidden', useFixed);
+        });
+
+        // --- モデル選択時の警告表示リスナー ---
+        elements.modelNameSelect.addEventListener('change', () => {
+            uiUtils.updateModelWarningMessage();
         });
     },
 
@@ -3680,12 +3621,12 @@ const appLogic = {
          * @param {object} systemInstruction - システムプロンプト。
          * @returns {Promise<Array>} 生成された新しいメッセージオブジェクトの配列。
          */
-    async _internalHandleSend(messagesForApi, generationConfig, systemInstruction) {
+    async _internalHandleSend(messagesForApi, generationConfig, systemInstruction, streamingIndex) {
         let loopCount = 0;
         const MAX_LOOPS = 10;
         const turnResults = [];
         let currentTurnHistory = [...messagesForApi];
-        let aggregatedSearchResults = []; // ループ全体で検索結果を保持
+        let aggregatedSearchResults = [];
 
         uiUtils.setLoadingIndicatorText('応答生成中...');
 
@@ -3710,7 +3651,8 @@ const appLogic = {
                 messagesForApi: currentTurnHistory,
                 generationConfig,
                 systemInstruction,
-                tools: window.functionDeclarations
+                tools: window.functionDeclarations,
+                streamingIndex // ★★★ callApiWithRetry にインデックスを渡す ★★★
             });
 
             const modelMessage = {
@@ -3718,6 +3660,7 @@ const appLogic = {
                 content: result.content || '',
                 thoughtSummary: result.thoughtSummary,
                 tool_calls: result.toolCalls,
+                generated_images: result.images || [], 
                 timestamp: Date.now(),
                 finishReason: result.finishReason,
                 safetyRatings: result.safetyRatings,
@@ -3733,12 +3676,10 @@ const appLogic = {
             }
             
             uiUtils.setLoadingIndicatorText('関数実行中...');
-            // --- ▼▼▼ 修正箇所 ▼▼▼ ---
             const { toolResults, containsTerminalAction, search_results } = await this.executeToolCalls(result.toolCalls);
             if (search_results && search_results.length > 0) {
                 aggregatedSearchResults.push(...search_results);
             }
-            // --- ▲▲▲ 修正箇所 ▲▲▲ ---
             
             turnResults.push(...toolResults);
             
@@ -3765,13 +3706,10 @@ const appLogic = {
 
         const finalModelMessages = turnResults.filter(m => m.role === 'model');
         if (finalModelMessages.length > 0) {
-            // --- ▼▼▼ 修正箇所 ▼▼▼ ---
-            // 最終的なモデルメッセージに、集約した検索結果を添付する
             if (aggregatedSearchResults.length > 0) {
                 const lastMessage = finalModelMessages[finalModelMessages.length - 1];
                 lastMessage.search_web_results = aggregatedSearchResults;
             }
-            // --- ▲▲▲ 修正箇所 ▲▲▲ ---
 
             if (state.settings.enableProofreading) {
                 const lastTextResponse = finalModelMessages.filter(m => m.content && !m.tool_calls).pop();
@@ -3798,6 +3736,7 @@ const appLogic = {
                 }
             }
         }
+        
         return turnResults;
     },
 
@@ -3810,6 +3749,7 @@ const appLogic = {
             content: '',
             thoughtSummary: '',
             executedFunctions: [],
+            generated_images: [], 
             timestamp: Date.now(),
         };
 
@@ -3819,14 +3759,16 @@ const appLogic = {
                 if (msg.thoughtSummary) finalAggregatedMessage.thoughtSummary += msg.thoughtSummary;
                 if (msg.executedFunctions) finalAggregatedMessage.executedFunctions.push(...msg.executedFunctions);
                 
-                // --- ▼▼▼ 修正箇所 ▼▼▼ ---
                 if (msg.search_web_results) {
                     if (!finalAggregatedMessage.search_web_results) {
                         finalAggregatedMessage.search_web_results = [];
                     }
                     finalAggregatedMessage.search_web_results.push(...msg.search_web_results);
                 }
-                // --- ▲▲▲ 修正箇所 ▲▲▲ ---
+
+                if (msg.generated_images && msg.generated_images.length > 0) { 
+                    finalAggregatedMessage.generated_images.push(...msg.generated_images);
+                }
 
                 Object.assign(finalAggregatedMessage, {
                     finishReason: msg.finishReason,
@@ -3861,18 +3803,12 @@ const appLogic = {
         uiUtils.updateAttachmentBadgeVisibility();
         elements.userInput.value = '';
         uiUtils.adjustTextareaHeight();
-        uiUtils.renderChatMessages();
+        uiUtils.renderChatMessages(); 
         uiUtils.scrollToBottom();
         await dbUtils.saveChat();
 
         try {
-            // --- ▼▼▼ 修正箇所 ▼▼▼ ---
-            // isSelectedがtrueのメッセージのみをAPI履歴に含める
-            let historyForApiRaw = state.currentMessages.filter(msg => {
-                return !msg.isCascaded || msg.isSelected;
-            });
-            // --- ▲▲▲ 修正箇所 ▲▲▲ ---
-
+            let historyForApiRaw = state.currentMessages.filter(msg => !msg.isCascaded || msg.isSelected);
             if (state.settings.dummyUser) {
                 historyForApiRaw.push({ role: 'user', content: state.settings.dummyUser, attachments: [] });
             }
@@ -3904,17 +3840,11 @@ const appLogic = {
                 if(state.settings.thinkingBudget !== null) generationConfig.thinkingConfig.thinkingBudget = state.settings.thinkingBudget;
                 if(state.settings.includeThoughts) generationConfig.thinkingConfig.includeThoughts = true;
             }
-
             const systemInstruction = state.currentSystemPrompt?.trim() ? { role: "system", parts: [{ text: state.currentSystemPrompt.trim() }] } : null;
 
             const newMessages = await this._internalHandleSend(historyForApi, generationConfig, systemInstruction);
-
             const finalAggregatedMessage = this._aggregateMessages(newMessages);
 
-            if (state.settings.concatDummyModel && state.settings.dummyModel) {
-                finalAggregatedMessage.content = state.settings.dummyModel + (finalAggregatedMessage.content || '');
-            }
-            
             state.currentMessages.push(finalAggregatedMessage);
 
             uiUtils.renderChatMessages();
@@ -3923,8 +3853,9 @@ const appLogic = {
         } catch(error) {
             console.error("--- handleSend: 最終catchブロックでエラー捕捉 ---", error);
             const errorMessage = (error.name !== 'AbortError') ? (error.message || "不明なエラーが発生しました。") : "リクエストがキャンセルされました。";
-            uiUtils.displayError(errorMessage, true);
+            
             state.currentMessages.push({ role: 'error', content: errorMessage, timestamp: Date.now() });
+            uiUtils.renderChatMessages();
             await dbUtils.saveChat();
         } finally {
             uiUtils.setSendingState(false);
@@ -5122,7 +5053,7 @@ const appLogic = {
         const { messagesForApi, generationConfig, systemInstruction, tools } = apiParams;
         let lastError = null;
         const maxRetries = state.settings.enableAutoRetry ? state.settings.maxRetries : 0;
-        const useStreaming = state.settings.streamingOutput;
+        const useStreaming = state.settings.streamingOutput || state.settings.modelName === 'gemini-2.5-flash-image-preview';
 
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
             try {
@@ -5156,15 +5087,14 @@ const appLogic = {
                 const getFinishReasonError = (candidate) => {
                     const reason = candidate?.finishReason;
                     if (reason && reason !== 'STOP' && reason !== 'MAX_TOKENS') {
-                        // "PROHIBITED_CONTENT" や "SAFETY" などの明確なブロック理由
                         return new Error(`モデルが応答をブロックしました (理由: ${reason})`);
                     }
                     return null;
                 };
 
-                const checkForSafetyRejection = (candidate, content, toolCalls) => {
-                    if (content || (toolCalls && toolCalls.length > 0)) {
-                        return null; // コンテンツがあれば問題なし
+                const checkForSafetyRejection = (candidate, content, toolCalls, images) => {
+                    if (content || (toolCalls && toolCalls.length > 0) || (images && images.length > 0)) {
+                        return null;
                     }
                     const isNormalFinish = candidate?.finishReason === 'STOP' || candidate?.finishReason === 'MAX_TOKENS';
                     const safetyRatings = candidate?.safetyRatings;
@@ -5184,6 +5114,7 @@ const appLogic = {
                     let fullContent = '';
                     let fullThoughtSummary = '';
                     let toolCalls = null;
+                    let images = [];
                     let finalMetadata = {};
 
                     for await (const chunk of apiUtils.handleStreamingResponse(response)) {
@@ -5194,6 +5125,7 @@ const appLogic = {
                             if (chunk.contentText) fullContent += chunk.contentText;
                             if (chunk.thoughtText) fullThoughtSummary += chunk.thoughtText;
                             if (chunk.toolCalls) toolCalls = (toolCalls || []).concat(chunk.toolCalls);
+                            if (chunk.imageData) images.push(chunk.imageData);
                         } else if (chunk.type === 'metadata') {
                             finalMetadata = chunk;
                         }
@@ -5202,10 +5134,10 @@ const appLogic = {
                     const finishReasonError = getFinishReasonError(finalMetadata);
                     if (finishReasonError) throw finishReasonError;
 
-                    const safetyError = checkForSafetyRejection(finalMetadata, fullContent, toolCalls);
+                    const safetyError = checkForSafetyRejection(finalMetadata, fullContent, toolCalls, images);
                     if (safetyError) throw safetyError;
 
-                    if (!fullContent && !toolCalls) {
+                    if (!fullContent && !toolCalls && images.length === 0) {
                         throw new Error("APIから空の応答が返されました。");
                     }
 
@@ -5213,11 +5145,12 @@ const appLogic = {
                         content: fullContent, 
                         thoughtSummary: fullThoughtSummary,
                         toolCalls,
+                        images,
                         ...finalMetadata,
                         retryCount: attempt 
                     };
 
-                } else { // 非ストリーミング
+                } else {
                     const responseData = await response.json();
                     
                     if (responseData.promptFeedback) {
@@ -5225,17 +5158,12 @@ const appLogic = {
                         throw new Error(`APIが応答をブロックしました (理由: ${blockReason})`);
                     }
                     if (!responseData.candidates || responseData.candidates.length === 0) {
-                        // promptFeedbackもcandidatesも無い場合は、finishReason: PROHIBITED_CONTENT のパターン
                         throw new Error("API応答に有効な候補(candidates)が含まれていません。プロンプトがブロックされた可能性があります。");
                     }
                     
                     const candidate = responseData.candidates[0];
-
-                    // ★★★ ここからが最重要修正箇所 ★★★
-                    // 最初にfinishReasonをチェックする
                     const finishReasonError = getFinishReasonError(candidate);
                     if (finishReasonError) throw finishReasonError;
-                    // ★★★ ここまで ★★★
 
                     const parts = candidate.content?.parts || [];
                     let finalContent = '';
@@ -5262,11 +5190,10 @@ const appLogic = {
                         });
                     }
                     
-                    const safetyError = checkForSafetyRejection(candidate, finalContent, finalToolCalls);
+                    const safetyError = checkForSafetyRejection(candidate, finalContent, finalToolCalls, []);
                     if (safetyError) throw safetyError;
 
                     if (!finalContent && finalToolCalls.length === 0) {
-                        // このエラーは、finishReasonがSTOPで、safetyRatingも問題ないのに空の場合の最終防衛ライン
                         throw new Error("APIから空の応答が返されました。");
                     }
 
