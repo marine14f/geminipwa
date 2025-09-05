@@ -4668,12 +4668,9 @@ const appLogic = {
             uiUtils.scrollToBottom();
 
             try {
-                // --- ▼▼▼ 修正箇所 ▼▼▼ ---
-                // isSelectedがtrueのメッセージのみをAPI履歴に含める
                 let historyForApiRaw = state.currentMessages.filter(msg => {
                     return !msg.isCascaded || msg.isSelected;
                 });
-                // --- ▲▲▲ 修正箇所 ▲▲▲ ---
 
                 if (state.settings.dummyUser) {
                     historyForApiRaw.push({ role: 'user', content: state.settings.dummyUser, attachments: [] });
@@ -4736,6 +4733,9 @@ const appLogic = {
                 await dbUtils.saveChat();
             } finally {
                 uiUtils.setSendingState(false);
+                // --- ▼▼▼ 修正箇所 ▼▼▼ ---
+                state.abortController = null; // AbortControllerをリセット
+                // --- ▲▲▲ 修正箇所 ▲▲▲ ---
                 uiUtils.scrollToBottom();
             }
         }
