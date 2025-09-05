@@ -876,3 +876,18 @@ body.dark-mode .message-cascade-controls .cascade-delete-btn {
     color: var(--text-primary);
     word-wrap: break-word;
 }
+
+.thought-summary-content {
+    padding: 8px 10px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-primary);
+    word-wrap: break-word;
+}
+
+/* --- Prism.js Custom Overrides --- */
+.message-content pre[class*="language-"],
+.message-content pre[class*="language-"] code {
+    white-space: pre-wrap;   /* 改行を維持しつつ、自動で折り返す */
+    word-break: break-all;   /* 長い単語を強制的に改行する */
+}
