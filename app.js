@@ -1100,7 +1100,7 @@ const uiUtils = {
                 console.error(`引用元/検索クエリ表示の生成中にエラーが発生しました (index: ${index}):`, e);
             }
         }
-        
+        // --- ツール使用 (Function Call) ブロック ---
         if (role === 'model' && messageData && messageData.executedFunctions && messageData.executedFunctions.length > 0) {
             const details = document.createElement('details');
             details.classList.add('function-call-details');
@@ -1113,6 +1113,35 @@ const uiUtils = {
             uniqueFunctions.forEach(funcName => {
                 const listItem = document.createElement('li');
                 listItem.textContent = funcName;
+                list.appendChild(listItem);
+            });
+            details.appendChild(list);
+            if (contentDiv.innerHTML.trim() !== '') {
+                contentDiv.appendChild(details);
+            } else {
+                messageDiv.appendChild(details);
+            }
+        }
+
+        // --- Web検索結果ブロック ---
+        if (role === 'model' && messageData && messageData.search_web_results && messageData.search_web_results.length > 0) {
+            const details = document.createElement('details');
+            details.classList.add('function-call-details'); // スタイルを統一
+            const summary = document.createElement('summary');
+            summary.innerHTML = `🌐 Web検索結果 (${messageData.search_web_results.length}件)`; // アイコンとテキストを変更
+            details.appendChild(summary);
+
+            const list = document.createElement('ul');
+            list.classList.add('function-call-list'); // スタイルを統一
+            messageData.search_web_results.forEach(result => {
+                const listItem = document.createElement('li');
+                const link = document.createElement('a');
+                link.href = result.link;
+                link.textContent = result.title;
+                link.title = result.snippet;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                listItem.appendChild(link);
                 list.appendChild(listItem);
             });
             details.appendChild(list);
@@ -1836,26 +1865,22 @@ const uiUtils = {
     updateAttachmentBadgeVisibility() {
         const hasAttachments = state.pendingAttachments.length > 0;
         elements.attachFileBtn.classList.toggle('has-attachments', hasAttachments);
-        // console.log(`Attachment badge visibility updated: ${hasAttachments}`); // デバッグ用
     },
 
     // ファイルアップロードダイアログ表示
     showFileUploadDialog() {
-        // state.pendingAttachments に基づいて selectedFilesForUpload を初期化
-        if (state.pendingAttachments.length > 0) {
-            // pendingAttachments には { file: File, name: ..., mimeType: ..., base64Data: ... } が入っている
-            // selectedFilesForUpload には { file: File } を格納する
+        // 既にファイルが選択されている場合（D&Dなど）は何もしない。
+        // ファイルが選択されておらず、かつ送信待ちの添付ファイルがある場合のみ復元する。
+        if (state.selectedFilesForUpload.length === 0 && state.pendingAttachments.length > 0) {
             state.selectedFilesForUpload = state.pendingAttachments.map(att => ({ file: att.file }));
             console.log("送信待ちの添付ファイルをダイアログに復元:", state.selectedFilesForUpload.map(item => item.file.name));
-        } else {
-            // 送信待ちファイルがなければクリア
+        } else if (state.selectedFilesForUpload.length === 0) {
+            // ファイルが選択されておらず、送信待ちもない場合はクリアを確実にする
             state.selectedFilesForUpload = [];
         }
 
-        // UI更新は初期化後に行う
         this.updateSelectedFilesUI();
         elements.fileUploadDialog.showModal();
-        // ダイアログ表示時にもバッジ状態を更新 (キャンセルで戻った場合など)
         this.updateAttachmentBadgeVisibility();
     },
 
@@ -2374,14 +2399,20 @@ const apiUtils = {
 
 function updateCurrentSystemPrompt() {
     const provider = state.settings.apiProvider;
-    // 'gemini' 以外のプロバイダー設定も将来的に考慮に入れる
     const commonPrompt = state.settings.systemPrompt || '';
-    
-    // ひとまずGemini用のシステムプロンプトを優先するロジック（仮）
-    // 将来的には各プロバイダーの設定をここで分岐させる
     const specificPrompt = state.settings.systemPrompt || commonPrompt;
 
-    state.currentSystemPrompt = specificPrompt;
+    // 新規チャット(メッセージがまだない状態)の場合のみ、
+    // 設定のデフォルト値を state.currentSystemPrompt に反映する。
+    // 既存チャットや、新規でもユーザーが編集したチャットは上書きしない。
+    if (!state.currentChatId && state.currentMessages.length === 0) {
+        state.currentSystemPrompt = specificPrompt;
+        console.log(`新規チャットのため、デフォルトのシステムプロンプトを適用しました。`);
+    } else {
+        console.log(`既存チャットのため、デフォルトのシステムプロンプトによる上書きをスキップしました。`);
+    }
+
+    // ログ出力は関数の最後に移動
     console.log(`システムプロンプトを更新しました。Provider: ${provider}, Current Prompt: "${state.currentSystemPrompt.substring(0, 30)}..."`);
 }
 
@@ -2485,15 +2516,24 @@ const appLogic = {
         },
     // アプリ初期化
     async initializeApp() {
-        // marked.jsの設定
         if (typeof marked !== 'undefined') {
+            // marked.jsのレンダラーをカスタマイズ
+            const renderer = new marked.Renderer();
+            const originalLinkRenderer = renderer.link;
+            renderer.link = (href, title, text) => {
+                const html = originalLinkRenderer.call(renderer, href, title, text);
+                // target="_blank" を追加して新しいタブで開くようにする
+                return html.replace(/^<a /, '<a target="_blank" rel="noopener noreferrer" ');
+            };
+
             marked.setOptions({
-                breaks: true, // 改行を<br>に変換
-                gfm: true, // GitHub Flavored Markdown有効化
-                sanitize: true, // HTMLサニタイズ (XSS対策)
-                smartypants: false // スマートクォートなどを無効化
+                renderer: renderer, // カスタムレンダラーを設定
+                breaks: true,
+                gfm: true,
+                sanitize: true,
+                smartypants: false
             });
-            console.log("Marked.js設定完了");
+            console.log("Marked.js設定完了 (リンクは新しいタブで開きます)");
         } else {
             console.error("Marked.jsライブラリが読み込まれていません！");
         }
@@ -2956,6 +2996,42 @@ const appLogic = {
                 if (messageElement && (!relatedTarget || !messageElement.contains(relatedTarget))) {
                     hideMenu(messageElement);
                 }
+            }
+        });
+
+        // --- Drag and Drop ファイル添付リスナー ---
+        const chatScreen = elements.chatScreen;
+
+        chatScreen.addEventListener('dragover', (event) => {
+            event.preventDefault(); // デフォルト動作をキャンセル
+            event.stopPropagation();
+            // 送信中でなければドラッグ中のUIを表示
+            if (!state.isSending) {
+                chatScreen.classList.add('drag-over');
+            }
+        });
+
+        chatScreen.addEventListener('dragleave', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            // ドラッグが画面外に出た場合のみUIを消す
+            if (event.relatedTarget === null || !chatScreen.contains(event.relatedTarget)) {
+                chatScreen.classList.remove('drag-over');
+            }
+        });
+
+        chatScreen.addEventListener('drop', (event) => {
+            event.preventDefault(); // デフォルト動作（ファイルを開くなど）をキャンセル
+            event.stopPropagation();
+            chatScreen.classList.remove('drag-over');
+
+            if (state.isSending) return; // 送信中はドロップを無視
+
+            const files = event.dataTransfer.files;
+            if (files && files.length > 0) {
+                console.log(`${files.length}個のファイルがドロップされました。`);
+                this.handleFileSelection(files); // 既存のファイル選択処理を呼び出す
+                uiUtils.showFileUploadDialog(); // 添付確認ダイアログを表示
             }
         });
     },
@@ -3609,6 +3685,7 @@ const appLogic = {
         const MAX_LOOPS = 10;
         const turnResults = [];
         let currentTurnHistory = [...messagesForApi];
+        let aggregatedSearchResults = []; // ループ全体で検索結果を保持
 
         uiUtils.setLoadingIndicatorText('応答生成中...');
 
@@ -3656,7 +3733,12 @@ const appLogic = {
             }
             
             uiUtils.setLoadingIndicatorText('関数実行中...');
-            const { toolResults, containsTerminalAction } = await this.executeToolCalls(result.toolCalls);
+            // --- ▼▼▼ 修正箇所 ▼▼▼ ---
+            const { toolResults, containsTerminalAction, search_results } = await this.executeToolCalls(result.toolCalls);
+            if (search_results && search_results.length > 0) {
+                aggregatedSearchResults.push(...search_results);
+            }
+            // --- ▲▲▲ 修正箇所 ▲▲▲ ---
             
             turnResults.push(...toolResults);
             
@@ -3683,6 +3765,14 @@ const appLogic = {
 
         const finalModelMessages = turnResults.filter(m => m.role === 'model');
         if (finalModelMessages.length > 0) {
+            // --- ▼▼▼ 修正箇所 ▼▼▼ ---
+            // 最終的なモデルメッセージに、集約した検索結果を添付する
+            if (aggregatedSearchResults.length > 0) {
+                const lastMessage = finalModelMessages[finalModelMessages.length - 1];
+                lastMessage.search_web_results = aggregatedSearchResults;
+            }
+            // --- ▲▲▲ 修正箇所 ▲▲▲ ---
+
             if (state.settings.enableProofreading) {
                 const lastTextResponse = finalModelMessages.filter(m => m.content && !m.tool_calls).pop();
                 if (lastTextResponse) {
@@ -3708,7 +3798,6 @@ const appLogic = {
                 }
             }
         }
-        
         return turnResults;
     },
 
@@ -3729,6 +3818,16 @@ const appLogic = {
                 if (msg.content) finalAggregatedMessage.content += msg.content;
                 if (msg.thoughtSummary) finalAggregatedMessage.thoughtSummary += msg.thoughtSummary;
                 if (msg.executedFunctions) finalAggregatedMessage.executedFunctions.push(...msg.executedFunctions);
+                
+                // --- ▼▼▼ 修正箇所 ▼▼▼ ---
+                if (msg.search_web_results) {
+                    if (!finalAggregatedMessage.search_web_results) {
+                        finalAggregatedMessage.search_web_results = [];
+                    }
+                    finalAggregatedMessage.search_web_results.push(...msg.search_web_results);
+                }
+                // --- ▲▲▲ 修正箇所 ▲▲▲ ---
+
                 Object.assign(finalAggregatedMessage, {
                     finishReason: msg.finishReason,
                     safetyRatings: msg.safetyRatings,
@@ -3738,6 +3837,7 @@ const appLogic = {
                 });
             }
         });
+        
         return finalAggregatedMessage;
     },
 
@@ -4285,7 +4385,8 @@ const appLogic = {
         }
     
         const toolResults = [];
-        let containsTerminalAction = false; // ★ 終端アクションフラグ
+        let containsTerminalAction = false; // 終端アクションフラグ
+        let aggregatedSearchResults = []; // 検索結果を一時的に保持する配列
     
         for (const toolCall of toolCalls) {
             const functionName = toolCall.functionCall.name;
@@ -4304,6 +4405,12 @@ const appLogic = {
             } else {
                 console.error(`[Function Calling] 関数 '${functionName}' が見つかりません。`);
                 result = { error: `関数 '${functionName}' が見つかりません。` };
+            }
+
+            const responseForAI = { ...result };
+            if (result.search_results) {
+                aggregatedSearchResults.push(...result.search_results);
+                delete responseForAI.search_results;
             }
 
             if (result._internal_ui_action?.type === 'display_layered_image') {
@@ -4328,7 +4435,7 @@ const appLogic = {
                 toolResults.push({ 
                     role: 'tool', 
                     name: functionName, 
-                    response: result, 
+                    response: responseForAI, 
                     timestamp: Date.now() 
                 });
             }
@@ -4341,8 +4448,7 @@ const appLogic = {
         state.currentScene = chat.persistentMemory?.scene_stack?.slice(-1)[0] || null;
         state.currentStyleProfiles = chat.persistentMemory?.style_profiles || {};
     
-        // ★ 戻り値をオブジェクトに変更
-        return { toolResults, containsTerminalAction };
+        return { toolResults, containsTerminalAction, search_results: aggregatedSearchResults };
     },
 
     // --- システムプロンプト編集 ---

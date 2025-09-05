@@ -504,11 +504,7 @@ body.dark-mode .message-cascade-controls .cascade-delete-btn {
     flex-shrink: 0;
     border-radius: 50%;
 }
-#attach-file-btn {
-    background-color: transparent;
-    color: var(--text-secondary);
-    box-shadow: none;
-}
+
 body.dark-mode #attach-file-btn {
     color: var(--text-primary);
 }
@@ -627,7 +623,6 @@ body.dark-mode #attach-file-btn {
 .message-edit-actions .save-edit-btn:hover { background-color: var(--bg-button-save-hover); }
 .message-edit-actions .cancel-edit-btn { background-color: var(--bg-button-cancel); }
 .message-edit-actions .cancel-edit-btn:hover { background-color: var(--bg-button-cancel-hover); }
-.attachment-badge { position: absolute; top: -2px; right: -2px; width: var(--badge-size); height: var(--badge-size); background-color: var(--badge-color); border-radius: 50%; border: 1px solid var(--bg-primary); display: none; pointer-events: none; }
 .chat-input-area button#attach-file-btn.has-attachments .attachment-badge { display: block; }
 #loading-indicator { position: fixed; bottom: 70px; right: 20px; background-color: var(--bg-tertiary); color: var(--text-secondary); padding: 6px 12px; border-radius: 15px; font-size: 11px; z-index: 3; box-shadow: var(--shadow-2); transition: opacity 0.3s ease, transform 0.3s ease, visibility 0.3s ease; opacity: 0; visibility: hidden; transform: translateY(10px); pointer-events: none; }
 #loading-indicator:not(.hidden) { opacity: 1; visibility: visible; transform: translateY(0); }
@@ -888,6 +883,113 @@ body.dark-mode .message-cascade-controls .cascade-delete-btn {
 /* --- Prism.js Custom Overrides --- */
 .message-content pre[class*="language-"],
 .message-content pre[class*="language-"] code {
-    white-space: pre-wrap;   /* 改行を維持しつつ、自動で折り返す */
-    word-break: break-all;   /* 長い単語を強制的に改行する */
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* --- Drag and Drop Styles --- */
+#chat-screen.drag-over::after {
+    content: 'ここにファイルをドロップ';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: var(--text-light);
+    background-color: rgba(0, 0, 0, 0.5);
+    border: 3px dashed var(--bg-button);
+    border-radius: var(--border-radius-lg);
+    margin: var(--spacing-unit);
+    z-index: 100;
+    pointer-events: none; /* After要素がイベントを奪わないように */
+}
+
+body.dark-mode #chat-screen.drag-over::after {
+    color: var(--text-primary);
+    background-color: rgba(255, 255, 255, 0.5);
+}
+
+/* --- Attachment Button Badge Fix --- */
+#attach-file-btn {
+    position: relative;
+    background-color: transparent;
+    color: var(--text-secondary);
+    box-shadow: none;
+    display: grid; /* Gridレイアウトで重ね合わせる */
+    place-items: center;
+    overflow: visible; /* バッジがはみ出せるように */
+}
+
+#attach-file-btn .attach-icon-container,
+#attach-file-btn .attach-badge-container {
+    grid-area: 1 / 1; /* アイコンとバッジを同じセルに配置 */
+}
+
+#attach-file-btn .attach-icon-container {
+    z-index: 1; /* アイコンを奥に */
+}
+
+#attach-file-btn .attach-badge-container {
+    z-index: 2; /* バッジコンテナを手前に */
+    width: 100%;
+    height: 100%;
+    position: relative; /* バッジの配置基準 */
+}
+
+.attachment-badge {
+    position: absolute;
+    top: 5px;   /* 位置を微調整 */
+    right: 5px; /* 位置を微調整 */
+    width: var(--badge-size);
+    height: var(--badge-size);
+    background-color: var(--badge-color);
+    border-radius: 50%;
+    border: 1px solid var(--bg-primary);
+    display: none;
+}
+
+/* 既存の表示切り替えルールはそのまま利用 */
+.chat-input-area button#attach-file-btn.has-attachments .attachment-badge {
+    display: block;
+}
+
+/* --- Function Call & Search Results Details --- */
+.function-call-details {
+    margin-top: var(--spacing-unit);
+    font-size: 0.8rem;
+    border-top: 1px dashed var(--border-secondary); /* 上部に点線の区切り */
+    padding-top: var(--spacing-unit);
+}
+.function-call-details summary {
+    cursor: pointer;
+    font-weight: 500;
+    color: var(--text-secondary);
+    list-style: none;
+    padding: 0 0 4px 0; /* 下方向の余白を少し確保 */
+    outline: none;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    user-select: none;
+}
+.function-call-details[open] summary {
+    margin-bottom: 6px; /* 展開時にリストとの間に少し余白 */
+}
+.function-call-list {
+    padding-left: 25px; /* リストのインデント */
+    margin: 0;
+    font-size: 0.8rem;
+    line-height: 1.6;
+}
+.function-call-list li {
+    margin-bottom: 4px;
+}
+
+/* --- 連続するツールブロックの区切り線を消す --- */
+.function-call-details + .function-call-details {
+    border-top: none;
+    padding-top: 0;
+    margin-top: calc(var(--spacing-unit) / 2); /* 連続する場合のブロック間の余白を少し詰める */
 }

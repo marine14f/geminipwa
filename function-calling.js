@@ -761,57 +761,61 @@ async function generate_random_string({ length, count = 1, use_uppercase = true,
  * @param {string} args.query - 検索キーワードまたは質問文
  * @returns {Promise<object>} 検索結果の要約またはエラー情報を含むオブジェクトを返すPromise
  */
- async function search_web({ query }) {
-  console.log(`[Function Calling] search_webが呼び出されました。`, { query });
-
-  const apiKey = state.settings.googleSearchApiKey;
-  const engineId = state.settings.googleSearchEngineId;
-
-  if (!apiKey || !engineId) {
-      return { error: "Web検索機能を利用するには、設定画面でGoogle Search APIキーと検索エンジンIDの両方を設定する必要があります。" };
-  }
-  if (!query) {
-      return { error: "検索クエリ(query)は必須です。" };
-  }
-
-  const endpoint = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${engineId}&q=${encodeURIComponent(query)}`;
-
-  try {
-      const response = await fetch(endpoint);
-      if (!response.ok) {
-          const errorData = await response.json();
-          const errorMessage = errorData.error?.message || `HTTPエラー: ${response.status}`;
-          console.error(`[Function Calling] search_web APIエラー:`, errorMessage);
-          return { error: `Web検索APIでエラーが発生しました: ${errorMessage}` };
-      }
-
-      const data = await response.json();
-
-      if (!data.items || data.items.length === 0) {
-          return { success: true, message: "検索結果が見つかりませんでした。", results: [] };
-      }
-
-      const results = data.items.slice(0, 5).map(item => ({ // 上位5件に絞る
-          title: item.title,
-          link: item.link,
-          snippet: item.snippet
-      }));
-
-      // AIが扱いやすいように、結果を一つの文字列にまとめる
-      let summary = `Web検索結果の要約:\n\n`;
-      results.forEach((result, index) => {
-          summary += `[${index + 1}] ${result.title}\n`;
-          summary += `抜粋: ${result.snippet}\n`;
-          summary += `URL: ${result.link}\n\n`;
-      });
-
-      return { success: true, summary: summary.trim(), results: results };
-
-  } catch (error) {
-      console.error(`[Function Calling] search_webで予期せぬエラー:`, error);
-      return { error: `Web検索中に予期せぬエラーが発生しました: ${error.message}` };
-  }
+async function search_web({ query }) {
+    console.log(`[Function Calling] search_webが呼び出されました。`, { query });
+  
+    const apiKey = state.settings.googleSearchApiKey;
+    const engineId = state.settings.googleSearchEngineId;
+  
+    if (!apiKey || !engineId) {
+        return { error: "Web検索機能を利用するには、設定画面でGoogle Search APIキーと検索エンジンIDの両方を設定する必要があります。" };
+    }
+    if (!query) {
+        return { error: "検索クエリ(query)は必須です。" };
+    }
+  
+    const endpoint = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${engineId}&q=${encodeURIComponent(query)}`;
+  
+    try {
+        const response = await fetch(endpoint);
+        if (!response.ok) {
+            const errorData = await response.json();
+            const errorMessage = errorData.error?.message || `HTTPエラー: ${response.status}`;
+            console.error(`[Function Calling] search_web APIエラー:`, errorMessage);
+            return { error: `Web検索APIでエラーが発生しました: ${errorMessage}` };
+        }
+  
+        const data = await response.json();
+  
+        if (!data.items || data.items.length === 0) {
+            return { success: true, summary: "検索結果が見つかりませんでした。", search_results: [] };
+        }
+  
+        const results = data.items.slice(0, 5).map(item => ({
+            title: item.title,
+            link: item.link,
+            snippet: item.snippet
+        }));
+  
+        // --- ▼▼▼ 修正箇所 ▼▼▼ ---
+        // AI向けのプレーンテキスト要約を作成
+        let summary = `Web検索結果の要約:\n\n`;
+        results.forEach((result, index) => {
+            summary += `[${index + 1}] ${result.title}\n`;
+            summary += `抜粋: ${result.snippet}\n`;
+            summary += `URL: ${result.link}\n\n`;
+        });
+  
+        // AI向けの要約と、UI向けのリンク配列の両方を返す
+        return { success: true, summary: summary.trim(), search_results: results };
+        // --- ▲▲▲ 修正箇所 ▲▲▲ ---
+  
+    } catch (error) {
+        console.error(`[Function Calling] search_webで予期せぬエラー:`, error);
+        return { error: `Web検索中に予期せぬエラーが発生しました: ${error.message}` };
+    }
 }
+
 /**
  * キャラクターの口調や一人称などのスタイルプロファイルを管理します。
  * @param {object} args - AIによって提供される引数オブジェクト

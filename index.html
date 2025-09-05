@@ -53,7 +53,14 @@
             <footer class="chat-input-area">
                 <textarea id="user-input" placeholder="メッセージを入力..." rows="1" aria-label="メッセージ入力"></textarea>
                 <!-- 添付ファイルボタンを追加 -->
-                <button id="attach-file-btn" title="ファイルを添付"><span class="material-symbols-outlined">attach_file</span><span class="attachment-badge"></span></button>
+                <button id="attach-file-btn" title="ファイルを添付">
+                    <div class="attach-icon-container">
+                        <span class="material-symbols-outlined">attach_file</span>
+                    </div>
+                    <div class="attach-badge-container">
+                        <span class="attachment-badge"></span>
+                    </div>
+                </button>
                 <button id="send-button" title="送信"><span class="material-symbols-outlined">send</span></button>
             </footer>
         </div>
@@ -468,7 +475,7 @@
     <dialog id="fileUploadDialog" class="custom-dialog">
         <div class="dialog-content">
             <div class="file-upload-area">
-                <input type="file" id="file-input" multiple accept="image/*,text/*,application/pdf,video/*,audio/*" class="hidden">
+                <input type="file" id="file-input" multiple class="hidden">
                 <button id="select-files-btn" class="dialog-button">ファイルを選択</button>
             </div>
             <ul id="selected-files-list">
