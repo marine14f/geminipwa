@@ -980,7 +980,7 @@ async function set_background_image({ image_url }) {
 }
 
 /**
- * テキストや画像からVeo3を使用して動画を生成する（本番実装）
+ * テキストや画像からVeo3を使用して動画を生成する（公式SDKによる本番実装）
  * @param {object} args - AIによって提供される引数オブジェクト
  * @param {string} args.prompt - 英語のプロンプト
  * @param {string} [args.negative_prompt] - 英語のネガティブプロンプト
@@ -990,11 +990,15 @@ async function set_background_image({ image_url }) {
  * @returns {Promise<object>} 操作結果を含むオブジェクトを返すPromise
  */
  async function generate_video({ prompt, negative_prompt, aspect_ratio = "16:9", source_image_message_index }, chat) {
-    console.log(`[Function Calling] generate_video（本番実装）が呼び出されました。`, { prompt, negative_prompt, aspect_ratio, source_image_message_index });
+    console.log(`[Function Calling] generate_video (SDK実装) が呼び出されました。`, { prompt, negative_prompt, aspect_ratio, source_image_message_index });
 
     const apiKey = window.state.settings.apiKey;
     if (!apiKey) {
         return { error: "APIキーが設定されていません。" };
+    }
+    // ★★★ ここからが修正箇所 ★★★
+    if (typeof window.GoogleGenAI === 'undefined') {
+        return { error: "Google Gen AI SDK (@google/genai) が読み込まれていません。" };
     }
 
     if (window.uiUtils) {
@@ -1003,57 +1007,47 @@ async function set_background_image({ image_url }) {
     }
 
     try {
-        // --- Step 1: リクエストボディの構築 ---
-        const requestBody = {
+        // 正しいクラス名でインスタンス化
+        const genAI = new window.GoogleGenAI({ apiKey });
+        // ★★★ 修正箇所ここまで ★★★
+
+        // --- Step 1: リクエストオブジェクトの構築 ---
+        const request = {
             model: "veo-3.0-generate-preview",
             prompt: prompt,
             config: {}
         };
 
         if (negative_prompt) {
-            requestBody.config.negativePrompt = negative_prompt;
+            request.config.negativePrompt = negative_prompt;
         }
         if (aspect_ratio) {
-            requestBody.config.aspectRatio = aspect_ratio;
+            request.config.aspectRatio = aspect_ratio;
         }
 
-        // ソース画像がある場合の処理
         if (typeof source_image_message_index === 'number') {
             const sourceMessage = chat.messages[source_image_message_index];
             if (sourceMessage && sourceMessage.generated_images && sourceMessage.generated_images.length > 0) {
                 const image = sourceMessage.generated_images[0];
-                requestBody.image = {
-                    imageBytes: image.data, // Base64文字列
+                request.image = {
+                    imageBytes: image.data, 
                     mimeType: image.mimeType
                 };
                 console.log(`メッセージインデックス ${source_image_message_index} の画像をリクエストに追加しました。`);
             } else {
-                const errorMsg = `指定されたインデックス ${source_image_message_index} に有効な画像が見つかりませんでした。`;
-                console.error(`[Function Calling] generate_video: ${errorMsg}`);
-                return { error: errorMsg };
+                return { error: `指定されたインデックス ${source_image_message_index} に有効な画像が見つかりませんでした。` };
             }
         }
 
-        // --- Step 2: 動画生成の開始リクエスト ---
-        console.log("Veo3 APIに動画生成開始リクエストを送信します:", requestBody);
-        const startResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/veo-3.0-generate-preview:generateVideos?key=${apiKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody)
-        });
-
-        if (!startResponse.ok) {
-            const errorData = await startResponse.json();
-            throw new Error(`動画生成の開始に失敗しました: ${errorData.error?.message || startResponse.statusText}`);
-        }
-
-        let operation = await startResponse.json();
-        console.log("動画生成リクエストを受け付けました。Operation Name:", operation.name);
+        // --- Step 2: 動画生成の開始 ---
+        console.log("SDK経由で動画生成開始リクエストを送信します:", request);
+        let operation = await genAI.models.generateVideos(request);
+        console.log("動画生成リクエストを受け付けました。Operation:", operation);
 
         // --- Step 3: 完了するまでポーリング ---
-        const MAX_ATTEMPTS = 18; // 最大試行回数 (18回 * 10秒 = 3分)
+        const MAX_ATTEMPTS = 18; 
         let attempts = 0;
-
+        
         while (!operation.done) {
             attempts++;
             if (attempts > MAX_ATTEMPTS) {
@@ -1061,44 +1055,62 @@ async function set_background_image({ image_url }) {
             }
 
             console.log(`動画生成の状態を確認中... (${attempts}/${MAX_ATTEMPTS})`);
-            await new Promise(resolve => setTimeout(resolve, 10000)); // 10秒待機
+            await new Promise(resolve => setTimeout(resolve, 10000));
 
-            const pollResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/${operation.name}?key=${apiKey}`);
-            if (!pollResponse.ok) {
-                const errorData = await pollResponse.json();
-                throw new Error(`状態確認中にエラーが発生しました: ${errorData.error?.message || pollResponse.statusText}`);
-            }
-            operation = await pollResponse.json();
-
+            operation = await genAI.operations.getVideosOperation({ operation });
+            
             if (operation.error) {
                 throw new Error(`動画生成処理でエラーが発生しました: ${operation.error.message}`);
             }
         }
-
+        
         console.log("動画生成が完了しました。", operation);
 
         // --- Step 4: 動画ファイルのダウンロードとURL化 ---
-        if (operation.response && operation.response.generatedVideos && operation.response.generatedVideos.length > 0) {
-            const videoFileResourceName = operation.response.generatedVideos[0].video.name;
-            console.log("動画ファイルをダウンロードします:", videoFileResourceName);
+        const resp = operation?.response ?? {};
 
-            const downloadResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/${videoFileResourceName}?alt=media&key=${apiKey}`);
-            if (!downloadResponse.ok) {
-                throw new Error("動画ファイルのダウンロードに失敗しました。");
-            }
+        // 形ゆらぎを吸収して video オブジェクトを特定
+        const fileRef =
+            resp.generatedVideos?.[0]?.video ??
+            resp.generateVideoResponse?.generatedSamples?.[0]?.video ??
+            resp.generatedSamples?.[0]?.video ??      // 念のため
+            null;
 
-            const videoBlob = await downloadResponse.blob();
-            const videoUrl = URL.createObjectURL(videoBlob);
-            console.log("動画のBlob URLを生成しました:", videoUrl);
-
-            return {
-                success: true,
-                message: "動画を生成しました。",
-                video_url: videoUrl
-            };
-        } else {
-            throw new Error("動画生成は完了しましたが、結果に動画データが含まれていませんでした。");
+        if (!fileRef) {
+            console.error("Operation response:", resp);
+            throw new Error("動画参照が見つかりませんでした。（generatedVideos / generatedSamples のどちらにも video が無い）");
         }
+
+        // uri 優先。無ければ name から :download を保険で組み立て
+        let downloadUrl = fileRef.uri || null;
+        if (!downloadUrl && fileRef.name) {
+            downloadUrl = `https://generativelanguage.googleapis.com/v1beta/${encodeURIComponent(fileRef.name)}:download`;
+        }
+        if (!downloadUrl) {
+            console.error("fileRef:", fileRef);
+            throw new Error("動画のダウンロードURLを特定できませんでした。（uri も name も無し）");
+        }
+
+        // APIキー付与 & リダイレクト追従
+        const res = await fetch(`${downloadUrl}${downloadUrl.includes('?') ? '&' : '?'}key=${apiKey}`, {
+            method: 'GET',
+            redirect: 'follow',
+        });
+        if (!res.ok) {
+            const t = await res.text().catch(() => "");
+            throw new Error(`動画ダウンロードに失敗: ${res.status} ${res.statusText} ${t}`);
+        }
+
+        const videoBlob = await res.blob();
+        const videoUrl = URL.createObjectURL(videoBlob);
+        console.log("動画のBlob URLを生成しました:", videoUrl);
+
+        return {
+            success: true,
+            message: "動画を生成しました。",
+            video_url: videoUrl
+        };
+
 
     } catch (error) {
         console.error(`[Function Calling] generate_videoでエラーが発生しました:`, error);

@@ -1,3 +1,15 @@
+import("https://esm.run/@google/genai").then(module => {
+    // 正しいクラス名 GoogleGenAI をグローバルスコープに設定
+    window.GoogleGenAI = module.GoogleGenAI;
+    console.log("Google GenAI SDK (@google/genai) の読み込みが完了しました。");
+    // SDKの読み込みが完了してから、アプリの初期化を実行する
+    appLogic.initializeApp();
+}).catch(err => {
+    console.error("Google Gen AI SDKの読み込みに失敗しました:", err);
+    // エラーメッセージを画面に表示するなどのフォールバック処理
+    document.body.innerHTML = `<p style="color: red; padding: 20px;">SDKの読み込みに失敗しました。アプリを起動できません。</p>`;
+});
+
 // --- 定数 ---
 const DB_NAME = 'GeminiPWA_DB';
 const DB_VERSION = 8; // スキーマ変更なしのため据え置き
@@ -5433,6 +5445,3 @@ const appLogic = {
 
 window.appLogic = appLogic;
 window.state = state;
-
-// --- 初期化処理 ---
-appLogic.initializeApp();
