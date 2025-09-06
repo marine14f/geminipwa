@@ -1156,7 +1156,6 @@ const uiUtils = {
             }
         }
 
-        // --- ▼▼▼ 修正箇所 ▼▼▼ ---
         if (role === 'model' && messageData && messageData.generated_images && messageData.generated_images.length > 0) {
             messageData.generated_images.forEach(imageData => {
                 if (imageData.data) {
@@ -1166,19 +1165,15 @@ const uiUtils = {
                     img.style.borderRadius = 'var(--border-radius-md)';
                     img.style.marginTop = '8px';
                     
-                    // base64からBlob URLを生成して設定
-                    base64ToBlob(imageData.data, imageData.mimeType)
-                        .then(blob => {
-                            const blobUrl = URL.createObjectURL(blob);
-                            img.src = blobUrl;
-                        })
-                        .catch(e => console.error("画像Blobの生成に失敗:", e));
+                    // --- ▼▼▼ 修正箇所 ▼▼▼ ---
+                    // データURIを直接srcに設定する
+                    img.src = `data:${imageData.mimeType};base64,${imageData.data}`;
+                    // --- ▲▲▲ 修正箇所 ▲▲▲ ---
 
                     contentDiv.appendChild(img);
                 }
             });
         }
-        // --- ▲▲▲ 修正箇所 ▲▲▲ ---
 
         const editArea = document.createElement('div');
         editArea.classList.add('message-edit-area', 'hidden');
@@ -2071,16 +2066,9 @@ const apiUtils = {
 
         } else {
             if (state.settings.thinkingBudget !== null || state.settings.includeThoughts) {
-                finalGenerationConfig.thinkingConfig = finalGenerationConfig.thinkingConfig || {};
-                if (state.settings.thinkingBudget !== null && Number.isInteger(state.settings.thinkingBudget) && state.settings.thinkingBudget >= 0) {
-                    finalGenerationConfig.thinkingConfig.thinkingBudget = state.settings.thinkingBudget;
-                }
-                if (state.settings.includeThoughts) {
-                    finalGenerationConfig.thinkingConfig.includeThoughts = true;
-                }
-                if (Object.keys(finalGenerationConfig.thinkingConfig).length === 0) {
-                    delete finalGenerationConfig.thinkingConfig;
-                }
+                generationConfig.thinkingConfig = {};
+                if(state.settings.thinkingBudget !== null) generationConfig.thinkingConfig.thinkingBudget = state.settings.thinkingBudget;
+                if(state.settings.includeThoughts) generationConfig.thinkingConfig.includeThoughts = true;
             }
         }
 
@@ -2179,92 +2167,8 @@ const apiUtils = {
         let finalUsageMetadata = null;
         let toolCallsBuffer = []; 
 
-        try {
-            while (true) {
-                if (state.abortController?.signal.aborted && !isCancelled) {
-                    isCancelled = true;
-                    console.log("ストリーミング中に中断シグナルを検出");
-                    await reader.cancel("User aborted");
-                    throw new Error("リクエストがキャンセルされました。");
-                }
-
-                let readResult;
-                try {
-                    readResult = await reader.read();
-                } catch (readError) {
-                    if (readError.name === 'AbortError' || readError.message === "User aborted" || readError.message.includes("aborted")) {
-                        if (!isCancelled) {
-                            isCancelled = true;
-                            throw new Error("リクエストがキャンセルされました。");
-                        }
-                        break;
-                    }
-                    throw readError;
-                }
-
-                const { value, done } = readResult;
-
-                if (done) {
-                    if (buffer.trim()) {
-                        const finalData = parseSseDataForYield(buffer.trim().substring(6));
-                        if (finalData) yield finalData;
-                    }
-                    break;
-                }
-
-                buffer += value;
-                let remainingBuffer = buffer;
-                while (true) {
-                    const newlineIndex = remainingBuffer.indexOf('\n');
-                    if (newlineIndex === -1) {
-                        buffer = remainingBuffer;
-                        break;
-                    }
-                    const line = remainingBuffer.substring(0, newlineIndex).trim();
-                    remainingBuffer = remainingBuffer.substring(newlineIndex + 1);
-
-                    if (line.startsWith('data: ')) {
-                        const chunkData = parseSseDataForYield(line.substring(6));
-                        if (chunkData) {
-                            if (chunkData.groundingMetadata) groundingMetadata = chunkData.groundingMetadata;
-                            if (chunkData.usageMetadata) finalUsageMetadata = chunkData.usageMetadata;
-                            if (chunkData.toolCalls) {
-                                toolCallsBuffer.push(...chunkData.toolCalls);
-                            }
-                            yield chunkData;
-                        }
-                    } else if (line !== '') {
-                        console.warn("データ以外のSSE行を無視:", line);
-                    }
-                    if (remainingBuffer === '') {
-                        buffer = '';
-                        break;
-                    }
-                }
-            }
-            const finishReason = lastCandidateInfo?.finishReason;
-            const safetyRatings = lastCandidateInfo?.safetyRatings;
-
-            yield {
-                type: 'metadata',
-                finishReason: isCancelled ? 'ABORTED' : finishReason,
-                safetyRatings,
-                groundingMetadata: groundingMetadata,
-                usageMetadata: finalUsageMetadata,
-                toolCalls: toolCallsBuffer.length > 0 ? toolCallsBuffer : null
-            };
-
-        } catch (error) {
-            console.error("ストリームの読み取り/処理エラー:", error);
-            throw new Error(`ストリーミング処理エラー: ${error.message || error}`, { cause: { originalError: error } });
-        } finally {
-            if (!reader.closed && !isCancelled) {
-                try { await reader.cancel("Cleanup cancellation"); } catch(e) { console.error("クリーンアップキャンセル中のエラー:", e); }
-            }
-        }
-
+        // この内部関数は前回修正したものをそのまま使います
         function parseSseDataForYield(jsonString) {
-            
             try {
                 const chunkJson = JSON.parse(jsonString);
                 if (chunkJson.error) {
@@ -2296,6 +2200,7 @@ const apiUtils = {
                                 currentToolCalls.push({ functionCall: part.functionCall });
                             } else if (part.inlineData) {
                                 imageData = part.inlineData;
+                                console.log("ストリームから画像データチャンクを検出:", { mimeType: imageData.mimeType, dataLength: imageData.data?.length });
                             }
                         });
                     }
@@ -2328,6 +2233,87 @@ const apiUtils = {
             } catch (parseError) {
                 console.warn("ストリーム内の不正なJSONをスキップ:", jsonString, parseError);
                 return null;
+            }
+        }
+
+        try {
+            while (true) {
+                if (state.abortController?.signal.aborted && !isCancelled) {
+                    isCancelled = true;
+                    console.log("ストリーミング中に中断シグナルを検出");
+                    await reader.cancel("User aborted");
+                    throw new Error("リクエストがキャンセルされました。");
+                }
+
+                let readResult;
+                try {
+                    readResult = await reader.read();
+                } catch (readError) {
+                    if (readError.name === 'AbortError' || readError.message === "User aborted" || readError.message.includes("aborted")) {
+                        if (!isCancelled) { isCancelled = true; throw new Error("リクエストがキャンセルされました。"); }
+                        break;
+                    }
+                    throw readError;
+                }
+                const { value, done } = readResult;
+                if (done) break;
+
+                buffer += value;
+
+                // --- ▼▼▼ ここからが新しい解析ロジックです ▼▼▼ ---
+                while (true) {
+                    const dataPrefixIndex = buffer.indexOf('data: ');
+                    if (dataPrefixIndex === -1) break;
+
+                    const jsonStartIndex = buffer.indexOf('{', dataPrefixIndex);
+                    if (jsonStartIndex === -1) break;
+
+                    let braceCount = 0;
+                    let jsonEndIndex = -1;
+                    for (let i = jsonStartIndex; i < buffer.length; i++) {
+                        if (buffer[i] === '{') braceCount++;
+                        else if (buffer[i] === '}') braceCount--;
+                        if (braceCount === 0) {
+                            jsonEndIndex = i;
+                            break;
+                        }
+                    }
+
+                    if (jsonEndIndex !== -1) {
+                        const jsonString = buffer.substring(jsonStartIndex, jsonEndIndex + 1);
+                        const chunkData = parseSseDataForYield(jsonString);
+                        if (chunkData) {
+                            if (chunkData.groundingMetadata) groundingMetadata = chunkData.groundingMetadata;
+                            if (chunkData.usageMetadata) finalUsageMetadata = chunkData.usageMetadata;
+                            if (chunkData.toolCalls) toolCallsBuffer.push(...chunkData.toolCalls);
+                            yield chunkData;
+                        }
+                        buffer = buffer.substring(jsonEndIndex + 1);
+                    } else {
+                        break; 
+                    }
+                }
+                 // --- ▲▲▲ 新しい解析ロジックここまで ▲▲▲ ---
+            }
+
+            const finishReason = lastCandidateInfo?.finishReason;
+            const safetyRatings = lastCandidateInfo?.safetyRatings;
+
+            yield {
+                type: 'metadata',
+                finishReason: isCancelled ? 'ABORTED' : finishReason,
+                safetyRatings,
+                groundingMetadata: groundingMetadata,
+                usageMetadata: finalUsageMetadata,
+                toolCalls: toolCallsBuffer.length > 0 ? toolCallsBuffer : null
+            };
+
+        } catch (error) {
+            console.error("ストリームの読み取り/処理エラー:", error);
+            throw new Error(`ストリーミング処理エラー: ${error.message || error}`, { cause: { originalError: error } });
+        } finally {
+            if (!reader.closed && !isCancelled) {
+                try { await reader.cancel("Cleanup cancellation"); } catch(e) { console.error("クリーンアップキャンセル中のエラー:", e); }
             }
         }
     },
@@ -3774,7 +3760,7 @@ const appLogic = {
     /**
      * @private _internalHandleSendから返されたメッセージ配列を単一のオブジェクトに集約する。
      */
-    _aggregateMessages(messages) {
+     _aggregateMessages(messages) {
         const finalAggregatedMessage = {
             role: 'model',
             content: '',
@@ -3811,6 +3797,9 @@ const appLogic = {
             }
         });
         
+        // ★★★ ここに追加 ★★★
+        console.log("集約後の最終メッセージオブジェクト:", JSON.stringify(finalAggregatedMessage, null, 2));
+
         return finalAggregatedMessage;
     },
 
@@ -3846,10 +3835,23 @@ const appLogic = {
             
             const historyForApi = historyForApiRaw.map(msg => {
                 const parts = [];
-                if (msg.content && msg.content.trim() !== '') parts.push({ text: msg.content });
+                // 常にテキストパートを先に追加
+                if (msg.content && msg.content.trim() !== '') {
+                    parts.push({ text: msg.content });
+                }
+                // ユーザーメッセージの添付ファイルを追加
                 if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
                     msg.attachments.forEach(att => parts.push({ inlineData: { mimeType: att.mimeType, data: att.base64Data } }));
                 }
+                // ★★★ ここからが修正箇所 ★★★
+                // モデルが生成した画像データを追加
+                if (msg.role === 'model' && msg.generated_images && msg.generated_images.length > 0) {
+                    console.log("【ログ】API送信用履歴に画像データを追加します。画像枚数:", msg.generated_images.length);
+                    msg.generated_images.forEach(img => {
+                        parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
+                    });
+                }
+                // ★★★ 修正箇所ここまで ★★★
                 if (msg.role === 'model' && msg.tool_calls) {
                     msg.tool_calls.forEach(toolCall => parts.push({ functionCall: toolCall.functionCall }));
                 }
@@ -4668,6 +4670,7 @@ const appLogic = {
             console.log(`メッセージ削除完了 (state)。削除件数: ${indicesToDelete.length}`);
 
             uiUtils.renderChatMessages();
+            uiUtils.scrollToBottom();
 
             const newFirstUserMsgIndex = state.currentMessages.findIndex(m => m.role === 'user');
             let requiresTitleUpdate = indicesToDelete.includes(originalFirstUserMsgIndex);
@@ -4745,9 +4748,16 @@ const appLogic = {
                 }
                 const historyForApi = historyForApiRaw.map(msg => {
                     const parts = [];
-                    if (msg.content && msg.content.trim() !== '') parts.push({ text: msg.content });
+                    if (msg.content && msg.content.trim() !== '') {
+                        parts.push({ text: msg.content });
+                    }
                     if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
                         msg.attachments.forEach(att => parts.push({ inlineData: { mimeType: att.mimeType, data: att.base64Data } }));
+                    }
+                    if (msg.role === 'model' && msg.generated_images && msg.generated_images.length > 0) {
+                        msg.generated_images.forEach(img => {
+                            parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
+                        });
                     }
                     if (msg.role === 'model' && msg.tool_calls) {
                         msg.tool_calls.forEach(toolCall => parts.push({ functionCall: toolCall.functionCall }));
@@ -4768,6 +4778,7 @@ const appLogic = {
                  if (state.settings.thinkingBudget !== null || state.settings.includeThoughts) {
                     generationConfig.thinkingConfig = {};
                     if(state.settings.thinkingBudget !== null) generationConfig.thinkingConfig.thinkingBudget = state.settings.thinkingBudget;
+                    // ★★★ ここが修正箇所です ★★★
                     if(state.settings.includeThoughts) generationConfig.thinkingConfig.includeThoughts = true;
                 }
                 const systemInstruction = state.currentSystemPrompt?.trim() ? { role: "system", parts: [{ text: state.currentSystemPrompt.trim() }] } : null;
@@ -4801,9 +4812,7 @@ const appLogic = {
                 await dbUtils.saveChat();
             } finally {
                 uiUtils.setSendingState(false);
-                // --- ▼▼▼ 修正箇所 ▼▼▼ ---
-                state.abortController = null; // AbortControllerをリセット
-                // --- ▲▲▲ 修正箇所 ▲▲▲ ---
+                state.abortController = null; 
                 uiUtils.scrollToBottom();
             }
         }
@@ -5080,7 +5089,7 @@ const appLogic = {
         uiUtils.updateAttachmentBadgeVisibility();
     },
 
-    async callApiWithRetry(apiParams) {
+        async callApiWithRetry(apiParams) {
         const { messagesForApi, generationConfig, systemInstruction, tools } = apiParams;
         let lastError = null;
         const maxRetries = state.settings.enableAutoRetry ? state.settings.maxRetries : 0;
@@ -5171,6 +5180,9 @@ const appLogic = {
                     if (!fullContent && !toolCalls && images.length === 0) {
                         throw new Error("APIから空の応答が返されました。");
                     }
+
+                    // ★★★ ここに追加 ★★★
+                    console.log("callApiWithRetryが返す直前のデータ:", JSON.stringify({ content: fullContent, images: images.map(img => ({...img, data: img.data.substring(0, 50) + '...'})) }, null, 2));
 
                     return { 
                         content: fullContent, 
