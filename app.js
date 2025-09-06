@@ -335,6 +335,11 @@ function fileToBase64(file) {
     });
 }
 
+// Base64文字列をBlobオブジェクトに変換 (Promise)
+function base64ToBlob(base64, mimeType) {
+    return fetch(`data:${mimeType};base64,${base64}`).then(res => res.blob());
+}
+
 // --- Service Worker関連 ---
 function registerServiceWorker() {
     if ('serviceWorker' in navigator) {
@@ -914,7 +919,6 @@ const uiUtils = {
 
 
     // メッセージをコンテナに追加
-    // uiUtils オブジェクト内の appendMessage 関数を置き換えてください
     appendMessage(role, content, index, isStreamingPlaceholder = false, cascadeInfo = null, attachments = null) {
         const messageDiv = document.createElement('div');
         messageDiv.classList.add('message', role);
@@ -1152,19 +1156,29 @@ const uiUtils = {
             }
         }
 
+        // --- ▼▼▼ 修正箇所 ▼▼▼ ---
         if (role === 'model' && messageData && messageData.generated_images && messageData.generated_images.length > 0) {
             messageData.generated_images.forEach(imageData => {
                 if (imageData.data) {
                     const img = document.createElement('img');
-                    img.src = `data:${imageData.mimeType};base64,${imageData.data}`;
                     img.alt = '生成された画像';
                     img.style.maxWidth = '100%';
                     img.style.borderRadius = 'var(--border-radius-md)';
                     img.style.marginTop = '8px';
+                    
+                    // base64からBlob URLを生成して設定
+                    base64ToBlob(imageData.data, imageData.mimeType)
+                        .then(blob => {
+                            const blobUrl = URL.createObjectURL(blob);
+                            img.src = blobUrl;
+                        })
+                        .catch(e => console.error("画像Blobの生成に失敗:", e));
+
                     contentDiv.appendChild(img);
                 }
             });
         }
+        // --- ▲▲▲ 修正箇所 ▲▲▲ ---
 
         const editArea = document.createElement('div');
         editArea.classList.add('message-edit-area', 'hidden');
