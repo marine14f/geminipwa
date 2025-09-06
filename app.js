@@ -1165,14 +1165,39 @@ const uiUtils = {
                     img.style.borderRadius = 'var(--border-radius-md)';
                     img.style.marginTop = '8px';
                     
-                    // --- ▼▼▼ 修正箇所 ▼▼▼ ---
-                    // データURIを直接srcに設定する
                     img.src = `data:${imageData.mimeType};base64,${imageData.data}`;
-                    // --- ▲▲▲ 修正箇所 ▲▲▲ ---
 
                     contentDiv.appendChild(img);
                 }
             });
+        }
+
+        if (role === 'model' && messageData && messageData.generated_videos && messageData.generated_videos.length > 0) {
+            const videoData = messageData.generated_videos[0];
+            if (videoData && videoData.url) {
+                const video = document.createElement('video');
+                video.src = videoData.url;
+                video.controls = true; 
+                video.playsInline = true; 
+                video.muted = true; 
+                video.loop = true; 
+                video.style.maxWidth = '100%';
+                video.style.borderRadius = 'var(--border-radius-md)';
+                video.style.display = 'block';
+
+                const placeholderRegex = /\[VIDEO_HERE\]/g;
+                // [VIDEO_HERE] が存在する場合のみ、置換処理を行う
+                if (placeholderRegex.test(contentDiv.innerHTML)) {
+                    let replaced = false;
+                    contentDiv.innerHTML = contentDiv.innerHTML.replace(placeholderRegex, (match) => {
+                        if (!replaced) {
+                            replaced = true;
+                            return video.outerHTML;
+                        }
+                        return ''; // 2つ目以降の目印は削除
+                    });
+                }
+            }
         }
 
         const editArea = document.createElement('div');
@@ -3760,13 +3785,14 @@ const appLogic = {
     /**
      * @private _internalHandleSendから返されたメッセージ配列を単一のオブジェクトに集約する。
      */
-     _aggregateMessages(messages) {
+    _aggregateMessages(messages) {
         const finalAggregatedMessage = {
             role: 'model',
             content: '',
             thoughtSummary: '',
             executedFunctions: [],
             generated_images: [], 
+            generated_videos: [], 
             timestamp: Date.now(),
         };
 
@@ -3795,9 +3821,14 @@ const appLogic = {
                     retryCount: msg.retryCount,
                 });
             }
+            else if (msg.role === 'tool' && msg.response && msg.response.video_url) {
+                finalAggregatedMessage.generated_videos.push({
+                    url: msg.response.video_url,
+                    prompt: msg.response.prompt || ''
+                });
+            }
         });
         
-        // ★★★ ここに追加 ★★★
         console.log("集約後の最終メッセージオブジェクト:", JSON.stringify(finalAggregatedMessage, null, 2));
 
         return finalAggregatedMessage;
@@ -4778,7 +4809,7 @@ const appLogic = {
                  if (state.settings.thinkingBudget !== null || state.settings.includeThoughts) {
                     generationConfig.thinkingConfig = {};
                     if(state.settings.thinkingBudget !== null) generationConfig.thinkingConfig.thinkingBudget = state.settings.thinkingBudget;
-                    // ★★★ ここが修正箇所です ★★★
+
                     if(state.settings.includeThoughts) generationConfig.thinkingConfig.includeThoughts = true;
                 }
                 const systemInstruction = state.currentSystemPrompt?.trim() ? { role: "system", parts: [{ text: state.currentSystemPrompt.trim() }] } : null;
@@ -5401,6 +5432,7 @@ const appLogic = {
 }; // appLogic終了
 
 window.appLogic = appLogic;
+window.state = state;
 
 // --- 初期化処理 ---
 appLogic.initializeApp();

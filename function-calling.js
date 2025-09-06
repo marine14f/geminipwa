@@ -979,6 +979,137 @@ async function set_background_image({ image_url }) {
     };
 }
 
+/**
+ * テキストや画像からVeo3を使用して動画を生成する（本番実装）
+ * @param {object} args - AIによって提供される引数オブジェクト
+ * @param {string} args.prompt - 英語のプロンプト
+ * @param {string} [args.negative_prompt] - 英語のネガティブプロンプト
+ * @param {string} [args.aspect_ratio="16:9"] - アスペクト比
+ * @param {number} [args.source_image_message_index] - 元画像のメッセージインデックス
+ * @param {object} chat - 現在のチャットデータ
+ * @returns {Promise<object>} 操作結果を含むオブジェクトを返すPromise
+ */
+ async function generate_video({ prompt, negative_prompt, aspect_ratio = "16:9", source_image_message_index }, chat) {
+    console.log(`[Function Calling] generate_video（本番実装）が呼び出されました。`, { prompt, negative_prompt, aspect_ratio, source_image_message_index });
+
+    const apiKey = window.state.settings.apiKey;
+    if (!apiKey) {
+        return { error: "APIキーが設定されていません。" };
+    }
+
+    if (window.uiUtils) {
+        window.uiUtils.setLoadingIndicatorText('動画生成中...');
+        window.elements.loadingIndicator.classList.remove('hidden');
+    }
+
+    try {
+        // --- Step 1: リクエストボディの構築 ---
+        const requestBody = {
+            model: "veo-3.0-generate-preview",
+            prompt: prompt,
+            config: {}
+        };
+
+        if (negative_prompt) {
+            requestBody.config.negativePrompt = negative_prompt;
+        }
+        if (aspect_ratio) {
+            requestBody.config.aspectRatio = aspect_ratio;
+        }
+
+        // ソース画像がある場合の処理
+        if (typeof source_image_message_index === 'number') {
+            const sourceMessage = chat.messages[source_image_message_index];
+            if (sourceMessage && sourceMessage.generated_images && sourceMessage.generated_images.length > 0) {
+                const image = sourceMessage.generated_images[0];
+                requestBody.image = {
+                    imageBytes: image.data, // Base64文字列
+                    mimeType: image.mimeType
+                };
+                console.log(`メッセージインデックス ${source_image_message_index} の画像をリクエストに追加しました。`);
+            } else {
+                const errorMsg = `指定されたインデックス ${source_image_message_index} に有効な画像が見つかりませんでした。`;
+                console.error(`[Function Calling] generate_video: ${errorMsg}`);
+                return { error: errorMsg };
+            }
+        }
+
+        // --- Step 2: 動画生成の開始リクエスト ---
+        console.log("Veo3 APIに動画生成開始リクエストを送信します:", requestBody);
+        const startResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/veo-3.0-generate-preview:generateVideos?key=${apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+        });
+
+        if (!startResponse.ok) {
+            const errorData = await startResponse.json();
+            throw new Error(`動画生成の開始に失敗しました: ${errorData.error?.message || startResponse.statusText}`);
+        }
+
+        let operation = await startResponse.json();
+        console.log("動画生成リクエストを受け付けました。Operation Name:", operation.name);
+
+        // --- Step 3: 完了するまでポーリング ---
+        const MAX_ATTEMPTS = 18; // 最大試行回数 (18回 * 10秒 = 3分)
+        let attempts = 0;
+
+        while (!operation.done) {
+            attempts++;
+            if (attempts > MAX_ATTEMPTS) {
+                throw new Error("動画生成がタイムアウトしました（3分）。");
+            }
+
+            console.log(`動画生成の状態を確認中... (${attempts}/${MAX_ATTEMPTS})`);
+            await new Promise(resolve => setTimeout(resolve, 10000)); // 10秒待機
+
+            const pollResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/${operation.name}?key=${apiKey}`);
+            if (!pollResponse.ok) {
+                const errorData = await pollResponse.json();
+                throw new Error(`状態確認中にエラーが発生しました: ${errorData.error?.message || pollResponse.statusText}`);
+            }
+            operation = await pollResponse.json();
+
+            if (operation.error) {
+                throw new Error(`動画生成処理でエラーが発生しました: ${operation.error.message}`);
+            }
+        }
+
+        console.log("動画生成が完了しました。", operation);
+
+        // --- Step 4: 動画ファイルのダウンロードとURL化 ---
+        if (operation.response && operation.response.generatedVideos && operation.response.generatedVideos.length > 0) {
+            const videoFileResourceName = operation.response.generatedVideos[0].video.name;
+            console.log("動画ファイルをダウンロードします:", videoFileResourceName);
+
+            const downloadResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/${videoFileResourceName}?alt=media&key=${apiKey}`);
+            if (!downloadResponse.ok) {
+                throw new Error("動画ファイルのダウンロードに失敗しました。");
+            }
+
+            const videoBlob = await downloadResponse.blob();
+            const videoUrl = URL.createObjectURL(videoBlob);
+            console.log("動画のBlob URLを生成しました:", videoUrl);
+
+            return {
+                success: true,
+                message: "動画を生成しました。",
+                video_url: videoUrl
+            };
+        } else {
+            throw new Error("動画生成は完了しましたが、結果に動画データが含まれていませんでした。");
+        }
+
+    } catch (error) {
+        console.error(`[Function Calling] generate_videoでエラーが発生しました:`, error);
+        return { error: error.message };
+    } finally {
+        if (window.uiUtils) {
+            window.elements.loadingIndicator.classList.add('hidden');
+        }
+    }
+}
+
 window.functionCallingTools = {
   calculate: async function({ expression }) {
     console.log(`[Function Calling] calculateが呼び出されました。式: ${expression}`);
@@ -1019,7 +1150,8 @@ window.functionCallingTools = {
   manage_style_profile: manage_style_profile,
   set_ui_opacity: set_ui_opacity,
   set_background_image: set_background_image,
-  display_layered_image: display_layered_image
+  display_layered_image: display_layered_image,
+  generate_video: generate_video
 };
 
 
@@ -1445,7 +1577,7 @@ window.functionDeclarations = [
           },
           {
             "name": "display_layered_image",
-            "description": "キャラクター画像に背景を付けて、一枚の絵のようにメッセージとして表示します。キャラクターの立ち絵と背景を組み合わせたシーン描写に使用します。この関数を呼び出す際は、通常、ユーザーへの応答テキストも一緒に生成し、そのテキスト内に画像の挿入箇所を示す `[IMAGE_HERE]` という目印を配置してください。画像URLに指定出来るのはユーザーがプロンプトで指定したURLのみです。",
+            "description": "キャラクター画像に背景を付けて、一枚の絵のようにメッセージとして表示します。キャラクターの立ち絵と背景を組み合わせたシーン描写に使用します。重要：この関数を呼び出した後は、その結果を使ってユーザーへの最終的な応答メッセージを生成し、会話を完了させてください。応答メッセージ内には、生成した画像を埋め込む場所を示す `[IMAGE_HERE]` という目印を必ず配置してください。画像URLに指定出来るのはユーザーがプロンプトで指定したURLのみです。",
             "parameters": {
                 "type": "OBJECT",
                 "properties": {
@@ -1460,7 +1592,33 @@ window.functionDeclarations = [
                 },
                 "required": ["character_url"]
             }
-          }
+          },
+          {
+            "name": "generate_video",
+            "description": "ユーザーが明示的に動画の生成を指示した場合にのみ、この関数を使用してください。テキストプロンプト、または画像とテキストプロンプトから動画を生成します。重要：この関数を呼び出した後は、その結果を使ってユーザーへの最終的な応答メッセージを生成し、会話を完了させてください。応答メッセージには、生成した動画を埋め込む場所を示す `[VIDEO_HERE]` という文字列の目印を必ず1つだけ配置してください。HTMLタグは絶対に生成しないでください。ユーザーの指示から、動画の内容を表す英語のプロンプトを生成して `prompt` 引数に設定してください。動画に含めたくない要素は英語で `negative_prompt` に設定します。ユーザーが『この画像から』『あの猫の絵を』のように元画像を指示した場合、会話の文脈から最も適切と思われる画像が含まれているメッセージのインデックス（番号）を特定し、`source_image_message_index` 引数に設定してください。",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "prompt": {
+                        "type": "STRING",
+                        "description": "動画の内容を説明する英語のプロンプト。"
+                    },
+                    "negative_prompt": {
+                        "type": "STRING",
+                        "description": "動画に含めたくない要素を説明する英語のネガティブプロンプト。"
+                    },
+                    "aspect_ratio": {
+                        "type": "STRING",
+                        "description": "動画のアスペクト比。'16:9' (横長), '9:16' (縦長), '1:1' (正方形) など。デフォルトは '16:9'。"
+                    },
+                    "source_image_message_index": {
+                        "type": "NUMBER",
+                        "description": "動画生成の元になる画像が含まれているメッセージのインデックス番号。インデックスは0から始まります。"
+                    }
+                },
+                "required": ["prompt"]
+            }
+        }
       ]
   }
 ];
