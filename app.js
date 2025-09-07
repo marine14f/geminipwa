@@ -4384,12 +4384,16 @@ const appLogic = {
     },
 
     async executeToolCalls(toolCalls) {
-        const chat = await dbUtils.getChat(state.currentChatId);
-        if (!chat) {
-            console.error("[Function Calling] executeToolCalls: チャットデータの取得に失敗しました。");
-            const errorResult = { role: 'tool', name: 'system_error', response: { error: "チャットデータの取得に失敗" }, timestamp: Date.now() };
-            return { toolResults: [errorResult], containsTerminalAction: false };
-        }
+        // ▼▼▼ 修正箇所 ▼▼▼
+        // DBから読み込むのではなく、常に最新であるメモリ上のstateを直接使う
+        // これにより、DB保存完了を待たずに実行されても最新情報が保証される
+        const chat = {
+            id: state.currentChatId,
+            messages: state.currentMessages,
+            systemPrompt: state.currentSystemPrompt,
+            persistentMemory: state.currentPersistentMemory
+        };
+        // ▲▲▲ 修正箇所ここまで ▲▲▲
     
         const toolResults = [];
         let containsTerminalAction = false; // 終端アクションフラグ
@@ -4404,6 +4408,7 @@ const appLogic = {
             let result;
             if (window.functionCallingTools && typeof window.functionCallingTools[functionName] === 'function') {
                 try {
+                    // 関数に渡すchatオブジェクトも、メモリから生成したものを使用する
                     result = await window.functionCallingTools[functionName](functionArgs, chat);
                 } catch (e) {
                     console.error(`[Function Calling] 関数 '${functionName}' の実行中にエラーが発生しました:`, e);
@@ -4448,15 +4453,21 @@ const appLogic = {
             }
         }
     
-        chat.updatedAt = Date.now();
-        await dbUtils.saveChat(chat.title, chat);
+        // ▼▼▼ 修正箇所 ▼▼▼
+        // 関数実行によって永続メモリが変更された可能性があるため、
+        // stateに反映し、DBに保存する
+        if (chat.persistentMemory) {
+            state.currentPersistentMemory = chat.persistentMemory;
+        }
+        await dbUtils.saveChat();
+        // ▲▲▲ 修正箇所ここまで ▲▲▲
     
-        state.currentPersistentMemory = chat.persistentMemory;
-        state.currentScene = chat.persistentMemory?.scene_stack?.slice(-1)[0] || null;
-        state.currentStyleProfiles = chat.persistentMemory?.style_profiles || {};
+        state.currentScene = state.currentPersistentMemory?.scene_stack?.slice(-1)[0] || null;
+        state.currentStyleProfiles = state.currentPersistentMemory?.style_profiles || {};
     
         return { toolResults, containsTerminalAction, search_results: aggregatedSearchResults };
     },
+
 
     // --- システムプロンプト編集 ---
     startEditSystemPrompt() {

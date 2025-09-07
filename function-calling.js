@@ -980,147 +980,268 @@ async function set_background_image({ image_url }) {
 }
 
 /**
- * テキストや画像からVeo3を使用して動画を生成する（公式SDKによる本番実装）
- * @param {object} args - AIによって提供される引数オブジェクト
- * @param {string} args.prompt - 英語のプロンプト
- * @param {string} [args.negative_prompt] - 英語のネガティブプロンプト
- * @param {string} [args.aspect_ratio="16:9"] - アスペクト比
- * @param {number} [args.source_image_message_index] - 元画像のメッセージインデックス
+ * テキストや画像から Veo3 を使用して動画を生成する（公式SDKによる本番実装）
+ * - Gemini API エンドポイント向け（veo-3.0-generate-preview）
+ * - i2v/t2vで personGeneration を自動フォールバック
+ * - aspectRatio は Gemini API では 16:9 のみ想定 → 強制丸め
+ * @param {object} args
+ * @param {string} args.prompt                - 英語のプロンプト（必須）
+ * @param {string} [args.negative_prompt]     - ネガティブプロンプト
+ * @param {string} [args.aspect_ratio="16:9"] - 希望アスペクト比（Gemini APIでは16:9に丸め）
+ * @param {number} [args.source_image_message_index] - 元画像のメッセージインデックス（0=直近）
+ * @param {{mimeType:string,data:string}} [args.source_inline_image] - 直近リクエストから渡す生画像（base64）
  * @param {object} chat - 現在のチャットデータ
- * @returns {Promise<object>} 操作結果を含むオブジェクトを返すPromise
+ * @returns {Promise<object>} { success, message, video_url } | { error }
  */
- async function generate_video({ prompt, negative_prompt, aspect_ratio = "16:9", source_image_message_index }, chat) {
-    console.log(`[Function Calling] generate_video (SDK実装) が呼び出されました。`, { prompt, negative_prompt, aspect_ratio, source_image_message_index });
-
-    const apiKey = window.state.settings.apiKey;
-    if (!apiKey) {
-        return { error: "APIキーが設定されていません。" };
-    }
-    // ★★★ ここからが修正箇所 ★★★
-    if (typeof window.GoogleGenAI === 'undefined') {
-        return { error: "Google Gen AI SDK (@google/genai) が読み込まれていません。" };
-    }
-
+ async function generate_video(
+    { prompt, negative_prompt, aspect_ratio = "16:9", source_image_message_index, source_inline_image },
+    chat
+  ) {
+    console.log(`[Function Calling] generate_video (SDK実装) が呼び出されました。`, {
+      prompt, negative_prompt, aspect_ratio, source_image_message_index, hasInline: !!source_inline_image
+    });
+  
+    const apiKey = window.state?.settings?.apiKey;
+    if (!apiKey) return { error: "APIキーが設定されていません。" };
+    if (typeof window.GoogleGenAI === 'undefined') return { error: "Google Gen AI SDK (@google/genai) が読み込まれていません。" };
+    if (!prompt || !String(prompt).trim()) return { error: "prompt が空です。" };
+  
+    // ローディングUI
     if (window.uiUtils) {
-        window.uiUtils.setLoadingIndicatorText('動画生成中...');
-        window.elements.loadingIndicator.classList.remove('hidden');
+      window.uiUtils.setLoadingIndicatorText('動画生成中...');
+      window.elements.loadingIndicator.classList.remove('hidden');
     }
-
-    try {
-        // 正しいクラス名でインスタンス化
-        const genAI = new window.GoogleGenAI({ apiKey });
-        // ★★★ 修正箇所ここまで ★★★
-
-        // --- Step 1: リクエストオブジェクトの構築 ---
-        const request = {
-            model: "veo-3.0-generate-preview",
-            prompt: prompt,
-            config: {}
-        };
-
-        if (negative_prompt) {
-            request.config.negativePrompt = negative_prompt;
-        }
-        if (aspect_ratio) {
-            request.config.aspectRatio = aspect_ratio;
-        }
-
-        if (typeof source_image_message_index === 'number') {
-            const sourceMessage = chat.messages[source_image_message_index];
-            if (sourceMessage && sourceMessage.generated_images && sourceMessage.generated_images.length > 0) {
-                const image = sourceMessage.generated_images[0];
-                request.image = {
-                    imageBytes: image.data, 
-                    mimeType: image.mimeType
-                };
-                console.log(`メッセージインデックス ${source_image_message_index} の画像をリクエストに追加しました。`);
-            } else {
-                return { error: `指定されたインデックス ${source_image_message_index} に有効な画像が見つかりませんでした。` };
-            }
-        }
-
-        // --- Step 2: 動画生成の開始 ---
-        console.log("SDK経由で動画生成開始リクエストを送信します:", request);
-        let operation = await genAI.models.generateVideos(request);
-        console.log("動画生成リクエストを受け付けました。Operation:", operation);
-
-        // --- Step 3: 完了するまでポーリング ---
-        const MAX_ATTEMPTS = 18; 
-        let attempts = 0;
-        
-        while (!operation.done) {
-            attempts++;
-            if (attempts > MAX_ATTEMPTS) {
-                throw new Error("動画生成がタイムアウトしました（3分）。");
-            }
-
-            console.log(`動画生成の状態を確認中... (${attempts}/${MAX_ATTEMPTS})`);
-            await new Promise(resolve => setTimeout(resolve, 10000));
-
-            operation = await genAI.operations.getVideosOperation({ operation });
-            
-            if (operation.error) {
-                throw new Error(`動画生成処理でエラーが発生しました: ${operation.error.message}`);
-            }
-        }
-        
-        console.log("動画生成が完了しました。", operation);
-
-        // --- Step 4: 動画ファイルのダウンロードとURL化 ---
-        const resp = operation?.response ?? {};
-
-        // 形ゆらぎを吸収して video オブジェクトを特定
-        const fileRef =
-            resp.generatedVideos?.[0]?.video ??
-            resp.generateVideoResponse?.generatedSamples?.[0]?.video ??
-            resp.generatedSamples?.[0]?.video ??      // 念のため
-            null;
-
-        if (!fileRef) {
-            console.error("Operation response:", resp);
-            throw new Error("動画参照が見つかりませんでした。（generatedVideos / generatedSamples のどちらにも video が無い）");
-        }
-
-        // uri 優先。無ければ name から :download を保険で組み立て
-        let downloadUrl = fileRef.uri || null;
-        if (!downloadUrl && fileRef.name) {
-            downloadUrl = `https://generativelanguage.googleapis.com/v1beta/${encodeURIComponent(fileRef.name)}:download`;
-        }
-        if (!downloadUrl) {
-            console.error("fileRef:", fileRef);
-            throw new Error("動画のダウンロードURLを特定できませんでした。（uri も name も無し）");
-        }
-
-        // APIキー付与 & リダイレクト追従
-        const res = await fetch(`${downloadUrl}${downloadUrl.includes('?') ? '&' : '?'}key=${apiKey}`, {
-            method: 'GET',
-            redirect: 'follow',
+  
+    // --- ヘルパー関数 ---
+    const normBase64 = (s) => (s || "").replace(/\s+/g, "");
+    const dataUrlToParts = (dataUrl) => {
+      const m = /^data:([^;]+);base64,(.+)$/i.exec(dataUrl || "");
+      if (!m) return null;
+      return { mimeType: m[1], base64Data: m[2] };
+    };
+    const inlineDataToParts = (inlineData) => {
+      if (!inlineData || !inlineData.data) return null;
+      return { mimeType: inlineData.mimeType || "application/octet-stream", base64Data: inlineData.data };
+    };
+    const fileToParts = (file) => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result || "";
+        const base64String = String(result).split(',')[1] || "";
+        resolve({
+          mimeType: file.type || "application/octet-stream",
+          base64Data: base64String
         });
-        if (!res.ok) {
-            const t = await res.text().catch(() => "");
-            throw new Error(`動画ダウンロードに失敗: ${res.status} ${res.statusText} ${t}`);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const tryExtractFromMessage = async (msg) => {
+      if (!msg) return null;
+  
+      // 添付ファイル（File/Blob or base64格納）優先
+      if (msg.attachments && msg.attachments.length > 0) {
+        const attachment = msg.attachments[0];
+        if (attachment.file instanceof File || attachment.file instanceof Blob) {
+          return await fileToParts(attachment.file);
         }
-
-        const videoBlob = await res.blob();
-        const videoUrl = URL.createObjectURL(videoBlob);
-        console.log("動画のBlob URLを生成しました:", videoUrl);
-
-        return {
-            success: true,
-            message: "動画を生成しました。",
-            video_url: videoUrl
-        };
-
-
+        if (attachment.base64Data) {
+          return { mimeType: attachment.mimeType, base64Data: attachment.base64Data };
+        }
+      }
+  
+      // 生成画像キャッシュ（自前構造）
+      if (msg.generated_images && msg.generated_images.length > 0) {
+        const img = msg.generated_images[0];
+        if (img?.data) {
+          return { mimeType: img.mimeType || "application/octet-stream", base64Data: img.data };
+        }
+      }
+  
+      // parts（inlineData / data URL テキスト）
+      const partsArr = Array.isArray(msg.parts)
+        ? msg.parts
+        : (Array.isArray(msg.content?.parts) ? msg.content.parts : []);
+      if (Array.isArray(partsArr)) {
+        for (const p of partsArr) {
+          if (p?.inlineData) return inlineDataToParts(p.inlineData);
+          if (typeof p?.text === "string" && p.text.startsWith("data:")) return dataUrlToParts(p.text);
+        }
+      }
+      return null;
+    };
+    const resolveSourceImage = async (messages, index) => {
+      // 指定インデックス優先（末尾=直近基準）
+      if (typeof index === "number") {
+        const target = messages[messages.length - 1 - index];
+        const fromIndex = await tryExtractFromMessage(target);
+        if (fromIndex) return { ...fromIndex, via: `indexed(tail:${index})` };
+      }
+      // 直近から後方走査
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const found = await tryExtractFromMessage(messages[i]);
+        if (found) return { ...found, via: `scan@${i}` };
+      }
+      return null;
+    };
+  
+    try {
+      const genAI = new window.GoogleGenAI({ apiKey });
+  
+      // Gemini API 側の Veo3 は 16:9 のみ安全 → 丸める
+      const safeAspect = "16:9";
+  
+      const request = { model: "veo-3.0-generate-preview", prompt, config: {} };
+      if (negative_prompt) request.config.negativePrompt = negative_prompt;
+      request.config.aspectRatio = safeAspect;
+  
+      // メッセージ履歴の統合
+      const messagesFromDB = Array.isArray(chat?.messages) ? chat.messages : [];
+      const messagesFromState = Array.isArray(window?.state?.currentMessages) ? window.state.currentMessages : [];
+      const mergedHistory = messagesFromDB.concat(
+        messagesFromState.filter(m => !messagesFromDB.some(db_m => db_m.timestamp === m.timestamp))
+      );
+  
+      // 1) inline 指定があれば優先
+      if (source_inline_image && source_inline_image.data) {
+        const direct = inlineDataToParts(source_inline_image);
+        if (direct?.base64Data) {
+          request.image = {
+            imageBytes: normBase64(direct.base64Data),
+            mimeType: direct.mimeType || "image/png"
+          };
+          console.log(`画像をリクエストに追加 (direct inlineData).`);
+        }
+      }
+  
+      // 2) まだ無ければ履歴から抽出
+      if (!request.image) {
+        const source = await resolveSourceImage(mergedHistory, source_image_message_index);
+        if (source?.base64Data) {
+          request.image = {
+            imageBytes: normBase64(source.base64Data),
+            mimeType: source.mimeType || "image/png"
+          };
+          console.log(`画像をリクエストに追加 (${source.via}).`);
+        } else if (typeof source_image_message_index === "number") {
+          return { error: `指定されたインデックス ${source_image_message_index} に有効な画像が見つかりませんでした。` };
+        }
+      }
+  
+      // i2v/t2v で personGeneration を自動運転
+      if (request.image) {
+        // 画像あり → i2v はまず allow_adult（多くの環境で必須）
+        request.config.personGeneration = "allow_adult";
+      } else {
+        // 画像なし → t2v は “まず未設定” で試す（環境により allow_all 指定で400になるため）
+        // フォールバック処理側で必要に応じて付与
+      }
+  
+      // デバッグ出力（未定義ガード済み）
+      const imgHead = (request.image?.imageBytes || "").slice(0, 50);
+      console.log("SDK経由で動画生成開始リクエストを送信します:", {
+        model: request.model,
+        config: request.config,
+        hasImage: !!request.image,
+        image: request.image ? { mimeType: request.image.mimeType, imageBytesPreview: imgHead ? imgHead + "..." : "(none)" } : undefined
+      });
+  
+      // personGeneration 周りの環境差を吸収するフォールバック付き呼び出し
+      async function tryGenerate(genAI, req) {
+        try {
+          return await genAI.models.generateVideos(req);
+        } catch (e) {
+          const msg = (e?.error?.message || e?.message || "").toLowerCase();
+          const isPG = /persongeneration|use case|not supported/.test(msg);
+          if (!isPG) throw e;
+  
+          const hasImage = !!req.image;
+  
+          if (!hasImage) {
+            // t2v：未設定 → allow_all → allow_adult
+            if (!req.config.personGeneration) {
+              req.config.personGeneration = "allow_all";
+              return await genAI.models.generateVideos(req);
+            } else if (req.config.personGeneration === "allow_all") {
+              req.config.personGeneration = "allow_adult";
+              return await genAI.models.generateVideos(req);
+            }
+          } else {
+            // i2v：allow_adult → （稀に落ちる環境向けに）allow_all
+            if (req.config.personGeneration === "allow_adult") {
+              req.config.personGeneration = "allow_all";
+              return await genAI.models.generateVideos(req);
+            }
+          }
+          throw e;
+        }
+      }
+  
+      // 送信
+      let operation = await tryGenerate(genAI, request);
+      console.log("動画生成リクエストを受け付けました。Operation:", operation);
+  
+      // ポーリング（最大約3分）
+      const MAX_ATTEMPTS = 18;
+      let attempts = 0;
+      while (!operation.done) {
+        attempts++;
+        if (attempts > MAX_ATTEMPTS) throw new Error("動画生成がタイムアウトしました（3分）。");
+        console.log(`動画生成の状態を確認中... (${attempts}/${MAX_ATTEMPTS})`);
+        await new Promise(r => setTimeout(r, 10000));
+        operation = await genAI.operations.getVideosOperation({ operation });
+        if (operation.error) throw new Error(`動画生成処理でエラーが発生しました: ${operation.error.message}`);
+      }
+  
+      console.log("動画生成が完了しました。", operation);
+  
+      // operation.response から video 参照を取得
+      const resp = operation?.response ?? {};
+      const fileRef =
+        resp.generatedVideos?.[0]?.video ||
+        resp.generateVideoResponse?.generatedSamples?.[0]?.video ||
+        resp.generatedSamples?.[0]?.video || null;
+  
+      if (!fileRef) {
+        console.error("Operation response:", resp);
+        throw new Error("動画参照が見つかりませんでした。（generatedVideos / generatedSamples のどちらにも video が無い）");
+      }
+  
+      // ダウンロードURLを生成
+      let downloadUrl = fileRef.uri || null;
+      if (!downloadUrl && fileRef.name) {
+        downloadUrl = `https://generativelanguage.googleapis.com/v1beta/${encodeURIComponent(fileRef.name)}:download`;
+      }
+      if (!downloadUrl) {
+        console.error("fileRef:", fileRef);
+        throw new Error("動画のダウンロードURLを特定できませんでした。（uri も name も無し）");
+      }
+  
+      // 取得（SDKのdownloaderでもOK。ここはfetchで統一）
+      const res = await fetch(`${downloadUrl}${downloadUrl.includes('?') ? '&' : '?'}key=${apiKey}`, {
+        method: 'GET',
+        redirect: 'follow'
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        throw new Error(`動画ダウンロードに失敗: ${res.status} ${res.statusText} ${t}`);
+      }
+  
+      const videoBlob = await res.blob();
+      const videoUrl = URL.createObjectURL(videoBlob);
+      console.log("動画のBlob URLを生成しました:", videoUrl);
+  
+      return { success: true, message: "動画を生成しました。", video_url: videoUrl };
     } catch (error) {
-        console.error(`[Function Calling] generate_videoでエラーが発生しました:`, error);
-        return { error: error.message };
+      console.error(`[Function Calling] generate_videoでエラーが発生しました:`, error);
+      return { error: error.message || String(error) };
     } finally {
-        if (window.uiUtils) {
-            window.elements.loadingIndicator.classList.add('hidden');
-        }
+      if (window.uiUtils) window.elements.loadingIndicator.classList.add('hidden');
     }
-}
+  }
+  
+
+
 
 window.functionCallingTools = {
   calculate: async function({ expression }) {
