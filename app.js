@@ -632,7 +632,6 @@ const dbUtils = {
         });
     },
 
-    // チャットを保存 (タイトル指定可)
     async saveChat(optionalTitle = null, chatObjectToSave = null) { // 第2引数を追加
         await this.openDB();
         
@@ -661,6 +660,14 @@ const dbUtils = {
                 ...(msg.usageMetadata && { usageMetadata: msg.usageMetadata }),
                 ...(msg.executedFunctions && { executedFunctions: msg.executedFunctions }),
                 ...(msg.generated_images && msg.generated_images.length > 0 && { generated_images: msg.generated_images }),
+                // ▼▼▼ ここから変更 ▼▼▼
+                ...(msg.generated_videos && msg.generated_videos.length > 0 && { 
+                    generated_videos: msg.generated_videos.map(video => ({
+                        base64Data: video.base64Data, // Base64データのみ保存
+                        prompt: video.prompt
+                    }))
+                }),
+                // ▲▲▲ ここまで変更 ▲▲▲
                 ...(msg.isHidden === true && { isHidden: true }),
                 ...(msg.isAutoTrigger === true && { isAutoTrigger: true })
             }));
@@ -930,7 +937,6 @@ const uiUtils = {
     },
 
 
-    // メッセージをコンテナに追加
     appendMessage(role, content, index, isStreamingPlaceholder = false, cascadeInfo = null, attachments = null) {
         const messageDiv = document.createElement('div');
         messageDiv.classList.add('message', role);
@@ -1168,27 +1174,49 @@ const uiUtils = {
             }
         }
 
+        // --- ★★★ ここからが修正箇所 ★★★ ---
+        // [IMAGE_HERE] を実際の画像に置換する処理
+        const imagePlaceholderRegex = /\[IMAGE_HERE\]/g;
         if (role === 'model' && messageData && messageData.generated_images && messageData.generated_images.length > 0) {
-            messageData.generated_images.forEach(imageData => {
-                if (imageData.data) {
+            console.log(`[Debug] appendMessage: ${messageData.generated_images.length}枚の生成画像をレンダリングします。`); // ★ デバッグログ
+            
+            let imageIndex = 0;
+            const replacedHtml = contentDiv.innerHTML.replace(imagePlaceholderRegex, () => {
+                if (imageIndex < messageData.generated_images.length) {
+                    const imageData = messageData.generated_images[imageIndex];
+                    imageIndex++;
                     const img = document.createElement('img');
                     img.alt = '生成された画像';
                     img.style.maxWidth = '100%';
                     img.style.borderRadius = 'var(--border-radius-md)';
                     img.style.marginTop = '8px';
-                    
                     img.src = `data:${imageData.mimeType};base64,${imageData.data}`;
+                    return img.outerHTML;
+                }
+                return ''; // プレースホルダーが画像の数より多い場合は空文字に置換
+            });
+            contentDiv.innerHTML = replacedHtml;
 
+            // プレースホルダーがなかった場合、画像のコンテナを末尾に追加
+            if (imageIndex < messageData.generated_images.length) {
+                for (let i = imageIndex; i < messageData.generated_images.length; i++) {
+                    const imageData = messageData.generated_images[i];
+                    const img = document.createElement('img');
+                    img.alt = '生成された画像';
+                    img.style.maxWidth = '100%';
+                    img.style.borderRadius = 'var(--border-radius-md)';
+                    img.style.marginTop = '8px';
+                    img.src = `data:${imageData.mimeType};base64,${imageData.data}`;
                     contentDiv.appendChild(img);
                 }
-            });
+            }
         }
+        // --- ★★★ 修正箇所ここまで ★★★ ---
 
         if (role === 'model' && messageData && messageData.generated_videos && messageData.generated_videos.length > 0) {
             const videoData = messageData.generated_videos[0];
-            if (videoData && videoData.url) {
+            if (videoData && (videoData.url || videoData.base64Data)) {
                 const video = document.createElement('video');
-                video.src = videoData.url;
                 video.controls = true; 
                 video.playsInline = true; 
                 video.muted = true; 
@@ -1197,8 +1225,21 @@ const uiUtils = {
                 video.style.borderRadius = 'var(--border-radius-md)';
                 video.style.display = 'block';
 
+                if (videoData.url) {
+                    video.src = videoData.url;
+                } else if (videoData.base64Data) {
+                    base64ToBlob(videoData.base64Data, 'video/mp4')
+                        .then(blob => {
+                            const objectURL = URL.createObjectURL(blob);
+                            video.src = objectURL;
+                        })
+                        .catch(err => {
+                            console.error("Base64からの動画Blob生成に失敗:", err);
+                            video.remove();
+                        });
+                }
+
                 const placeholderRegex = /\[VIDEO_HERE\]/g;
-                // [VIDEO_HERE] が存在する場合のみ、置換処理を行う
                 if (placeholderRegex.test(contentDiv.innerHTML)) {
                     let replaced = false;
                     contentDiv.innerHTML = contentDiv.innerHTML.replace(placeholderRegex, (match) => {
@@ -1206,7 +1247,7 @@ const uiUtils = {
                             replaced = true;
                             return video.outerHTML;
                         }
-                        return ''; // 2つ目以降の目印は削除
+                        return '';
                     });
                 }
             }
@@ -3681,6 +3722,7 @@ const appLogic = {
         const turnResults = [];
         let currentTurnHistory = [...messagesForApi];
         let aggregatedSearchResults = [];
+        let aggregatedUiActions = []; // ★ 追加: UIアクションを集約する配列
 
         uiUtils.setLoadingIndicatorText('応答生成中...');
 
@@ -3706,7 +3748,7 @@ const appLogic = {
                 generationConfig,
                 systemInstruction,
                 tools: window.functionDeclarations,
-                streamingIndex // ★★★ callApiWithRetry にインデックスを渡す ★★★
+                streamingIndex
             });
 
             const modelMessage = {
@@ -3730,9 +3772,15 @@ const appLogic = {
             }
             
             uiUtils.setLoadingIndicatorText('関数実行中...');
-            const { toolResults, containsTerminalAction, search_results } = await this.executeToolCalls(result.toolCalls);
+            // ★ executeToolCallsの戻り値を分割代入で受け取る
+            const { toolResults, containsTerminalAction, search_results, internalUiActions } = await this.executeToolCalls(result.toolCalls);
+            
             if (search_results && search_results.length > 0) {
                 aggregatedSearchResults.push(...search_results);
+            }
+            if (internalUiActions && internalUiActions.length > 0) {
+                console.log(`[Debug] _internalHandleSend: executeToolCallsから ${internalUiActions.length} 件のUIアクションを受信`); // ★ デバッグログ
+                aggregatedUiActions.push(...internalUiActions); // ★ UIアクションを集約
             }
             
             turnResults.push(...toolResults);
@@ -3763,6 +3811,15 @@ const appLogic = {
             if (aggregatedSearchResults.length > 0) {
                 const lastMessage = finalModelMessages[finalModelMessages.length - 1];
                 lastMessage.search_web_results = aggregatedSearchResults;
+            }
+            // ★ UIアクションを最後のメッセージに紐付ける
+            if (aggregatedUiActions.length > 0) {
+                const lastMessage = finalModelMessages[finalModelMessages.length - 1];
+                if (!lastMessage._internal_ui_actions) {
+                    lastMessage._internal_ui_actions = [];
+                }
+                lastMessage._internal_ui_actions.push(...aggregatedUiActions);
+                console.log(`[Debug] _internalHandleSend: 最終メッセージにUIアクションを紐付けました`, lastMessage._internal_ui_actions); // ★ デバッグログ
             }
 
             if (state.settings.enableProofreading) {
@@ -3821,8 +3878,14 @@ const appLogic = {
                     finalAggregatedMessage.search_web_results.push(...msg.search_web_results);
                 }
 
-                if (msg.generated_images && msg.generated_images.length > 0) { 
-                    finalAggregatedMessage.generated_images.push(...msg.generated_images);
+                // ★ _internal_ui_actionsから画像データを集約するロジックを追加
+                if (msg._internal_ui_actions) {
+                    console.log(`[Debug] _aggregateMessages: _internal_ui_actionsを検出`, msg._internal_ui_actions); // ★ デバッグログ
+                    msg._internal_ui_actions.forEach(action => {
+                        if (action.type === 'display_generated_images' && action.images) {
+                            finalAggregatedMessage.generated_images.push(...action.images);
+                        }
+                    });
                 }
 
                 Object.assign(finalAggregatedMessage, {
@@ -3836,12 +3899,16 @@ const appLogic = {
             else if (msg.role === 'tool' && msg.response && msg.response.video_url) {
                 finalAggregatedMessage.generated_videos.push({
                     url: msg.response.video_url,
+                    base64Data: msg.response.video_base64,
                     prompt: msg.response.prompt || ''
                 });
             }
         });
         
-        console.log("集約後の最終メッセージオブジェクト:", JSON.stringify(finalAggregatedMessage, null, 2));
+        console.log("[Debug] 集約後の最終メッセージオブジェクト:", JSON.stringify(finalAggregatedMessage, (key, value) => {
+            if (key === 'data' && typeof value === 'string' && value.length > 50) return value.substring(0, 50) + '...';
+            return value;
+        }, 2)); // ★ デバッグログ (Base64は省略)
 
         return finalAggregatedMessage;
     },
@@ -3886,15 +3953,7 @@ const appLogic = {
                 if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
                     msg.attachments.forEach(att => parts.push({ inlineData: { mimeType: att.mimeType, data: att.base64Data } }));
                 }
-                // ★★★ ここからが修正箇所 ★★★
-                // モデルが生成した画像データを追加
-                if (msg.role === 'model' && msg.generated_images && msg.generated_images.length > 0) {
-                    console.log("【ログ】API送信用履歴に画像データを追加します。画像枚数:", msg.generated_images.length);
-                    msg.generated_images.forEach(img => {
-                        parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
-                    });
-                }
-                // ★★★ 修正箇所ここまで ★★★
+                
                 if (msg.role === 'model' && msg.tool_calls) {
                     msg.tool_calls.forEach(toolCall => parts.push({ functionCall: toolCall.functionCall }));
                 }
@@ -4384,20 +4443,17 @@ const appLogic = {
     },
 
     async executeToolCalls(toolCalls) {
-        // ▼▼▼ 修正箇所 ▼▼▼
-        // DBから読み込むのではなく、常に最新であるメモリ上のstateを直接使う
-        // これにより、DB保存完了を待たずに実行されても最新情報が保証される
         const chat = {
             id: state.currentChatId,
             messages: state.currentMessages,
             systemPrompt: state.currentSystemPrompt,
             persistentMemory: state.currentPersistentMemory
         };
-        // ▲▲▲ 修正箇所ここまで ▲▲▲
     
         const toolResults = [];
-        let containsTerminalAction = false; // 終端アクションフラグ
-        let aggregatedSearchResults = []; // 検索結果を一時的に保持する配列
+        let containsTerminalAction = false;
+        let aggregatedSearchResults = [];
+        let internalUiActions = []; // ★ 追加：UIアクションを一時的に保持する配列
     
         for (const toolCall of toolCalls) {
             const functionName = toolCall.functionCall.name;
@@ -4408,7 +4464,6 @@ const appLogic = {
             let result;
             if (window.functionCallingTools && typeof window.functionCallingTools[functionName] === 'function') {
                 try {
-                    // 関数に渡すchatオブジェクトも、メモリから生成したものを使用する
                     result = await window.functionCallingTools[functionName](functionArgs, chat);
                 } catch (e) {
                     console.error(`[Function Calling] 関数 '${functionName}' の実行中にエラーが発生しました:`, e);
@@ -4420,52 +4475,41 @@ const appLogic = {
             }
 
             const responseForAI = { ...result };
+
             if (result.search_results) {
                 aggregatedSearchResults.push(...result.search_results);
                 delete responseForAI.search_results;
             }
 
-            if (result._internal_ui_action?.type === 'display_layered_image') {
-                containsTerminalAction = true; // ★ 終端アクションを検知
-                const imageData = result._internal_ui_action.data;
-                if (!imageData.background_url) {
-                    imageData.background_url = getComputedStyle(document.documentElement).getPropertyValue('--chat-background-image-main').replace(/url\(['"]?(.*?)['"]?\)/, '$1');
-                    if (imageData.background_url === 'none') imageData.background_url = null;
+            if (result._internal_ui_action) {
+                console.log(`[Debug] executeToolCalls: _internal_ui_actionを検出`, result._internal_ui_action); // ★ デバッグログ
+                internalUiActions.push(result._internal_ui_action); // ★ UIアクションを配列に追加
+
+                if (result._internal_ui_action.type === 'display_layered_image') {
+                    containsTerminalAction = true;
                 }
-                state.currentMessages.push({
-                    role: 'layered_image',
-                    timestamp: Date.now(),
-                    data: imageData
-                });
-                toolResults.push({ 
-                    role: 'tool', 
-                    name: functionName, 
-                    response: { success: true, message: result.message }, 
-                    timestamp: Date.now() 
-                });
-            } else {
-                toolResults.push({ 
-                    role: 'tool', 
-                    name: functionName, 
-                    response: responseForAI, 
-                    timestamp: Date.now() 
-                });
+                
+                delete responseForAI._internal_ui_action;
             }
+
+            toolResults.push({ 
+                role: 'tool', 
+                name: functionName, 
+                response: responseForAI, 
+                timestamp: Date.now() 
+            });
         }
     
-        // ▼▼▼ 修正箇所 ▼▼▼
-        // 関数実行によって永続メモリが変更された可能性があるため、
-        // stateに反映し、DBに保存する
         if (chat.persistentMemory) {
             state.currentPersistentMemory = chat.persistentMemory;
         }
         await dbUtils.saveChat();
-        // ▲▲▲ 修正箇所ここまで ▲▲▲
     
         state.currentScene = state.currentPersistentMemory?.scene_stack?.slice(-1)[0] || null;
         state.currentStyleProfiles = state.currentPersistentMemory?.style_profiles || {};
     
-        return { toolResults, containsTerminalAction, search_results: aggregatedSearchResults };
+        // ★ 戻り値にUIアクションと検索結果を追加
+        return { toolResults, containsTerminalAction, search_results: aggregatedSearchResults, internalUiActions };
     },
 
 
