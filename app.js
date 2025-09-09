@@ -184,6 +184,7 @@ const elements = {
     maxBackoffDelayInput: document.getElementById('max-backoff-delay-seconds'),
     googleSearchApiKeyInput: document.getElementById('google-search-api-key'),
     googleSearchEngineIdInput: document.getElementById('google-search-engine-id'),
+    forceFunctionCallingToggle: document.getElementById('force-function-calling-toggle'),
     overlayOpacitySlider: document.getElementById('overlay-opacity-slider'),
     overlayOpacityValue: document.getElementById('overlay-opacity-value'),
     headerColorInput: document.getElementById('header-color-input'),
@@ -246,6 +247,7 @@ const state = {
         overlayOpacity: 0.65,
         headerColor: '',
         allowPromptUiChanges: true,
+        forceFunctionCalling: false,
     },
     backgroundImageUrl: null,
     isSending: false,
@@ -1670,6 +1672,7 @@ const uiUtils = {
         if (elements.messageOpacityValue)  elements.messageOpacityValue.textContent = `${msgPercent}%`;
         document.documentElement.style.setProperty('--message-bubble-opacity', String(state.settings.messageOpacity ?? 1));
         document.getElementById('allow-prompt-ui-changes').checked = state.settings.allowPromptUiChanges;
+        elements.forceFunctionCallingToggle.checked = state.settings.forceFunctionCalling;
 
         const defaultHeaderColor = state.settings.darkMode ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
         elements.headerColorInput.value = state.settings.headerColor || defaultHeaderColor;
@@ -2098,7 +2101,13 @@ const uiUtils = {
 // --- APIユーティリティ (apiUtils) ---
 const apiUtils = {
     // Gemini APIを呼び出す
-    async callGeminiApi(messagesForApi, generationConfig, systemInstruction, tools = null) {
+    async callGeminiApi(messagesForApi, generationConfig, systemInstruction, tools = null, forceCalling = false) {
+        console.log(`[Debug] callGeminiApi: 現在の設定値を確認します。`, {
+            forceFunctionCalling: state.settings.forceFunctionCalling,
+            geminiEnableFunctionCalling: state.settings.geminiEnableFunctionCalling,
+            isForcedNow: forceCalling // ★ 実際に強制が適用されるかを表示
+        });
+
         if (!state.settings.apiKey) {
             throw new Error("APIキーが設定されていません。");
         }
@@ -2133,12 +2142,10 @@ const apiUtils = {
             finalGenerationConfig.responseModalities = ['IMAGE', 'TEXT'];
             delete finalGenerationConfig.thinkingConfig;
 
-            // nano-bananaでサポートされていないパラメータを削除
             delete finalGenerationConfig.maxOutputTokens;
             delete finalGenerationConfig.topK;
             delete finalGenerationConfig.topP;
             delete finalGenerationConfig.temperature;
-            // presencePenalty, frequencyPenaltyなども念のため削除
             delete finalGenerationConfig.presencePenalty;
             delete finalGenerationConfig.frequencyPenalty;
 
@@ -2162,7 +2169,6 @@ const apiUtils = {
         };
 
         if (isImageGenModel) {
-            // nano-bananaの場合、SafetySettingsを強制的にBLOCK_NONEに設定
             requestBody.safetySettings = [
                 { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
                 { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
@@ -2186,6 +2192,16 @@ const apiUtils = {
             
             if (finalTools.length > 0) {
                 requestBody.tools = finalTools;
+            }
+
+            // ★ 引数 forceCalling を使用するように修正
+            if (forceCalling && state.settings.geminiEnableFunctionCalling) {
+                requestBody.toolConfig = {
+                    functionCallingConfig: {
+                        mode: 'ANY'
+                    }
+                };
+                console.log("Function Calling を強制モード (ANY) で実行します。");
             }
         }
 
@@ -3722,7 +3738,7 @@ const appLogic = {
         const turnResults = [];
         let currentTurnHistory = [...messagesForApi];
         let aggregatedSearchResults = [];
-        let aggregatedUiActions = []; // ★ 追加: UIアクションを集約する配列
+        let aggregatedUiActions = [];
 
         uiUtils.setLoadingIndicatorText('応答生成中...');
 
@@ -3741,6 +3757,7 @@ const appLogic = {
         };
 
         while (loopCount < MAX_LOOPS) {
+            const isFirstCallInLoop = loopCount === 0; // ★ ループの初回かどうかを判定
             loopCount++;
 
             const result = await this.callApiWithRetry({
@@ -3748,7 +3765,8 @@ const appLogic = {
                 generationConfig,
                 systemInstruction,
                 tools: window.functionDeclarations,
-                streamingIndex
+                streamingIndex,
+                isFirstCall: isFirstCallInLoop // ★ 初回フラグを渡す
             });
 
             const modelMessage = {
@@ -3772,15 +3790,14 @@ const appLogic = {
             }
             
             uiUtils.setLoadingIndicatorText('関数実行中...');
-            // ★ executeToolCallsの戻り値を分割代入で受け取る
             const { toolResults, containsTerminalAction, search_results, internalUiActions } = await this.executeToolCalls(result.toolCalls);
             
             if (search_results && search_results.length > 0) {
                 aggregatedSearchResults.push(...search_results);
             }
             if (internalUiActions && internalUiActions.length > 0) {
-                console.log(`[Debug] _internalHandleSend: executeToolCallsから ${internalUiActions.length} 件のUIアクションを受信`); // ★ デバッグログ
-                aggregatedUiActions.push(...internalUiActions); // ★ UIアクションを集約
+                console.log(`[Debug] _internalHandleSend: executeToolCallsから ${internalUiActions.length} 件のUIアクションを受信`);
+                aggregatedUiActions.push(...internalUiActions);
             }
             
             turnResults.push(...toolResults);
@@ -3812,14 +3829,13 @@ const appLogic = {
                 const lastMessage = finalModelMessages[finalModelMessages.length - 1];
                 lastMessage.search_web_results = aggregatedSearchResults;
             }
-            // ★ UIアクションを最後のメッセージに紐付ける
             if (aggregatedUiActions.length > 0) {
                 const lastMessage = finalModelMessages[finalModelMessages.length - 1];
                 if (!lastMessage._internal_ui_actions) {
                     lastMessage._internal_ui_actions = [];
                 }
                 lastMessage._internal_ui_actions.push(...aggregatedUiActions);
-                console.log(`[Debug] _internalHandleSend: 最終メッセージにUIアクションを紐付けました`, lastMessage._internal_ui_actions); // ★ デバッグログ
+                console.log(`[Debug] _internalHandleSend: 最終メッセージにUIアクションを紐付けました`, lastMessage._internal_ui_actions);
             }
 
             if (state.settings.enableProofreading) {
@@ -4291,6 +4307,7 @@ const appLogic = {
             messageOpacity: (parseFloat(elements.messageOpacitySlider?.value) || 100) / 100,
             headerColor: elements.headerColorInput.value,
             allowPromptUiChanges: document.getElementById('allow-prompt-ui-changes').checked,
+            forceFunctionCalling: elements.forceFunctionCallingToggle.checked,
         };
 
         if (isNaN(newSettings.streamingSpeed) || newSettings.streamingSpeed < 0) {
@@ -5187,11 +5204,15 @@ const appLogic = {
         uiUtils.updateAttachmentBadgeVisibility();
     },
 
-        async callApiWithRetry(apiParams) {
-        const { messagesForApi, generationConfig, systemInstruction, tools } = apiParams;
+    async callApiWithRetry(apiParams) {
+        // ★ 引数に isFirstCall を追加
+        const { messagesForApi, generationConfig, systemInstruction, tools, isFirstCall } = apiParams;
         let lastError = null;
         const maxRetries = state.settings.enableAutoRetry ? state.settings.maxRetries : 0;
         const useStreaming = state.settings.streamingOutput || state.settings.modelName === 'gemini-2.5-flash-image-preview';
+        
+        // ★ isFirstCall を使って強制モードを制御
+        const forceCalling = state.settings.forceFunctionCalling && isFirstCall;
 
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
             try {
@@ -5220,7 +5241,8 @@ const appLogic = {
                     uiUtils.setLoadingIndicatorText(`${attempt}回目の再試行中...`);
                 }
 
-                const response = await apiUtils.callGeminiApi(messagesForApi, generationConfig, systemInstruction, tools);
+                // ★ callGeminiApi に forceCalling フラグを渡す
+                const response = await apiUtils.callGeminiApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling);
 
                 const getFinishReasonError = (candidate) => {
                     const reason = candidate?.finishReason;
@@ -5279,7 +5301,6 @@ const appLogic = {
                         throw new Error("APIから空の応答が返されました。");
                     }
 
-                    // ★★★ ここに追加 ★★★
                     console.log("callApiWithRetryが返す直前のデータ:", JSON.stringify({ content: fullContent, images: images.map(img => ({...img, data: img.data.substring(0, 50) + '...'})) }, null, 2));
 
                     return { 
