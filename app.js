@@ -1,3 +1,54 @@
+// --- デバッグ用ロガー ---
+const debugLogger = {
+    panel: null,
+    content: null,
+    clearBtn: null,
+    init: function() {
+        this.panel = document.getElementById('debug-log-panel');
+        this.content = document.getElementById('debug-log-content');
+        this.clearBtn = document.getElementById('debug-log-clear');
+        if (this.panel && this.content && this.clearBtn) {
+            this.panel.style.display = 'block';
+            this.clearBtn.onclick = () => { this.content.textContent = ''; };
+            console.log = this.log.bind(this, 'log');
+            console.warn = this.log.bind(this, 'warn');
+            console.error = this.log.bind(this, 'error');
+            console.info = this.log.bind(this, 'info');
+            console.debug = this.log.bind(this, 'debug');
+            window.addEventListener('error', (e) => {
+                this.log('error', `[Unhandled Exception] ${e.message} at ${e.filename}:${e.lineno}`);
+            });
+            console.log("[Debug Logger] Initialized.");
+        }
+    },
+    log: function(type, ...args) {
+        if (!this.content) return;
+        const originalConsole = console; // 無限ループ防止
+        originalConsole[type] ? originalConsole[type](...args) : originalConsole.log(...args);
+
+        const timestamp = new Date().toLocaleTimeString();
+        const message = args.map(arg => {
+            if (typeof arg === 'object' && arg !== null) {
+                try {
+                    return JSON.stringify(arg, null, 2);
+                } catch (e) {
+                    return '[Circular Object]';
+                }
+            }
+            return String(arg);
+        }).join(' ');
+        
+        const logEntry = document.createElement('div');
+        logEntry.textContent = `[${timestamp}] ${message}`;
+        if (type === 'error') logEntry.style.color = '#f88';
+        if (type === 'warn') logEntry.style.color = '#ff8';
+        
+        this.content.appendChild(logEntry);
+        this.panel.scrollTop = this.panel.scrollHeight;
+    }
+};
+// --- デバッグ用ロガーここまで ---
+
 import("https://esm.run/@google/genai").then(module => {
     // 正しいクラス名 GoogleGenAI をグローバルスコープに設定
     window.GoogleGenAI = module.GoogleGenAI;
@@ -2672,6 +2723,8 @@ const appLogic = {
         },
     // アプリ初期化
     async initializeApp() {
+        debugLogger.init();//デバッグ用
+
         if (typeof marked !== 'undefined') {
             const renderer = new marked.Renderer();
             const originalLinkRenderer = renderer.link;
