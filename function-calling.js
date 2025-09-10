@@ -1240,10 +1240,23 @@ async function set_background_image({ image_url }) {
   
       const videoBlob = await res.blob();
       const videoUrl = URL.createObjectURL(videoBlob);
-      const videoBase64 = await blobToBase64(videoBlob); // Base64に変換
+      const videoBase64 = await blobToBase64(videoBlob);
       console.log("動画のBlob URLとBase64データを生成しました。");
   
-      return { success: true, message: "動画を生成しました。", video_url: videoUrl, video_base64: videoBase64 };
+      return {
+        success: true,
+        message: "動画を生成しました。",
+        // UI処理用の内部アクション
+        _internal_ui_action: {
+            type: "display_generated_videos",
+            videos: [{
+                url: videoUrl,
+                base64Data: videoBase64,
+                prompt: prompt
+            }]
+        }
+      };
+
     } catch (error) {
       console.error(`[Function Calling] generate_videoでエラーが発生しました:`, error);
       return { error: error.message || String(error) };

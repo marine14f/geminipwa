@@ -3757,7 +3757,7 @@ const appLogic = {
         };
 
         while (loopCount < MAX_LOOPS) {
-            const isFirstCallInLoop = loopCount === 0; // ★ ループの初回かどうかを判定
+            const isFirstCallInLoop = loopCount === 0;
             loopCount++;
 
             const result = await this.callApiWithRetry({
@@ -3765,8 +3765,8 @@ const appLogic = {
                 generationConfig,
                 systemInstruction,
                 tools: window.functionDeclarations,
-                streamingIndex,
-                isFirstCall: isFirstCallInLoop // ★ 初回フラグを渡す
+                streamingIndex, // ★ ストリーミングのためにインデックスを渡す
+                isFirstCall: isFirstCallInLoop
             });
 
             const modelMessage = {
@@ -3894,13 +3894,17 @@ const appLogic = {
                     finalAggregatedMessage.search_web_results.push(...msg.search_web_results);
                 }
 
-                // ★ _internal_ui_actionsから画像データを集約するロジックを追加
                 if (msg._internal_ui_actions) {
-                    console.log(`[Debug] _aggregateMessages: _internal_ui_actionsを検出`, msg._internal_ui_actions); // ★ デバッグログ
+                    console.log(`[Debug] _aggregateMessages: _internal_ui_actionsを検出`, msg._internal_ui_actions);
                     msg._internal_ui_actions.forEach(action => {
                         if (action.type === 'display_generated_images' && action.images) {
                             finalAggregatedMessage.generated_images.push(...action.images);
                         }
+                        // --- ▼▼▼ ここからが修正箇所 ▼▼▼ ---
+                        if (action.type === 'display_generated_videos' && action.videos) {
+                            finalAggregatedMessage.generated_videos.push(...action.videos);
+                        }
+                        // --- ▲▲▲ 修正ここまで ▲▲▲ ---
                     });
                 }
 
@@ -3912,23 +3916,15 @@ const appLogic = {
                     retryCount: msg.retryCount,
                 });
             }
-            else if (msg.role === 'tool' && msg.response && msg.response.video_url) {
-                finalAggregatedMessage.generated_videos.push({
-                    url: msg.response.video_url,
-                    base64Data: msg.response.video_base64,
-                    prompt: msg.response.prompt || ''
-                });
-            }
         });
         
         console.log("[Debug] 集約後の最終メッセージオブジェクト:", JSON.stringify(finalAggregatedMessage, (key, value) => {
-            if (key === 'data' && typeof value === 'string' && value.length > 50) return value.substring(0, 50) + '...';
+            if ((key === 'data' || key === 'base64Data') && typeof value === 'string' && value.length > 50) return value.substring(0, 50) + '...';
             return value;
-        }, 2)); // ★ デバッグログ (Base64は省略)
+        }, 2));
 
         return finalAggregatedMessage;
     },
-
     
     async handleSend() {
         console.log("--- handleSend (Orchestrator): 処理開始 ---");
@@ -3943,33 +3939,51 @@ const appLogic = {
 
         uiUtils.setSendingState(true);
         
+        // 1. ユーザーメッセージをstateに追加
         const userMessage = { role: 'user', content: text, timestamp: Date.now(), attachments: attachmentsToSend };
         state.currentMessages.push(userMessage);
+        
+        // 2. DOMにユーザーメッセージだけを追加
+        const userMessageIndex = state.currentMessages.length - 1;
+        uiUtils.appendMessage(userMessage.role, userMessage.content, userMessageIndex, false, null, userMessage.attachments);
+        
+        // 3. UIを更新
         state.pendingAttachments = [];
         uiUtils.updateAttachmentBadgeVisibility();
         elements.userInput.value = '';
         uiUtils.adjustTextareaHeight();
-        uiUtils.renderChatMessages(); 
         uiUtils.scrollToBottom();
-        await dbUtils.saveChat();
 
+        // 4. AI応答用の空のメッセージをstateにだけ追加（DOMにはまだ追加しない）
+        const modelMessage = { role: 'model', content: '', timestamp: Date.now() };
+        state.currentMessages.push(modelMessage);
+        const modelMessageIndex = state.currentMessages.length - 1;
+
+        // --- ▼▼▼ 修正箇所 ▼▼▼ ---
+        // 5. DOMへのプレースホルダー追加処理を削除
+        // uiUtils.appendMessage(modelMessage.role, modelMessage.content, modelMessageIndex, true);
+        // uiUtils.scrollToBottom();
+        // --- ▲▲▲ 修正ここまで ▲▲▲ ---
+
+        // 6. チャットを保存
+        await dbUtils.saveChat();
+        
         try {
-            let historyForApiRaw = state.currentMessages.filter(msg => !msg.isCascaded || msg.isSelected);
+            // APIに渡す履歴からは、最後の空のモデルメッセージを除外する
+            let historyForApiRaw = state.currentMessages.slice(0, -1).filter(msg => !msg.isCascaded || msg.isSelected);
+            
             if (state.settings.dummyUser) {
                 historyForApiRaw.push({ role: 'user', content: state.settings.dummyUser, attachments: [] });
             }
             
             const historyForApi = historyForApiRaw.map(msg => {
                 const parts = [];
-                // 常にテキストパートを先に追加
                 if (msg.content && msg.content.trim() !== '') {
                     parts.push({ text: msg.content });
                 }
-                // ユーザーメッセージの添付ファイルを追加
                 if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
                     msg.attachments.forEach(att => parts.push({ inlineData: { mimeType: att.mimeType, data: att.base64Data } }));
                 }
-                
                 if (msg.role === 'model' && msg.tool_calls) {
                     msg.tool_calls.forEach(toolCall => parts.push({ functionCall: toolCall.functionCall }));
                 }
@@ -3993,19 +4007,22 @@ const appLogic = {
             }
             const systemInstruction = state.currentSystemPrompt?.trim() ? { role: "system", parts: [{ text: state.currentSystemPrompt.trim() }] } : null;
 
-            const newMessages = await this._internalHandleSend(historyForApi, generationConfig, systemInstruction);
+            const newMessages = await this._internalHandleSend(historyForApi, generationConfig, systemInstruction, modelMessageIndex);
+            
             const finalAggregatedMessage = this._aggregateMessages(newMessages);
+            state.currentMessages[modelMessageIndex] = finalAggregatedMessage;
 
-            state.currentMessages.push(finalAggregatedMessage);
-
+            // ★ 応答が完了したこの時点で初めてDOMに追加する
+            // 既存のメッセージを一旦クリアし、全件再描画するのが最もシンプルで安全
             uiUtils.renderChatMessages();
+
             await dbUtils.saveChat();
 
         } catch(error) {
             console.error("--- handleSend: 最終catchブロックでエラー捕捉 ---", error);
             const errorMessage = (error.name !== 'AbortError') ? (error.message || "不明なエラーが発生しました。") : "リクエストがキャンセルされました。";
             
-            state.currentMessages.push({ role: 'error', content: errorMessage, timestamp: Date.now() });
+            state.currentMessages[modelMessageIndex] = { role: 'error', content: errorMessage, timestamp: Date.now() };
             uiUtils.renderChatMessages();
             await dbUtils.saveChat();
         } finally {
@@ -5278,6 +5295,15 @@ const appLogic = {
                     let finalMetadata = {};
 
                     for await (const chunk of apiUtils.handleStreamingResponse(response)) {
+                        if (isFirstChunk) {
+                            // 最初のチャンクが届いた瞬間にDOMにプレースホルダーを追加
+                            const modelMessage = state.currentMessages[streamingIndex];
+                            if (modelMessage) {
+                                uiUtils.appendMessage(modelMessage.role, '', streamingIndex, true);
+                            }
+                            isFirstChunk = false;
+                        }
+
                         if (chunk.type === 'error') {
                             throw new Error(chunk.message || 'ストリーム内でエラーが発生しました');
                         }
@@ -5286,6 +5312,14 @@ const appLogic = {
                             if (chunk.thoughtText) fullThoughtSummary += chunk.thoughtText;
                             if (chunk.toolCalls) toolCalls = (toolCalls || []).concat(chunk.toolCalls);
                             if (chunk.imageData) images.push(chunk.imageData);
+
+                            const currentMsg = state.currentMessages[streamingIndex];
+                            if(currentMsg) {
+                                currentMsg.content = fullContent;
+                                currentMsg.thoughtSummary = fullThoughtSummary;
+                                uiUtils.updateStreamingMessage(streamingIndex, '', false);
+                                if(fullThoughtSummary) uiUtils.updateStreamingMessage(streamingIndex, '', true);
+                            }
                         } else if (chunk.type === 'metadata') {
                             finalMetadata = chunk;
                         }

@@ -33,6 +33,52 @@ PWAの更新は、以下の手順で行ってください。以前訪問済み�
 1.  設定画面を開き、『アプリを更新（キャッシュクリア）』ボタンを押します。
 2.  万が一、初期化エラーなどが表示された場合は、`Ctrl + Shift + R` (Macの場合は `Cmd + Shift + R`) でページを強制的にリフレッシュしてください。
 
+## Version 0.4 マルチモーダル対応
+
+Version 0.4では、テキストだけでなく画像や動画を扱う**マルチモーダル機能**が大幅に強化されました。AIとの対話を通じて、物語の情景をイラスト化したり、キャラクターの姿を変化させたり、さらには短い動画を生成することも可能です。
+
+これらの機能は、主に**Function Calling**を通じてAIが自律的に実行します。例えば、「ヒロインが微笑むイラストを描いて」と指示するだけで、AIが最適な画像生成関数を選択し、イラストを生成してくれます。
+
+### 新しく追加された主なマルチモーダル関数
+
+*   [`generate_image`](#generate_image): テキストから**画像を生成**します。
+    *   **使い所**: 物語のシーン、キャラクターの服装や表情などをイラスト化したい時に。「夕暮れの街の様子を描いて」
+*   [`edit_image`](#edit_image): 既存の画像を指示に従って**編集**します。
+    *   **使い所**: 生成した画像に修正を加えたい時に。「（生成されたイラストに対して）彼女の髪を赤色に変えて」
+*   [`generate_video`](#generate_video): テキストや画像から**動画を生成**します。
+    *   **使い所**: キャラクターの短いアクションや表情の変化を描写したい時に。「このキャラクターが微笑む動画を作って」
+*   [`set_background_image`](#set_background_image): チャット画面の**背景を動的に変更**します。
+    *   **使い所**: 物語の場面転換に合わせて、背景を臨場感のあるものにしたい時に。「場所は王城に移り、背景を城の画像に変更」
+*   [`display_layered_image`](#display_layered_image): **キャラクターと背景を合成**して表示します。
+    *   **使い所**: 背景透過処理済みのキャラクターの立ち絵と、背景画像を組み合わせて、ゲームのようなシーンを描写したい時に。
+*   [`set_ui_opacity`](#set_ui_opacity): **UIの透明度を変更**し、画面の雰囲気を演出します。
+    *   **使い所**: 回想シーンで画面を白っぽくしたり、緊迫した場面で暗くしたりしたい時に。
+### 使用例
+| ユーザーの指示 & AIの動作 | 実行結果 |
+| :--- | :--- |
+| シンプルな日本語で画像生成を指示した例<br><br>**ユーザー:**<br>`美しいエルフの姫を描いて` <br><br> **AIの行動:**<br> `generate_image`を、引数に`prompt='anime style illustration of a beautiful elf princess`<br>を渡して実行。 | <a href="./images/image01.png" target="_blank"><img src="./images/image01.png" alt="デモ画像のサムネイル" width="300"></a>|
+| プロンプトも含めて細かい設定を指示した例<br><br>**ユーザー:**<br>`以下の設定で画像を生成して下さい。`<br>`使用モデル:imagen-4.0-ultra-generate-001`<br>`解像度:2k`<br>`アスペクト比:16:9`<br>`masterpiece, best quality, beautiful japanese anime-style illustration, `<br> `18 years old female,black long hair , bangs, circle eyes, beautiful pale pink eyes, `<br> `white shirts, red  ribbon bow tie, beige school jacket, `<br> `pastel pink check patterned pleated mini skirt, high school student, cherry blossom,  `<br> `cherry blossoms blooming,beautiful sky, sunny, petals, cute,`<br><br> **AIの行動:**<br> `generate_image`を、引数に`model='imagen-4.0-ultra-generate-001', sampleImageSize='2k',`<br>` aspectRatio=16:9,prompt='masterpiece, best quality, beautiful japanese anime-style`<br>` illustration, 18 years old female, black long hair , bangs, circle eyes, beautiful`<br>` pale pink eyes, white shirts, red  ribbon bow tie, beige school jacket, pastel pink`<br>` check patterned pleated mini skirt, high school student, cherry`<br>` blossom, cherry blossoms blooming, beautiful sky, sunny, petals, cute,`<br>を渡して実行。 | <a href="./images/image02.png" target="_blank"><img src="./images/image02.png" alt="デモ画像のサムネイル" width="300"></a>|
+| モデルが生成した画像を編集した例<br><br>**ユーザー:**<br>`上記の画像を笑顔にして手を振らせて。` <br><br> **AIの行動:**<br> `edit_image`を、引数に`source_image_message_index=1, `<br>`prompt='make her smile and wave her hand`<br>を渡して実行。 | <a href="./images/image03.png" target="_blank"><img src="./images/image03.png" alt="デモ画像のサムネイル" width="300"></a>|
+| シンプルな日本語で動画生成を指示した例<br><br>**ユーザー:**<br>`上記の画像を笑顔にして手を振らせて。` <br><br> **AIの行動:**<br> `edit_image`を、引数に`source_image_message_index=1, `<br>`prompt='make her smile and wave her hand`<br>を渡して実行。 | <a href="./images/video01.mp4" target="_blank"><img src="./images/video01.mp4" alt="動画のサムネイル（クリックで再生）" width="300"></a>|
+### ⚠️ マルチモーダル生成モデル利用に関する重要な注意点
+
+これらのマルチモーダル機能は、Googleの強力な生成AIモデルを利用しますが、APIの利用にはいくつかの制限があります。
+
+*   **無料枠（Free Tier）でのモデル制限**:
+    *   無料枠で画像生成・編集が可能なモデルは、現在**`gemini-2.5-flash-image-preview`（通称: Nano Banana）のみ**です。無料枠のRPD（1日でリクエスト可能な数）は100です。
+    *   無料枠ユーザーが画像生成を行う際は、プロンプトに「`gemini-2.5-flash-image-preview`を使用して下さい。」と明示的に記載して下さい。他のモデル（`imagen-4.0`など）が指定されると、APIエラーが発生します。
+    *   無料枠で動画生成モデル（Veo3）は使用できません。
+    *   FunctionCalling使用時はモデル呼び出し→FunctionCalling実行→モデル呼び出しというステップを踏みます。1回のリクエストで複数回リクエスト消費があることに留意して下さい。自動リトライ機能が作動した場合も同様にカウントが消費されますので、ご注意ください。
+
+
+*   **従量課金（Tier 1以上）でのRPM/RPD制限**:
+    *   動画生成に使用される`veo-3.0`モデルは非常に強力ですが、Tier 1ユーザーでも**1日あたりのリクエスト数（RPD）の上限が10回**と非常に少ないです（2025年9月時点）。ご利用は計画的にお願いします。
+    *   動画を生成させる場合、入力トークンと出力トークンの制限には気を付けて下さい。特に添付画像を使用した動画生成や、設定でmaxtokenの設定を行っている場合はエラーが発生する可能性があります。
+    *   **1回の送受信で複数回のリクエストが消費される**ことがあります。例えば、「イラストを描いて」という指示に対し、AIは「①Function Callingで画像を生成 → ②生成結果を元にテキスト応答を生成」というステップを踏むため、内部的にAPIリクエストが複数回発生します。自動リトライ機能が作動した場合も同様にカウントが消費されますので、ご注意ください。
+
+*   **2025/09現在、`gemini-2.5-pro`モデルにて過負荷によるエラーが発生しています。FunctionCalling実行中にエラーが発生したい場合は最初からリトライになります。**
+*   **動画生成に関してはRPDが10と非常に少なく、デバッグが進まないため現在テスト実装になります。バグはあるものだと思って下さい。**
+
 ## 主な機能
 
 ### APIエラー時の自動リトライ
@@ -112,6 +158,14 @@ AIがユーザーの意図を汲み取り、事前に用意された様々な「
 *   [`manage_scene`](#manage_scene): 場所、時間、雰囲気などの場面設定を管理します。
 *   [`manage_relationship`](#manage_relationship): キャラクター間の好感度などの関係値を管理します。
 *   [`manage_style_profile`](#manage_style_profile): キャラクターの口調や一人称などの話し方を設定します。
+
+#### 画像・動画・UI操作系
+*   [`generate_image`](#generate_image): テキストプロンプトから画像を生成します。
+*   [`edit_image`](#edit_image): 既存の画像をテキストプロンプトで編集します。
+*   [`generate_video`](#generate_video): テキストや画像から動画を生成します。
+*   [`set_background_image`](#set_background_image): チャット画面の背景画像を指定したURLの画像に一時的に変更します。
+*   [`display_layered_image`](#display_layered_image): 背景画像とキャラクター画像を重ねて表示します。
+*   [`set_ui_opacity`](#set_ui_opacity): 背景オーバーレイやメッセージバブルの透明度を変更します。
 
 ---
 
@@ -257,6 +311,55 @@ AIがユーザーの意図を汲み取り、事前に用意された様々な「
     *   `overrides` (object): プリセットの一部を上書きする設定。例: `{'first_person': 'ボク'}`
 *   **使い道**: キャラクターの初登場時や、心情が大きく変化した際に呼び出し、その後の会話スタイルに一貫性を持たせます。
 
+#### 画像・動画・UI操作系
+これらの関数は、物語の視覚的な演出を強化したり、UIを動的に変更したりします。
+
+##### `generate_image`
+*   **概要**: テキストプロンプトから画像を生成します。`imagen-4.0`ファミリーや`gemini-2.5-flash-image-preview`(Nano Banana)モデルを利用します。
+*   **引数**:
+    *   `prompt` (string): 生成したい画像の内容を表す**英語の**プロンプト。
+    *   `model` (string): (任意) 使用するモデルを以下の中から明示的に指定します。指定が無い場合は`imagen-4.0-generate-001`が使用されます。
+        *   imagen-4.0-generate-001
+        *   imagen-4.0-ultra-generate-001
+        *   imagen-4.0-fast-generate-001
+        *   gemini-2.5-flash-image-preview
+    *   `numberOfImages` (number): (任意) 生成する枚数（1～4）。
+*   **使い道**: 物語のシーンや登場人物の姿を視覚化します。（例：「金髪碧眼の美しいエルフの姫の画像を生成して」）
+
+##### `edit_image`
+*   **概要**: 既存の画像を、テキストプロンプトの指示に基づいて編集します。`gemini-2.5-flash-image-preview`(Nano Banana)モデルを使用します。
+*   **引数**:
+    *   `prompt` (string): 画像をどのように編集するかを指示する**英語の**プロンプト。
+    *   `source_image_message_index` (number): 編集対象の画像が含まれるメッセージのインデックス番号。ユーザーの現在のプロンプトが0、その一つ前のAIの応答が1となります。
+*   **使い道**: 生成した画像に修正を加えます。（例：「（生成された画像に対して）この姫の髪を赤色にして」）
+
+##### `generate_video`※テスト実装
+*   **概要**: テキストプロンプトや既存の画像から短い動画を生成します。`veo-3.0`モデルを使用します。
+*   **引数**:
+    *   `prompt` (string): 生成したい動画の内容を表す**英語の**プロンプト。
+    *   `source_image_message_index` (number): (任意) 動画の元になる画像が含まれるメッセージのインデックス番号。
+*   **使い道**: 動きのあるシーンを描写します。（例：「この姫が微笑む動画を生成して」）
+
+##### `set_background_image`
+*   **概要**: チャット画面の背景画像を、指定されたURLの画像に**一時的に**変更します。（※リロードすると元に戻ります）
+*   **引数**:
+    *   `image_url` (string): 表示したい画像のURL。
+*   **使い道**: 物語の場面転換に合わせて、背景を臨場感のあるものに変更します。（例：「`manage_scene`で場所を『王城』に変更し、`set_background_image`で王城の画像のURLを指定する」）
+
+##### `display_layered_image`※テスト実装
+*   **概要**: 背景画像の上にキャラクター画像を重ねて、一枚の絵のようにメッセージとして表示します。
+*   **引数**:
+    *   `character_url` (string): 前景に表示するキャラクター画像のURL。
+    *   `background_url` (string): (任意) 背景画像のURL。指定しない場合は現在のチャット背景が使われます。
+*   **使い道**: キャラクターの立ち絵と背景を組み合わせたシーン描写に使用します。
+
+##### `set_ui_opacity`
+*   **概要**: チャット画面のUI要素（背景オーバーレイ、メッセージバブル）の透明度を動的に変更します。
+*   **引数**:
+    *   `overlay` (number): 背景オーバーレイの濃さ（0.0～1.0）。
+    *   `message_bubble` (number): メッセージ吹き出しの濃さ（0.1～1.0）。
+*   **使い道**: 回想シーンで全体を白っぽくしたり、緊迫した場面で暗くしたりするなど、物語の雰囲気を演出します。
+
 ### `search_web`関数の設定方法
 
 本機能を利用するには、**Google Custom Search API** の設定が必要です（1日100回まで無料）。
@@ -270,6 +373,27 @@ AIがユーザーの意図を汲み取り、事前に用意された様々な「
 設定後、「明日の東京の天気をネット検索して調べて」のように指示し、情報が返ってくれば成功です。
 
 ## 更新履歴
+### Version 0.4 (2025-08-31)
+*   **機能追加**
+    *   動画を生成する`generate_video`関数を追加。（テスト実装）
+    *   画像を生成する`generate_image`関数を追加。
+    *   画像を編集する`edit_image`関数を追加。
+    *   背景画像を変更する`set_background_image`関数を追加。
+    *   2枚の画像を合成する`display_layered_image`関数を追加。（テスト実装）
+    *   オーバーレイの濃さとメッセージバブルの濃さを変更する`set_ui_opacity`関数を追加。
+    *   多くのチャットアプリケーションで採用されている、『Ctrl + Enter: 常に送信』、『Shift + Enter: 常に改行』のショートカット操作に対応。
+    *   Prism.jsを導入し、コードブロックの「シンタックハイライト」やコピーに対応。
+    *   ファイルのドラッグ&ドロップ添付に対応。
+    *   `search_web`関数使用時の出典元表示に対応。
+    *   新しい画像出力モデル`gemini-2.5-flash-image-preview (Nano Banana)`にテスト対応。
+    *   設定に「全ての応答でFunctionCallingを強制する」
+*   **修正・改善**
+    *   途中のメッセージでリトライを行うと、それ以降の応答が消えないバグを修正。
+    *   会話履歴にサイズの大きいファイル（ソースコード等）が含まれている場合に、後続のメッセージを送信するとネットワークエラーが発生する不具合を修正。
+    *   システムプロンプトを編集した後、設定画面で保存を行うとデフォルトのシステムプロンプトで上書きされる不具合を修正。
+    *   メッセージ追加時のレンダリングを差分レンダリングに切り替えてパフォーマンス低下に対応。
+    *   モバイル版でファイルを添付した時、二重に動作してしまう不具合を修正。
+
 ### Version 0.34 (2025-08-31)
 *   **機能追加**
     *   UIデザインをMaterial Symbolsを使用したものに変更。
