@@ -39,11 +39,13 @@ Version 0.4では、テキストだけでなく画像や動画を扱う**マル�
 
 これらの機能は、主に**Function Calling**を通じてAIが自律的に実行します。例えば、「ヒロインが微笑むイラストを描いて」と指示するだけで、AIが最適な画像生成関数を選択し、イラストを生成してくれます。
 
+設定画面で「**Function Calling を使用する**」にチェックを入れるのをお忘れなく！
+
 ### 新しく追加された主なマルチモーダル関数
 
 *   [`generate_image`](#generate_image): テキストから**画像を生成**します。
     *   **使い所**: 物語のシーン、キャラクターの服装や表情などをイラスト化したい時に。「夕暮れの街の様子を描いて」
-*   [`edit_image`](#edit_image): 既存の画像を指示に従って**編集**します。
+*   [`edit_image`](#edit_image): 既存の画像や添付した画像を指示に従って**編集**します。
     *   **使い所**: 生成した画像に修正を加えたい時に。「（生成されたイラストに対して）彼女の髪を赤色に変えて」
 *   [`generate_video`](#generate_video): テキストや画像から**動画を生成**します。
     *   **使い所**: キャラクターの短いアクションや表情の変化を描写したい時に。「このキャラクターが微笑む動画を作って」
@@ -59,7 +61,7 @@ Version 0.4では、テキストだけでなく画像や動画を扱う**マル�
 | シンプルな日本語で画像生成を指示した例<br><br>**ユーザー:**<br>`美しいエルフの姫を描いて` <br><br> **AIの行動:**<br> `generate_image`を、引数に`prompt='anime style illustration of a beautiful elf princess`<br>を渡して実行。 | <a href="./images/image01.png" target="_blank"><img src="./images/image01.png" alt="デモ画像のサムネイル" width="300"></a>|
 | プロンプトも含めて細かい設定を指示した例<br><br>**ユーザー:**<br>`以下の設定で画像を生成して下さい。`<br>`使用モデル:imagen-4.0-ultra-generate-001`<br>`解像度:2k`<br>`アスペクト比:16:9`<br>`masterpiece, best quality, beautiful japanese anime-style illustration, `<br> `18 years old female,black long hair , bangs, circle eyes, beautiful pale pink eyes, `<br> `white shirts, red  ribbon bow tie, beige school jacket, `<br> `pastel pink check patterned pleated mini skirt, high school student, cherry blossom,  `<br> `cherry blossoms blooming,beautiful sky, sunny, petals, cute,`<br><br> **AIの行動:**<br> `generate_image`を、引数に`model='imagen-4.0-ultra-generate-001', sampleImageSize='2k',`<br>` aspectRatio=16:9,prompt='masterpiece, best quality, beautiful japanese anime-style`<br>` illustration, 18 years old female, black long hair , bangs, circle eyes, beautiful`<br>` pale pink eyes, white shirts, red  ribbon bow tie, beige school jacket, pastel pink`<br>` check patterned pleated mini skirt, high school student, cherry`<br>` blossom, cherry blossoms blooming, beautiful sky, sunny, petals, cute,`<br>を渡して実行。 | <a href="./images/image02.png" target="_blank"><img src="./images/image02.png" alt="デモ画像のサムネイル" width="300"></a>|
 | モデルが生成した画像を編集した例<br><br>**ユーザー:**<br>`上記の画像を笑顔にして手を振らせて。` <br><br> **AIの行動:**<br> `edit_image`を、引数に`source_image_message_index=1, `<br>`prompt='make her smile and wave her hand`<br>を渡して実行。 | <a href="./images/image03.png" target="_blank"><img src="./images/image03.png" alt="デモ画像のサムネイル" width="300"></a>|
-| シンプルな日本語で動画生成を指示した例<br><br>**ユーザー:**<br>`上記の画像を笑顔にして手を振らせて。` <br><br> **AIの行動:**<br> `edit_image`を、引数に`source_image_message_index=1, `<br>`prompt='make her smile and wave her hand`<br>を渡して実行。 | <a href="./images/video01.mp4" target="_blank"><img src="./images/video01.mp4" alt="動画のサムネイル（クリックで再生）" width="300"></a>|
+| シンプルな日本語で動画生成を指示した例(※無料枠は不可)<br><br>**ユーザー:**<br>`上記の画像を笑顔にして手を振らせて。` <br><br> **AIの行動:**<br> `edit_image`を、引数に`source_image_message_index=1, `<br>`prompt='make her smile and wave her hand`<br>を渡して実行。 | <a href="./images/gif01.gif" target="_blank"><img src="./images/gif01.gif" alt="動画のサムネイル（クリックで再生）" width="300"></a>|
 ### ⚠️ マルチモーダル生成モデル利用に関する重要な注意点
 
 これらのマルチモーダル機能は、Googleの強力な生成AIモデルを利用しますが、APIの利用にはいくつかの制限があります。
