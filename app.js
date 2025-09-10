@@ -1,77 +1,3 @@
-// --- デバッグ用ロガー ---
-const debugLogger = {
-    panel: null,
-    content: null,
-    clearBtn: null,
-    originalConsole: {}, // ★ 元のコンソール関数を保持するオブジェクト
-    init: function() {
-        this.panel = document.getElementById('debug-log-panel');
-        this.content = document.getElementById('debug-log-content');
-        this.clearBtn = document.getElementById('debug-log-clear');
-
-        if (this.panel && this.content && this.clearBtn) {
-            this.panel.style.display = 'block';
-            this.clearBtn.onclick = () => { this.content.textContent = ''; };
-
-            // ★ 元の関数を保存してから上書きする
-            const types = ['log', 'warn', 'error', 'info', 'debug'];
-            types.forEach(type => {
-                this.originalConsole[type] = console[type].bind(console);
-                console[type] = (...args) => this.log(type, ...args);
-            });
-
-            window.addEventListener('error', (e) => {
-                this.log('error', `[Unhandled Exception] ${e.message} at ${e.filename}:${e.lineno}`);
-            });
-            
-            this.log('info', "[Debug Logger] Initialized.");
-        }
-    },
-    log: function(type, ...args) {
-        // ★ 保存しておいた元の関数を呼び出す
-        if (this.originalConsole[type]) {
-            this.originalConsole[type](...args);
-        } else {
-            this.originalConsole.log(...args);
-        }
-
-        if (!this.content || !this.panel) return;
-
-        const timestamp = new Date().toLocaleTimeString();
-        const message = args.map(arg => {
-            if (typeof arg === 'object' && arg !== null) {
-                try {
-                    // 循環参照を持つオブジェクトに対応
-                    const cache = new Set();
-                    return JSON.stringify(arg, (key, value) => {
-                        if (typeof value === 'object' && value !== null) {
-                            if (cache.has(value)) {
-                                return '[Circular]';
-                            }
-                            cache.add(value);
-                        }
-                        return value;
-                    }, 2);
-                } catch (e) {
-                    return '[Unserializable Object]';
-                }
-            }
-            return String(arg);
-        }).join(' ');
-        
-        const logEntry = document.createElement('div');
-        logEntry.textContent = `[${timestamp}] ${message}`;
-        if (type === 'error') logEntry.style.color = '#f88';
-        if (type === 'warn') logEntry.style.color = '#ff8';
-        if (type === 'info') logEntry.style.color = '#8af';
-        
-        this.content.appendChild(logEntry);
-        // ログが追加されたときに自動で一番下までスクロール
-        this.panel.scrollTop = this.panel.scrollHeight;
-    }
-};
-// --- デバッグ用ロガーここまで ---
-
 import("https://esm.run/@google/genai").then(module => {
     // 正しいクラス名 GoogleGenAI をグローバルスコープに設定
     window.GoogleGenAI = module.GoogleGenAI;
@@ -2746,8 +2672,6 @@ const appLogic = {
         },
     // アプリ初期化
     async initializeApp() {
-        debugLogger.init();//デバッグ用
-
         if (typeof marked !== 'undefined') {
             const renderer = new marked.Renderer();
             const originalLinkRenderer = renderer.link;
@@ -3011,7 +2935,7 @@ const appLogic = {
         console.log("popstate listener added.");
         
         elements.attachFileBtn.addEventListener('click', () => uiUtils.showFileUploadDialog());
-        elements.selectFilesBtn.addEventListener('click', () => elements.fileInput.click());
+
         elements.fileInput.addEventListener('change', (event) => {
             this.handleFileSelection(event.target.files);
             event.target.value = null;

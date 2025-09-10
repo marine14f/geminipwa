@@ -490,8 +490,10 @@
     <dialog id="fileUploadDialog" class="custom-dialog">
         <div class="dialog-content">
             <div class="file-upload-area">
-                <input type="file" id="file-input" multiple class="hidden">
-                <button id="select-files-btn" class="dialog-button">ファイルを選択</button>
+                 <!-- ▼▼▼ 修正箇所 ▼▼▼ -->
+                 <input type="file" id="file-input" multiple> <!-- class="hidden" を削除 -->
+                 <button id="select-files-btn" class="dialog-button" type="button">ファイルを選択</button>
+                 <!-- ▲▲▲ 修正ここまで ▲▲▲ -->
             </div>
             <ul id="selected-files-list">
                 <!-- 選択されたファイルがここに表示される -->
@@ -510,11 +512,5 @@
     </div>
 
     <script src="prism.js" data-autoloader-path="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/" defer></script>
-    <!-- ▼▼▼ ここからデバッグ用ログパネル（スタイル修正版）を追加 ▼▼▼ -->
-    <div id="debug-log-panel" style="position: fixed; top: 0; left: 0; width: 100%; height: 100px; background: rgba(255, 0, 0, 0.8); color: #fff; font-family: monospace; font-size: 10px; z-index: 99999; overflow-y: scroll; padding: 5px; box-sizing: border-box; display: none;">
-        <button id="debug-log-clear" style="position: absolute; top: 2px; right: 2px; font-size: 8px; padding: 2px 4px; color: #000; background: #fff; border: 1px solid #000;">Clear</button>
-        <pre id="debug-log-content" style="margin: 0; padding: 0; white-space: pre-wrap; word-break: break-all;"></pre>
-    </div>
-    <!-- ▲▲▲ デバッグ用ログパネルここまで ▲▲▲ -->
 </body>
 </html>
