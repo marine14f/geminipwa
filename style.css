@@ -680,7 +680,30 @@ input[type="color"]::-moz-color-swatch { border: 1px solid var(--border-primary)
 #fileUploadDialog { min-width: 320px; max-width: 600px; width: 90%; }
 .dialog-content { margin-bottom: 20px; }
 .file-upload-area { margin-bottom: 15px; text-align: center; }
-.file-upload-area .dialog-button { padding: 10px 20px; font-size: 14px; }
+.file-upload-area .dialog-button {
+    /* ボタンらしい見た目を再現するためのスタイル */
+    display: inline-block; /* 中央揃えとpaddingを正しく適用するため */
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 500;
+    text-transform: uppercase;
+    color: var(--text-light);
+    background-color: var(--bg-button);
+    border: none;
+    border-radius: var(--border-radius-sm);
+    box-shadow: var(--shadow-1);
+    cursor: pointer;
+    text-align: center;
+    user-select: none; /* テキスト選択を防止 */
+    -webkit-tap-highlight-color: transparent; /* モバイルでのタップ時のハイライトを無効化 */
+    transition: background-color var(--transition-duration) var(--transition-timing), box-shadow var(--transition-duration) var(--transition-timing);
+}
+
+/* ホバー時のスタイルも追加 */
+.file-upload-area .dialog-button:hover {
+    background-color: var(--bg-button-hover);
+    box-shadow: var(--shadow-2);
+}
 #selected-files-list { list-style: none; padding: 0; margin: 0; max-height: 200px; overflow-y: auto; border: 1px solid var(--border-secondary); border-radius: 5px; background-color: var(--bg-secondary); }
 .selected-file-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--border-tertiary); background-color: var(--bg-tertiary); }
 .selected-file-item:last-child { border-bottom: none; }
