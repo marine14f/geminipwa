@@ -421,8 +421,6 @@ async function manage_flags({ action, key, value, ttl_minutes }, chat) { // chat
       if (typeof ttl_minutes === 'number' && ttl_minutes > 0) {
           // TTLの処理はDB保存と分離するため、ここではメッセージ追加のみ
           message += ` (${ttl_minutes}分後に自動消滅します)`;
-          // 注意: このリファクタリングにより、実際のTTLタイマー機能は別途実装が必要になります。
-          // 今回はデータ整合性の問題を優先して修正します。
       }
       const result = { success: true, key, old_value: currentValue, new_value: newValue, message };
       console.log(`[Function Calling] 処理完了:`, result);
@@ -797,7 +795,6 @@ async function search_web({ query }) {
             snippet: item.snippet
         }));
   
-        // --- ▼▼▼ 修正箇所 ▼▼▼ ---
         // AI向けのプレーンテキスト要約を作成
         let summary = `Web検索結果の要約:\n\n`;
         results.forEach((result, index) => {
@@ -808,7 +805,6 @@ async function search_web({ query }) {
   
         // AI向けの要約と、UI向けのリンク配列の両方を返す
         return { success: true, summary: summary.trim(), search_results: results };
-        // --- ▲▲▲ 修正箇所 ▲▲▲ ---
   
     } catch (error) {
         console.error(`[Function Calling] search_webで予期せぬエラー:`, error);
@@ -1469,7 +1465,6 @@ async function generate_image(args = {}) {
             generationConfig: generationConfig
         });
 
-        // ★★★ ここからが修正されたログ出力コード ★★★
         console.log("[Debug] edit_image: APIからの完全なレスポンスオブジェクト:", JSON.parse(JSON.stringify(resp)));
         
         // 正しいパス (resp.candidates) を使用してログを出力
@@ -1481,7 +1476,6 @@ async function generate_image(args = {}) {
                 }
             });
         }
-        // ★★★ ログ出力コードここまで ★★★
 
         const editedImagesBase64 = [];
         // 正しいパス (resp.candidates) を使用してデータを抽出

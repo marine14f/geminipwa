@@ -662,14 +662,12 @@ const dbUtils = {
                 ...(msg.usageMetadata && { usageMetadata: msg.usageMetadata }),
                 ...(msg.executedFunctions && { executedFunctions: msg.executedFunctions }),
                 ...(msg.generated_images && msg.generated_images.length > 0 && { generated_images: msg.generated_images }),
-                // ▼▼▼ ここから変更 ▼▼▼
                 ...(msg.generated_videos && msg.generated_videos.length > 0 && { 
                     generated_videos: msg.generated_videos.map(video => ({
                         base64Data: video.base64Data, // Base64データのみ保存
                         prompt: video.prompt
                     }))
                 }),
-                // ▲▲▲ ここまで変更 ▲▲▲
                 ...(msg.isHidden === true && { isHidden: true }),
                 ...(msg.isAutoTrigger === true && { isAutoTrigger: true })
             }));
@@ -882,8 +880,6 @@ const uiUtils = {
         }
         elements.messageContainer.innerHTML = '';
 
-        // --- ▼▼▼ 再構築されたロジック ▼▼▼ ---
-
         // 1. 描画すべきメッセージのインデックスリストを作成
         const visibleMessageIndices = [];
         const processedGroupIds = new Set();
@@ -931,7 +927,6 @@ const uiUtils = {
             this.appendMessage(msg.role, msg.content, index, false, cascadeInfo, msg.attachments);
         });
         
-        // --- ▲▲▲ ロジックここまで ▲▲▲ ---
 
         if (window.Prism) {
             Prism.highlightAll();
@@ -1176,11 +1171,10 @@ const uiUtils = {
             }
         }
 
-        // --- ★★★ ここからが修正箇所 ★★★ ---
         // [IMAGE_HERE] を実際の画像に置換する処理
         const imagePlaceholderRegex = /\[IMAGE_HERE\]/g;
         if (role === 'model' && messageData && messageData.generated_images && messageData.generated_images.length > 0) {
-            console.log(`[Debug] appendMessage: ${messageData.generated_images.length}枚の生成画像をレンダリングします。`); // ★ デバッグログ
+            console.log(`[Debug] appendMessage: ${messageData.generated_images.length}枚の生成画像をレンダリングします。`); 
             
             let imageIndex = 0;
             const replacedHtml = contentDiv.innerHTML.replace(imagePlaceholderRegex, () => {
@@ -1213,7 +1207,6 @@ const uiUtils = {
                 }
             }
         }
-        // --- ★★★ 修正箇所ここまで ★★★ ---
 
         if (role === 'model' && messageData && messageData.generated_videos && messageData.generated_videos.length > 0) {
             const videoData = messageData.generated_videos[0];
@@ -2105,7 +2098,7 @@ const apiUtils = {
         console.log(`[Debug] callGeminiApi: 現在の設定値を確認します。`, {
             forceFunctionCalling: state.settings.forceFunctionCalling,
             geminiEnableFunctionCalling: state.settings.geminiEnableFunctionCalling,
-            isForcedNow: forceCalling // ★ 実際に強制が適用されるかを表示
+            isForcedNow: forceCalling
         });
 
         if (!state.settings.apiKey) {
@@ -2194,7 +2187,6 @@ const apiUtils = {
                 requestBody.tools = finalTools;
             }
 
-            // ★ 引数 forceCalling を使用するように修正
             if (forceCalling && state.settings.geminiEnableFunctionCalling) {
                 requestBody.toolConfig = {
                     functionCallingConfig: {
@@ -2261,7 +2253,6 @@ const apiUtils = {
         let finalUsageMetadata = null;
         let toolCallsBuffer = []; 
 
-        // この内部関数は前回修正したものをそのまま使います
         function parseSseDataForYield(jsonString) {
             try {
                 const chunkJson = JSON.parse(jsonString);
@@ -2354,7 +2345,6 @@ const apiUtils = {
 
                 buffer += value;
 
-                // --- ▼▼▼ ここからが新しい解析ロジックです ▼▼▼ ---
                 while (true) {
                     const dataPrefixIndex = buffer.indexOf('data: ');
                     if (dataPrefixIndex === -1) break;
@@ -2387,7 +2377,6 @@ const apiUtils = {
                         break; 
                     }
                 }
-                 // --- ▲▲▲ 新しい解析ロジックここまで ▲▲▲ ---
             }
 
             const finishReason = lastCandidateInfo?.finishReason;
@@ -3046,7 +3035,6 @@ const appLogic = {
             }
         });
 
-        // --- ▼▼▼ ここから追加 ▼▼▼ ---
         elements.messageContainer.addEventListener('click', (event) => {
             if (event.target.tagName === 'IMG' && event.target.closest('.message-content')) {
                 const modalOverlay = document.getElementById('image-modal-overlay');
@@ -3765,7 +3753,7 @@ const appLogic = {
                 generationConfig,
                 systemInstruction,
                 tools: window.functionDeclarations,
-                streamingIndex, // ★ ストリーミングのためにインデックスを渡す
+                streamingIndex,
                 isFirstCall: isFirstCallInLoop
             });
 
@@ -3900,11 +3888,9 @@ const appLogic = {
                         if (action.type === 'display_generated_images' && action.images) {
                             finalAggregatedMessage.generated_images.push(...action.images);
                         }
-                        // --- ▼▼▼ ここからが修正箇所 ▼▼▼ ---
                         if (action.type === 'display_generated_videos' && action.videos) {
                             finalAggregatedMessage.generated_videos.push(...action.videos);
                         }
-                        // --- ▲▲▲ 修正ここまで ▲▲▲ ---
                     });
                 }
 
@@ -3959,11 +3945,9 @@ const appLogic = {
         state.currentMessages.push(modelMessage);
         const modelMessageIndex = state.currentMessages.length - 1;
 
-        // --- ▼▼▼ 修正箇所 ▼▼▼ ---
         // 5. DOMへのプレースホルダー追加処理を削除
         // uiUtils.appendMessage(modelMessage.role, modelMessage.content, modelMessageIndex, true);
         // uiUtils.scrollToBottom();
-        // --- ▲▲▲ 修正ここまで ▲▲▲ ---
 
         // 6. チャットを保存
         await dbUtils.saveChat();
@@ -4487,7 +4471,7 @@ const appLogic = {
         const toolResults = [];
         let containsTerminalAction = false;
         let aggregatedSearchResults = [];
-        let internalUiActions = []; // ★ 追加：UIアクションを一時的に保持する配列
+        let internalUiActions = [];
     
         for (const toolCall of toolCalls) {
             const functionName = toolCall.functionCall.name;
@@ -4516,8 +4500,8 @@ const appLogic = {
             }
 
             if (result._internal_ui_action) {
-                console.log(`[Debug] executeToolCalls: _internal_ui_actionを検出`, result._internal_ui_action); // ★ デバッグログ
-                internalUiActions.push(result._internal_ui_action); // ★ UIアクションを配列に追加
+                console.log(`[Debug] executeToolCalls: _internal_ui_actionを検出`, result._internal_ui_action);
+                internalUiActions.push(result._internal_ui_action);
 
                 if (result._internal_ui_action.type === 'display_layered_image') {
                     containsTerminalAction = true;
@@ -4542,7 +4526,6 @@ const appLogic = {
         state.currentScene = state.currentPersistentMemory?.scene_stack?.slice(-1)[0] || null;
         state.currentStyleProfiles = state.currentPersistentMemory?.style_profiles || {};
     
-        // ★ 戻り値にUIアクションと検索結果を追加
         return { toolResults, containsTerminalAction, search_results: aggregatedSearchResults, internalUiActions };
     },
 
@@ -5222,13 +5205,11 @@ const appLogic = {
     },
 
     async callApiWithRetry(apiParams) {
-        // ★ 引数に isFirstCall を追加
         const { messagesForApi, generationConfig, systemInstruction, tools, isFirstCall } = apiParams;
         let lastError = null;
         const maxRetries = state.settings.enableAutoRetry ? state.settings.maxRetries : 0;
         const useStreaming = state.settings.streamingOutput || state.settings.modelName === 'gemini-2.5-flash-image-preview';
         
-        // ★ isFirstCall を使って強制モードを制御
         const forceCalling = state.settings.forceFunctionCalling && isFirstCall;
 
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -5258,7 +5239,6 @@ const appLogic = {
                     uiUtils.setLoadingIndicatorText(`${attempt}回目の再試行中...`);
                 }
 
-                // ★ callGeminiApi に forceCalling フラグを渡す
                 const response = await apiUtils.callGeminiApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling);
 
                 const getFinishReasonError = (candidate) => {
