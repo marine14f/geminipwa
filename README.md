@@ -60,7 +60,7 @@ Version 0.4では、テキストだけでなく画像や動画を扱う**マル�
 ### 使用例
 | ユーザーの指示 & AIの動作 | 実行結果 |
 | :--- | :--- |
-| シンプルな日本語で画像生成を指示した例<br><br>**ユーザー:**<br>`美しいエルフの姫を描いて` <br><br> **AIの行動:**<br> `generate_image`を、引数に`prompt='anime style illustration of a beautiful elf princess`<br>を渡して実行。 | <a href="./images/image01.png" target="_blank"><img src="./images/image01.png" alt="デモ画像のサムネイル" width="300"></a>|
+| シンプルな日本語で画像生成を指示した例<br><br>**ユーザー:**<br>`アニメ調の美しいエルフの姫を描いて` <br><br> **AIの行動:**<br> `generate_image`を、引数に`prompt='anime style illustration of a beautiful elf princess`<br>を渡して実行。 | <a href="./images/image01.png" target="_blank"><img src="./images/image01.png" alt="デモ画像のサムネイル" width="300"></a>|
 | プロンプトも含めて細かい設定を指示した例<br><br>**ユーザー:**<br>`以下の設定で画像を生成して下さい。`<br>`使用モデル:imagen-4.0-ultra-generate-001`<br>`解像度:2k`<br>`アスペクト比:16:9`<br>`プロンプト:masterpiece, best quality, beautiful japanese anime-style illustration, `<br> `18 years old female,black long hair , bangs, circle eyes, beautiful pale pink eyes, `<br> `white shirts, red  ribbon bow tie, beige school jacket, `<br> `pastel pink check patterned pleated mini skirt, high school student, cherry blossom,  `<br> `cherry blossoms blooming,beautiful sky, sunny, petals, cute,`<br><br> **AIの行動:**<br> `generate_image`を、引数に`model='imagen-4.0-ultra-generate-001', sampleImageSize='2k',`<br>` aspectRatio=16:9,prompt='masterpiece, best quality, beautiful japanese anime-style`<br>` illustration, 18 years old female, black long hair , bangs, circle eyes, beautiful`<br>` pale pink eyes, white shirts, red  ribbon bow tie, beige school jacket, pastel pink`<br>` check patterned pleated mini skirt, high school student, cherry`<br>` blossom, cherry blossoms blooming, beautiful sky, sunny, petals, cute,`<br>を渡して実行。 | <a href="./images/image02.png" target="_blank"><img src="./images/image02.png" alt="デモ画像のサムネイル" width="300"></a>|
 | モデルが生成した画像を編集した例<br><br>**ユーザー:**<br>`上記の画像を笑顔にして手を振らせて。` <br><br> **AIの行動:**<br> `edit_image`を、引数に`source_image_message_index=1, `<br>`prompt='make her smile and wave her hand`<br>を渡して実行。 | <a href="./images/image03.png" target="_blank"><img src="./images/image03.png" alt="デモ画像のサムネイル" width="300"></a>|
 | シンプルな日本語で動画生成を指示した例(※無料枠は不可)<br><br>**ユーザー:**<br>`上記の画像を動画にして。` <br><br> **AIの行動:**<br> `edit_image`を、引数に`source_image_message_index=1, `<br>`prompt='make her smile and wave her hand`<br>を渡して実行。 | <a href="./images/gif01.gif" target="_blank"><img src="./images/gif01.gif" alt="動画のサムネイル（クリックで再生）" width="300"></a>|
@@ -80,8 +80,10 @@ Version 0.4では、テキストだけでなく画像や動画を扱う**マル�
     *   動画を生成させる場合、入力トークンと出力トークンの制限には気を付けて下さい。特に添付画像を使用した動画生成や、設定でmaxtokenの設定を行っている場合はエラーが発生する可能性があります。
     *   **1回の送受信で複数回のリクエストが消費される**ことがあります。例えば、「イラストを描いて」という指示に対し、AIは「①Function Callingで画像を生成 → ②生成結果を元にテキスト応答を生成」というステップを踏むため、内部的にAPIリクエストが複数回発生します。自動リトライ機能が作動した場合も同様にカウントが消費されますので、ご注意ください。
 
-*   **2025/09現在、`gemini-2.5-pro`モデルにて過負荷によるエラーが発生しています。FunctionCalling実行中にエラーが発生したい場合は最初からリトライになります。**
-*   **動画生成に関してはRPDが10と非常に少なく、デバッグが進まないため現在テスト実装になります。バグはあるものだと思って下さい。**
+
+*   **マルチモーダルモデルはNSFW規制が厳し目です。入力/出力に陰部や乳首等が含まれるとエラーを返します。文章と違い、脱獄は現時点では出来ないようです。（着衣越しなら微エロは出せます🎉）**
+*   **2025/09現在、`gemini-2.5-pro`モデルにて過負荷によるエラーが多発しています。FunctionCalling実行中にエラーが発生した場合は最初からリトライになります。**
+*   **動画生成に関してはRPDが10と非常に少なく、デバッグが進まないため現在テスト実装になります。バグはあるものだと思って下さい。現段階では動画をIndexedDBに保存する処理を入れていないのでリロードしたら消えます。**
 
 ## 主な機能
 
@@ -390,7 +392,7 @@ AIがユーザーの意図を汲み取り、事前に用意された様々な「
     *   ファイルのドラッグ&ドロップ添付に対応。
     *   `search_web`関数使用時の出典元表示に対応。
     *   新しい画像出力モデル`gemini-2.5-flash-image-preview (Nano Banana)`にテスト対応。
-    *   設定に「全ての応答でFunctionCallingを強制する」
+    *   設定に「全ての応答でFunctionCallingを強制する」を追加。
 *   **修正・改善**
     *   途中のメッセージでリトライを行うと、それ以降の応答が消えないバグを修正。
     *   会話履歴にサイズの大きいファイル（ソースコード等）が含まれている場合に、後続のメッセージを送信するとネットワークエラーが発生する不具合を修正。
