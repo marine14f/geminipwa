@@ -3187,19 +3187,47 @@ const appLogic = {
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') {
                 console.log("[App] アプリがアクティブになりました。UIの同期を確認します。");
-                // 現在のstate上のメッセージ数
+                
                 const stateMessageCount = state.currentMessages.length;
-                // 現在DOM上に表示されているメッセージ数
                 const domMessageCount = elements.messageContainer.querySelectorAll('.message').length;
 
                 console.log(`[App] State上のメッセージ数: ${stateMessageCount}, DOM上のメッセージ数: ${domMessageCount}`);
 
-                // stateとDOMの数が一致しない場合、stateを正としてUIを全再描画する
-                if (stateMessageCount !== domMessageCount) {
-                    console.warn("[App] StateとDOMのメッセージ数に不整合を検知しました。UIを強制的に再描画します。");
-                    uiUtils.renderChatMessages();
+                // ★★★ ここからが修正箇所 ★★★
+                // stateがDOMより多い場合（バックグラウンドでメッセージが追加された場合）
+                if (stateMessageCount > domMessageCount) {
+                    console.warn(`[App] StateとDOMのメッセージ数に不整合を検知しました (${stateMessageCount - domMessageCount}件の差分)。差分を描画します。`);
+
+                    // 足りない分のメッセージだけを描画する
+                    for (let i = domMessageCount; i < stateMessageCount; i++) {
+                        const msg = state.currentMessages[i];
+                        if (!msg) continue;
+
+                        console.log(`[App] 差分メッセージ (index: ${i}) をDOMに追加します。`);
+                        
+                        // 既存のappendMessageロジックを流用
+                        let cascadeInfo = null;
+                        if (msg.isCascaded && msg.siblingGroupId) {
+                            const siblings = state.currentMessages.filter(
+                                m => m.siblingGroupId === msg.siblingGroupId && !m.isHidden
+                            );
+                            const currentIndexInGroup = siblings.findIndex(m => m === msg);
+                            cascadeInfo = {
+                                currentIndex: currentIndexInGroup + 1,
+                                total: siblings.length,
+                                siblingGroupId: msg.siblingGroupId
+                            };
+                        }
+                        uiUtils.appendMessage(msg.role, msg.content, i, false, cascadeInfo, msg.attachments);
+                    }
+                    
+                    // 最後にPrismでハイライトを再適用し、一番下までスクロール
+                    if (window.Prism) {
+                        Prism.highlightAll();
+                    }
                     uiUtils.scrollToBottom();
                 }
+                // ★★★ 修正ここまで ★★★
             }
         });
 
