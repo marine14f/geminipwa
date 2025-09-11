@@ -56,7 +56,8 @@
     --bg-header: var(--header-color-custom, var(--header-color-default));
     --bg-message-actions: rgba(255, 255, 255, 0.9);
     --message-bubble-opacity: 1;
-    --bg-overlay-light: rgba(255, 255, 255, 0.75);
+    --overlay-opacity-value: 0.75;
+    --bg-overlay-light: rgba(255, 255, 255, var(--overlay-opacity-value));
 
     --text-primary: #212121;
     --text-secondary: #757575;
@@ -90,8 +91,8 @@ body.dark-mode {
     --bg-button: #90caf9;
     --bg-button-hover: #e3f2fd;
     --bg-button-disabled: rgba(255, 255, 255, 0.12);
-    --bg-button-action: #bdbdbd;
-    --bg-button-action-hover: #e0e0e0;
+    --bg-button-action: #424242;
+    --bg-button-action-hover: #616161;
     --bg-button-delete: #ef9a9a;
     --bg-button-delete-hover: #ffcdd2;
     --bg-button-retry: #a5d6a7;
@@ -108,10 +109,10 @@ body.dark-mode {
     --bg-button-cancel-hover: #e0e0e0;
     --bg-button-update: #90caf9;
     --bg-button-update-hover: #e3f2fd;
-    --header-color-default: #1e1e1e;
+    --header-color-default: #007aff;
     --bg-header: var(--header-color-custom, var(--header-color-default));
     --bg-message-actions: rgba(40, 40, 40, 0.9);
-    --bg-overlay-dark: rgba(18, 18, 18, 0.75);
+    --bg-overlay-dark: rgba(18, 18, 18, var(--overlay-opacity-value));
 
     --text-primary: #e0e0e0;
     --text-secondary: #bdbdbd;
@@ -317,22 +318,30 @@ body.dark-mode .new-chat-button {
 
 /* --- Chat Screen --- */
 #chat-screen {
-    background-image: var(--chat-background-image);
+    position: relative;
+    z-index: 0;
     background-size: cover;
-    background-position: center center;
+    background-position: center;
+    background-image: var(--chat-background-image-main);
+    /* フェードインは一旦廃止し、シンプルな切り替えにする */
+    transition: background-image 0.3s ease-in-out; 
 }
-#chat-screen::before {
+
+#chat-overlay {
     content: '';
     position: absolute;
     inset: 0;
-    background-color: var(--bg-overlay-light);
-    z-index: -1;
-    transition: background-color var(--transition-duration) var(--transition-timing);
     pointer-events: none;
+    background-color: var(--bg-overlay-light);
+    opacity: var(--overlay-opacity-value, 0.75);
+    transition: opacity 0.5s ease-in-out, background-color var(--transition-duration) var(--transition-timing);
+    z-index: 0; /* コンテンツより後ろ、背景より手前 */
 }
-body.dark-mode #chat-screen::before {
+
+body.dark-mode #chat-overlay {
     background-color: var(--bg-overlay-dark);
 }
+
 .main-content {
     flex-grow: 1;
     overflow-y: auto;
@@ -495,11 +504,7 @@ body.dark-mode .message-cascade-controls .cascade-delete-btn {
     flex-shrink: 0;
     border-radius: 50%;
 }
-#attach-file-btn {
-    background-color: transparent;
-    color: var(--text-secondary);
-    box-shadow: none;
-}
+
 body.dark-mode #attach-file-btn {
     color: var(--text-primary);
 }
@@ -618,7 +623,6 @@ body.dark-mode #attach-file-btn {
 .message-edit-actions .save-edit-btn:hover { background-color: var(--bg-button-save-hover); }
 .message-edit-actions .cancel-edit-btn { background-color: var(--bg-button-cancel); }
 .message-edit-actions .cancel-edit-btn:hover { background-color: var(--bg-button-cancel-hover); }
-.attachment-badge { position: absolute; top: -2px; right: -2px; width: var(--badge-size); height: var(--badge-size); background-color: var(--badge-color); border-radius: 50%; border: 1px solid var(--bg-primary); display: none; pointer-events: none; }
 .chat-input-area button#attach-file-btn.has-attachments .attachment-badge { display: block; }
 #loading-indicator { position: fixed; bottom: 70px; right: 20px; background-color: var(--bg-tertiary); color: var(--text-secondary); padding: 6px 12px; border-radius: 15px; font-size: 11px; z-index: 3; box-shadow: var(--shadow-2); transition: opacity 0.3s ease, transform 0.3s ease, visibility 0.3s ease; opacity: 0; visibility: hidden; transform: translateY(10px); pointer-events: none; }
 #loading-indicator:not(.hidden) { opacity: 1; visibility: visible; transform: translateY(0); }
@@ -676,7 +680,30 @@ input[type="color"]::-moz-color-swatch { border: 1px solid var(--border-primary)
 #fileUploadDialog { min-width: 320px; max-width: 600px; width: 90%; }
 .dialog-content { margin-bottom: 20px; }
 .file-upload-area { margin-bottom: 15px; text-align: center; }
-.file-upload-area .dialog-button { padding: 10px 20px; font-size: 14px; }
+.file-upload-area .dialog-button {
+    /* ボタンらしい見た目を再現するためのスタイル */
+    display: inline-block; /* 中央揃えとpaddingを正しく適用するため */
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 500;
+    text-transform: uppercase;
+    color: var(--text-light);
+    background-color: var(--bg-button);
+    border: none;
+    border-radius: var(--border-radius-sm);
+    box-shadow: var(--shadow-1);
+    cursor: pointer;
+    text-align: center;
+    user-select: none; /* テキスト選択を防止 */
+    -webkit-tap-highlight-color: transparent; /* モバイルでのタップ時のハイライトを無効化 */
+    transition: background-color var(--transition-duration) var(--transition-timing), box-shadow var(--transition-duration) var(--transition-timing);
+}
+
+/* ホバー時のスタイルも追加 */
+.file-upload-area .dialog-button:hover {
+    background-color: var(--bg-button-hover);
+    box-shadow: var(--shadow-2);
+}
 #selected-files-list { list-style: none; padding: 0; margin: 0; max-height: 200px; overflow-y: auto; border: 1px solid var(--border-secondary); border-radius: 5px; background-color: var(--bg-secondary); }
 .selected-file-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--border-tertiary); background-color: var(--bg-tertiary); }
 .selected-file-item:last-child { border-bottom: none; }
@@ -779,4 +806,522 @@ body.dark-mode .message-cascade-controls .cascade-delete-btn {
 }
 .message.retrying-hidden {
     display: none !important;
+}
+/* --- Layered Image Display --- */
+.layered-image-container {
+    position: relative;
+    display: block;
+    overflow: hidden;
+    border-radius: var(--border-radius-md);
+    background-color: var(--bg-tertiary);
+    max-width: 80%;
+    margin: var(--spacing-unit) auto;
+    cursor: pointer; /* クリック可能であることを示す */
+    /* aspect-ratio はJavaScriptによって動的に設定されます */
+}
+
+.layered-background-image {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-size: cover;
+    background-position: center;
+    z-index: 1;
+}
+
+.layered-character-image {
+    position: relative; /* 背景の上に重なるように */
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    z-index: 2;
+}
+
+.layered-image-error {
+    padding: var(--spacing-unit);
+    color: var(--text-error);
+    background-color: var(--bg-error-message);
+    border: 1px solid var(--border-danger);
+    border-radius: var(--border-radius-sm);
+    font-size: 0.8rem;
+    text-align: center;
+}
+
+.thought-summary-details {
+    margin-bottom: 10px;
+    font-size: 13px;
+    border: 1px solid var(--border-tertiary);
+    border-radius: 5px;
+    background-color: var(--bg-tertiary);
+}
+.thought-summary-details summary {
+    cursor: pointer;
+    font-weight: 500;
+    color: var(--text-secondary);
+    list-style: none;
+    padding: 6px 10px;
+    outline: none;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    user-select: none;
+}
+.thought-summary-details summary::before {
+    content: '🧠';
+    font-size: 14px;
+    display: inline-block;
+}
+.thought-summary-details {
+    margin-bottom: 10px;
+    font-size: 13px;
+    border: 1px solid var(--border-tertiary);
+    border-radius: 5px;
+    background-color: var(--bg-secondary);
+}
+
+.thought-summary-content ul,
+.thought-summary-content ol {
+    padding-left: 2em; 
+}
+
+.thought-summary-content {
+    padding: 8px 10px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-primary);
+    word-wrap: break-word;
+}
+
+.thought-summary-content {
+    padding: 8px 10px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-primary);
+    word-wrap: break-word;
+}
+
+/* --- Prism.js Custom Overrides --- */
+.message-content pre[class*="language-"],
+.message-content pre[class*="language-"] code {
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* --- Drag and Drop Styles --- */
+#chat-screen.drag-over::after {
+    content: 'ここにファイルをドロップ';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: var(--text-light);
+    background-color: rgba(0, 0, 0, 0.5);
+    border: 3px dashed var(--bg-button);
+    border-radius: var(--border-radius-lg);
+    margin: var(--spacing-unit);
+    z-index: 100;
+    pointer-events: none; /* After要素がイベントを奪わないように */
+}
+
+body.dark-mode #chat-screen.drag-over::after {
+    color: var(--text-primary);
+    background-color: rgba(255, 255, 255, 0.5);
+}
+
+/* --- Attachment Button Badge Fix --- */
+#attach-file-btn {
+    position: relative;
+    background-color: transparent;
+    color: var(--text-secondary);
+    box-shadow: none;
+    display: grid; /* Gridレイアウトで重ね合わせる */
+    place-items: center;
+    overflow: visible; /* バッジがはみ出せるように */
+}
+
+#attach-file-btn .attach-icon-container,
+#attach-file-btn .attach-badge-container {
+    grid-area: 1 / 1; /* アイコンとバッジを同じセルに配置 */
+}
+
+#attach-file-btn .attach-icon-container {
+    z-index: 1; /* アイコンを奥に */
+}
+
+#attach-file-btn .attach-badge-container {
+    z-index: 2; /* バッジコンテナを手前に */
+    width: 100%;
+    height: 100%;
+    position: relative; /* バッジの配置基準 */
+}
+
+.attachment-badge {
+    position: absolute;
+    top: 5px;   /* 位置を微調整 */
+    right: 5px; /* 位置を微調整 */
+    width: var(--badge-size);
+    height: var(--badge-size);
+    background-color: var(--badge-color);
+    border-radius: 50%;
+    border: 1px solid var(--bg-primary);
+    display: none;
+}
+
+/* 既存の表示切り替えルールはそのまま利用 */
+.chat-input-area button#attach-file-btn.has-attachments .attachment-badge {
+    display: block;
+}
+
+/* --- Function Call & Search Results Details --- */
+.function-call-details {
+    margin-top: var(--spacing-unit);
+    font-size: 0.8rem;
+    border-top: 1px dashed var(--border-secondary); /* 上部に点線の区切り */
+    padding-top: var(--spacing-unit);
+}
+.function-call-details summary {
+    cursor: pointer;
+    font-weight: 500;
+    color: var(--text-secondary);
+    list-style: none;
+    padding: 0 0 4px 0; /* 下方向の余白を少し確保 */
+    outline: none;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    user-select: none;
+}
+.function-call-details[open] summary {
+    margin-bottom: 6px; /* 展開時にリストとの間に少し余白 */
+}
+.function-call-list {
+    padding-left: 25px; /* リストのインデント */
+    margin: 0;
+    font-size: 0.8rem;
+    line-height: 1.6;
+}
+.function-call-list li {
+    margin-bottom: 4px;
+}
+
+/* --- 連続するツールブロックの区切り線を消す --- */
+.function-call-details + .function-call-details {
+    border-top: none;
+    padding-top: 0;
+    margin-top: calc(var(--spacing-unit) / 2); /* 連続する場合のブロック間の余白を少し詰める */
+}
+
+/* --- Image Modal Styles --- */
+#image-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.85);
+    z-index: 1000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+#image-modal-img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: var(--border-radius-md);
+    box-shadow: var(--shadow-5);
+}
+
+#image-modal-close {
+    position: absolute;
+    top: 20px;
+    right: 30px;
+    font-size: 30px;
+    color: white;
+    cursor: pointer;
+    font-weight: bold;
+    line-height: 1;
+    text-shadow: 0 0 5px black;
+}
+
+/* --- Profile Card Styles (Header) --- */
+.app-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+}
+.app-header h1#chat-title {
+    margin: 0;
+    margin-right: auto;
+    font-size: 1.1rem;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-grow: 1;
+    min-width: 50px;
+}
+.profile-card-wrapper {
+    position: relative;
+    flex-shrink: 0;
+}
+.profile-card {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: background-color var(--transition-duration) var(--transition-timing);
+    max-width: 180px;
+    /* ▼▼▼ ここからが修正箇所 ▼▼▼ */
+    background-color: rgba(255, 255, 255, 0.1); /* 背景を少し明るく */
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+.profile-card:hover {
+    background-color: rgba(255, 255, 255, 0.2); /* ホバー時も少し明るく */
+}
+.profile-icon-container {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(255, 255, 255, 0.3); /* アイコン背景をさらに明るく */
+    overflow: hidden;
+}
+/* ▲▲▲ 修正ここまで ▲▲▲ */
+.profile-icon-container img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.profile-icon-container .material-symbols-outlined {
+    font-size: 24px;
+    color: var(--text-light);
+}
+.profile-card-name {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-light);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-right: 4px;
+}
+.profile-card-arrow {
+    font-size: 20px;
+    color: var(--text-light);
+}
+.app-header .header-button,
+.app-header .new-chat-button {
+    flex-shrink: 0;
+}
+
+/* --- Profile Menu (Dropdown) --- */
+.profile-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    background-color: var(--bg-primary);
+    border-radius: var(--border-radius-md);
+    box-shadow: var(--shadow-3);
+    z-index: 100;
+    overflow: hidden;
+    min-width: 180px;
+    border: 1px solid var(--border-primary);
+}
+.profile-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: background-color var(--transition-duration) var(--transition-timing);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+.profile-menu-item:hover {
+    background-color: var(--bg-tertiary);
+}
+.profile-menu-item.active {
+    font-weight: 700;
+    background-color: var(--bg-secondary);
+}
+.profile-menu-item .profile-icon-container {
+    width: 24px;
+    height: 24px;
+}
+.profile-menu-item .material-symbols-outlined {
+    font-size: 20px;
+}
+
+/* --- Profile Management Styles (Settings Screen) --- */
+#profile-management-group {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
+    padding-bottom: 12px; /* ボタンとの余白を調整 */
+}
+
+/* ▼▼▼ 「プロファイル編集」の文字を削除 ▼▼▼ */
+#profile-management-group h3 {
+    display: none;
+}
+
+.profile-display-card {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background-color: var(--bg-tertiary);
+    padding: 12px 16px;
+    border-radius: var(--border-radius-lg);
+    margin-bottom: 16px; /* ボタンとの余白を調整 */
+    border: 1px solid var(--border-primary);
+    box-shadow: var(--shadow-1);
+}
+.profile-display-icon-wrapper {
+    position: relative;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.profile-display-icon-wrapper label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    overflow: hidden;
+    background-color: var(--bg-secondary);
+    cursor: pointer;
+}
+.profile-display-icon-wrapper img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.profile-display-icon-wrapper .default-icon-placeholder .material-symbols-outlined {
+    font-size: 40px;
+    color: var(--text-secondary);
+}
+.profile-display-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex-grow: 1;
+    min-width: 0;
+}
+.profile-display-name-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.profile-display-name-main {
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.profile-display-name-sub {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.profile-display-status {
+    display: none;
+}
+
+.icon-button {
+    background: none;
+    border: none;
+    padding: 4px;
+    box-shadow: none;
+    color: var(--text-secondary);
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.icon-button .material-symbols-outlined {
+    font-size: 18px;
+}
+.icon-button:hover {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+.icon-button-overlay {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    background-color: var(--bg-button-delete);
+    color: var(--text-light) !important;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    opacity: 0;
+    transition: opacity var(--transition-duration) var(--transition-timing);
+}
+.profile-display-icon-wrapper:hover .icon-button-overlay {
+    opacity: 1;
+}
+.icon-button-overlay .material-symbols-outlined {
+    font-size: 16px;
+}
+.profile-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 12px;
+    margin-top: 0; /* ★ 罫線を消したのでmarginをリセット */
+    border-top: none; /* ★ 罫線を削除 */
+    padding-top: 0; /* ★ 罫線を消したのでpaddingをリセット */
+}
+.profile-actions button {
+    font-size: 0.8rem;
+    padding: 8px 12px;
+    justify-content: flex-start;
+    /* ▼▼▼ ボタンの色を変更 ▼▼▼ */
+    background-color: var(--bg-button-action);
+    color: var(--text-light);
+}
+.profile-actions button:hover {
+    background-color: var(--bg-button-action-hover);
+}
+/* ダークモード時のボタン文字色を調整 */
+body.dark-mode .profile-actions button {
+    color: var(--text-primary);
+}
+
+/* --- Profile Management Button Color Fix --- */
+
+/* 基本のボタンスタイル */
+#profile-management-group .profile-actions button {
+    background-color: var(--bg-button-action);
+    color: var(--text-light);
+}
+#profile-management-group .profile-actions button:hover {
+    background-color: var(--bg-button-action-hover);
+}
+
+/* ダークモード時のボタンスタイルを明示的に指定 */
+body.dark-mode #profile-management-group .profile-actions button {
+    background-color: #424242; /* より暗いグレー */
+    color: var(--text-primary);
+}
+body.dark-mode #profile-management-group .profile-actions button:hover {
+    background-color: #616161; /* ホバー時も暗めのグレー */
 }
