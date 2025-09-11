@@ -3076,6 +3076,39 @@ const appLogic = {
             uiUtils.adjustTextareaHeight();
             uiUtils.setSendingState(false);
             uiUtils.scrollToBottom();
+
+            // ★★★ ここからがメモリ計測用のコード ★★★
+            // 1. 定期的にメモリ使用量をログに出力 (5秒ごと)
+            setInterval(() => {
+                if (performance.memory) {
+                    const usedMB = (performance.memory.usedJSHeapSize / 1024 / 1024).toFixed(2);
+                    console.log(`[Memory Check] 現在のJSヒープメモリ使用量: ${usedMB} MB`);
+                }
+            }, 5000);
+
+            // 2. 手動チェック用のデバッグボタンをヘッダーに追加
+            const memoryCheckButton = document.createElement('button');
+            memoryCheckButton.innerHTML = `<span class="material-symbols-outlined" style="font-size: 18px;">memory</span>`;
+            memoryCheckButton.title = "メモリ使用量を確認";
+            memoryCheckButton.style.position = 'fixed';
+            memoryCheckButton.style.top = '60px';
+            memoryCheckButton.style.right = '10px';
+            memoryCheckButton.style.zIndex = '100';
+            memoryCheckButton.style.opacity = '0.7';
+            memoryCheckButton.onclick = () => {
+                if (performance.memory) {
+                    const usedMB = (performance.memory.usedJSHeapSize / 1024 / 1024).toFixed(2);
+                    const totalMB = (performance.memory.totalJSHeapSize / 1024 / 1024).toFixed(2);
+                    const limitMB = (performance.memory.jsHeapSizeLimit / 1024 / 1024).toFixed(2);
+                    const message = `[Manual Memory Check]\n使用量: ${usedMB} MB\n確保済み: ${totalMB} MB\n上限: ${limitMB} MB`;
+                    console.log(message);
+                    uiUtils.showCustomAlert(message);
+                } else {
+                    uiUtils.showCustomAlert("お使いのブラウザではメモリ計測APIはサポートされていません。");
+                }
+            };
+            document.body.appendChild(memoryCheckButton);
+            // ★★★ メモリ計測コードここまで ★★★
         }
     },
 
