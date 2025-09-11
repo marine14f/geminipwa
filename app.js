@@ -3028,10 +3028,8 @@ const appLogic = {
         return settings;
     },
 
-
     // アプリ初期化
     async initializeApp() {
-
         if (typeof marked !== 'undefined') {
             const renderer = new marked.Renderer();
             const originalLinkRenderer = renderer.link;
@@ -3071,7 +3069,47 @@ const appLogic = {
         try {
             await dbUtils.openDB();
 
-            // ★★★ 移行ロジックを削除し、loadProfilesを呼ぶだけに修正 ★★★
+            let profiles = await dbUtils.getAllProfiles();
+            if (profiles.length === 0) {
+                console.log("[Migration] プロファイルが存在しないため、旧設定からのデータ移行処理を実行します。");
+                const oldSettingsArray = await new Promise((resolve, reject) => {
+                    const store = dbUtils._getStore(SETTINGS_STORE);
+                    const request = store.getAll();
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+                
+                if (oldSettingsArray.length > 0) {
+                    const oldSettingsObject = {};
+                    oldSettingsArray.forEach(item => {
+                        oldSettingsObject[item.key] = item.value;
+                    });
+
+                    const initialProfileSettings = { ...state.settings, ...oldSettingsObject };
+                    delete initialProfileSettings.backgroundImageBlob;
+
+                    const defaultProfile = {
+                        name: "デフォルトプロファイル",
+                        icon: null,
+                        createdAt: Date.now(),
+                        settings: initialProfileSettings
+                    };
+
+                    const newId = await dbUtils.addProfile(defaultProfile);
+                    
+                    await new Promise((resolve, reject) => {
+                        const store = dbUtils._getStore(SETTINGS_STORE, 'readwrite');
+                        store.clear().onsuccess = () => resolve();
+                        store.transaction.onerror = () => reject(store.transaction.error);
+                    });
+                    await dbUtils.saveSetting('activeProfileId', newId);
+                    
+                    console.log("[Migration] データ移行が完了しました。");
+                } else {
+                    console.log("[Migration] 移行すべき古い設定データが見つかりませんでした。新規プロファイルを作成します。");
+                }
+            }
+
             await this.loadProfiles();
 
             const chats = await dbUtils.getAllChats(state.settings.historySortOrder);
@@ -3096,7 +3134,6 @@ const appLogic = {
             uiUtils.adjustTextareaHeight();
             uiUtils.setSendingState(false);
             uiUtils.scrollToBottom();
-            
         }
     },
 
