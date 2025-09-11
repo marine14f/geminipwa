@@ -27,8 +27,20 @@
             <header class="app-header">
                 <button id="goto-history-btn" class="header-button" title="履歴一覧へ"><span class="material-symbols-outlined">menu</span></button>
                 <h1 id="chat-title">新規チャット</h1>
+                
+                <!-- ▼▼▼ ここからが修正箇所 ▼▼▼ -->
+                <div id="profile-card-header-wrapper" class="profile-card-wrapper">
+                    <div id="profile-card-header" class="profile-card" title="プロファイルを切り替え">
+                        <div id="profile-card-icon-container" class="profile-icon-container"></div>
+                        <span id="profile-card-name" class="profile-card-name"></span>
+                        <span class="material-symbols-outlined profile-card-arrow">arrow_drop_down</span>
+                    </div>
+                    <div id="header-profile-menu" class="profile-menu hidden"></div>
+                </div>
+                
                 <button id="new-chat-btn" class="new-chat-button" title="新規チャットを開始"><span class="material-symbols-outlined">add</span></button>
                 <button id="goto-settings-btn" class="header-button" title="設定へ"><span class="material-symbols-outlined">settings</span></button>
+                <!-- ▲▲▲ 修正ここまで ▲▲▲ -->
             </header>
             <main class="main-content">
                 <!-- システムプロンプト表示/編集エリア -->
@@ -103,10 +115,50 @@
             <header class="app-header">
                  <button id="back-to-chat-from-settings" class="header-button" title="チャットへ戻る"><span class="material-symbols-outlined">arrow_back_ios</span></button>
                  <h1>設定</h1>
-                 <span id="settings-save-notice" class="header-notice">※反映には保存が必要</span>
-                 <button class="js-save-settings-btn header-save-button" title="設定を保存">設定を保存</button>
+                 <div id="profile-card-header-wrapper-settings" class="profile-card-wrapper">
+                    <div id="profile-card-header-settings" class="profile-card" title="プロファイルを切り替え">
+                        <div id="profile-card-icon-container-settings" class="profile-icon-container"></div>
+                        <span id="profile-card-name-settings" class="profile-card-name"></span>
+                        <span class="material-symbols-outlined profile-card-arrow">arrow_drop_down</span>
+                    </div>
+                    <div id="header-profile-menu-settings" class="profile-menu hidden"></div>
+                 </div>
             </header>
             <main class="main-content">
+                <div class="settings-group" id="profile-management-group">
+                    <h3>プロファイル編集</h3>
+                    <div id="profile-display-card" class="profile-display-card">
+                        <div class="profile-display-icon-wrapper">
+                            <label for="profile-icon-input" title="アイコンを変更">
+                                <img id="profile-display-icon" src="" alt="プロファイルアイコン">
+                                <div class="default-icon-placeholder">
+                                    <span class="material-symbols-outlined">account_circle</span>
+                                </div>
+                            </label>
+                            <button id="profile-reset-icon-btn" class="icon-button icon-button-overlay" title="アイコンをリセット">
+                                <span class="material-symbols-outlined">delete</span>
+                            </button>
+                        </div>
+                        <div class="profile-display-text">
+                            <div class="profile-display-name-wrapper">
+                                <span id="profile-display-name-main"></span>
+                                <button id="profile-edit-name-btn" class="icon-button" title="プロファイル名を編集"><span class="material-symbols-outlined">edit</span></button>
+                            </div>
+                            <span id="profile-display-name-sub"></span>
+                        </div>
+                        <div id="profile-display-status" class="profile-display-status"></div>
+                    </div>
+                    <input type="file" id="profile-icon-input" accept="image/jpeg, image/png, image/gif, image/webp" class="hidden">
+
+                    <div class="profile-actions">
+                        <button id="profile-save-new-btn" title="現在の設定を新規プロファイルとして保存"><span class="material-symbols-outlined">person_add</span>新規保存</button>
+                        <button id="profile-update-btn" title="現在の設定を上書き保存"><span class="material-symbols-outlined">save</span>上書き保存</button>
+                        <button id="profile-delete-btn" title="選択中のプロファイルを削除"><span class="material-symbols-outlined">person_cancel</span>削除</button>
+                        <button id="profile-export-btn" title="選択中のプロファイルをファイルに出力"><span class="material-symbols-outlined">upload</span>出力</button>
+                        <button id="profile-import-btn" title="プロファイルをファイルから読み込み"><span class="material-symbols-outlined">download</span>取込</button>
+                        <input type="file" id="profile-import-input" accept=".json,application/json" class="hidden">
+                    </div>
+                </div>
                 <div class="settings-group">
                     <h3>基本設定</h3>
                     <label for="api-key">Gemini APIキー:</label>

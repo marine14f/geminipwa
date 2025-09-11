@@ -91,8 +91,8 @@ body.dark-mode {
     --bg-button: #90caf9;
     --bg-button-hover: #e3f2fd;
     --bg-button-disabled: rgba(255, 255, 255, 0.12);
-    --bg-button-action: #bdbdbd;
-    --bg-button-action-hover: #e0e0e0;
+    --bg-button-action: #424242;
+    --bg-button-action-hover: #616161;
     --bg-button-delete: #ef9a9a;
     --bg-button-delete-hover: #ffcdd2;
     --bg-button-retry: #a5d6a7;
@@ -109,7 +109,7 @@ body.dark-mode {
     --bg-button-cancel-hover: #e0e0e0;
     --bg-button-update: #90caf9;
     --bg-button-update-hover: #e3f2fd;
-    --header-color-default: #1e1e1e;
+    --header-color-default: #007aff;
     --bg-header: var(--header-color-custom, var(--header-color-default));
     --bg-message-actions: rgba(40, 40, 40, 0.9);
     --bg-overlay-dark: rgba(18, 18, 18, var(--overlay-opacity-value));
@@ -1047,4 +1047,281 @@ body.dark-mode #chat-screen.drag-over::after {
     font-weight: bold;
     line-height: 1;
     text-shadow: 0 0 5px black;
+}
+
+/* --- Profile Card Styles (Header) --- */
+.app-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+}
+.app-header h1#chat-title {
+    margin: 0;
+    margin-right: auto;
+    font-size: 1.1rem;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-grow: 1;
+    min-width: 50px;
+}
+.profile-card-wrapper {
+    position: relative;
+    flex-shrink: 0;
+}
+.profile-card {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: background-color var(--transition-duration) var(--transition-timing);
+    max-width: 180px;
+    /* ▼▼▼ ここからが修正箇所 ▼▼▼ */
+    background-color: rgba(255, 255, 255, 0.1); /* 背景を少し明るく */
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+.profile-card:hover {
+    background-color: rgba(255, 255, 255, 0.2); /* ホバー時も少し明るく */
+}
+.profile-icon-container {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(255, 255, 255, 0.3); /* アイコン背景をさらに明るく */
+    overflow: hidden;
+}
+/* ▲▲▲ 修正ここまで ▲▲▲ */
+.profile-icon-container img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.profile-icon-container .material-symbols-outlined {
+    font-size: 24px;
+    color: var(--text-light);
+}
+.profile-card-name {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-light);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-right: 4px;
+}
+.profile-card-arrow {
+    font-size: 20px;
+    color: var(--text-light);
+}
+.app-header .header-button,
+.app-header .new-chat-button {
+    flex-shrink: 0;
+}
+
+/* --- Profile Menu (Dropdown) --- */
+.profile-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    background-color: var(--bg-primary);
+    border-radius: var(--border-radius-md);
+    box-shadow: var(--shadow-3);
+    z-index: 100;
+    overflow: hidden;
+    min-width: 180px;
+    border: 1px solid var(--border-primary);
+}
+.profile-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: background-color var(--transition-duration) var(--transition-timing);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+.profile-menu-item:hover {
+    background-color: var(--bg-tertiary);
+}
+.profile-menu-item.active {
+    font-weight: 700;
+    background-color: var(--bg-secondary);
+}
+.profile-menu-item .profile-icon-container {
+    width: 24px;
+    height: 24px;
+}
+.profile-menu-item .material-symbols-outlined {
+    font-size: 20px;
+}
+
+/* --- Profile Management Styles (Settings Screen) --- */
+#profile-management-group {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
+    padding-bottom: 12px; /* ボタンとの余白を調整 */
+}
+
+/* ▼▼▼ 「プロファイル編集」の文字を削除 ▼▼▼ */
+#profile-management-group h3 {
+    display: none;
+}
+
+.profile-display-card {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background-color: var(--bg-tertiary);
+    padding: 12px 16px;
+    border-radius: var(--border-radius-lg);
+    margin-bottom: 16px; /* ボタンとの余白を調整 */
+    border: 1px solid var(--border-primary);
+    box-shadow: var(--shadow-1);
+}
+.profile-display-icon-wrapper {
+    position: relative;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.profile-display-icon-wrapper label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    overflow: hidden;
+    background-color: var(--bg-secondary);
+    cursor: pointer;
+}
+.profile-display-icon-wrapper img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.profile-display-icon-wrapper .default-icon-placeholder .material-symbols-outlined {
+    font-size: 40px;
+    color: var(--text-secondary);
+}
+.profile-display-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex-grow: 1;
+    min-width: 0;
+}
+.profile-display-name-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.profile-display-name-main {
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.profile-display-name-sub {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.profile-display-status {
+    display: none;
+}
+
+.icon-button {
+    background: none;
+    border: none;
+    padding: 4px;
+    box-shadow: none;
+    color: var(--text-secondary);
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.icon-button .material-symbols-outlined {
+    font-size: 18px;
+}
+.icon-button:hover {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+.icon-button-overlay {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    background-color: var(--bg-button-delete);
+    color: var(--text-light) !important;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    opacity: 0;
+    transition: opacity var(--transition-duration) var(--transition-timing);
+}
+.profile-display-icon-wrapper:hover .icon-button-overlay {
+    opacity: 1;
+}
+.icon-button-overlay .material-symbols-outlined {
+    font-size: 16px;
+}
+.profile-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 12px;
+    margin-top: 0; /* ★ 罫線を消したのでmarginをリセット */
+    border-top: none; /* ★ 罫線を削除 */
+    padding-top: 0; /* ★ 罫線を消したのでpaddingをリセット */
+}
+.profile-actions button {
+    font-size: 0.8rem;
+    padding: 8px 12px;
+    justify-content: flex-start;
+    /* ▼▼▼ ボタンの色を変更 ▼▼▼ */
+    background-color: var(--bg-button-action);
+    color: var(--text-light);
+}
+.profile-actions button:hover {
+    background-color: var(--bg-button-action-hover);
+}
+/* ダークモード時のボタン文字色を調整 */
+body.dark-mode .profile-actions button {
+    color: var(--text-primary);
+}
+
+/* --- Profile Management Button Color Fix --- */
+
+/* 基本のボタンスタイル */
+#profile-management-group .profile-actions button {
+    background-color: var(--bg-button-action);
+    color: var(--text-light);
+}
+#profile-management-group .profile-actions button:hover {
+    background-color: var(--bg-button-action-hover);
+}
+
+/* ダークモード時のボタンスタイルを明示的に指定 */
+body.dark-mode #profile-management-group .profile-actions button {
+    background-color: #424242; /* より暗いグレー */
+    color: var(--text-primary);
+}
+body.dark-mode #profile-management-group .profile-actions button:hover {
+    background-color: #616161; /* ホバー時も暗めのグレー */
 }
