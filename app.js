@@ -1167,20 +1167,19 @@ const uiUtils = {
         if (role === 'model' && messageData && messageData.generated_images && messageData.generated_images.length > 0) {
             const imageCacheKeyPrefix = `image-${index}`;
 
-            const createImageElement = (imageData, key) => {
+            const createImageElement = async (imageData, key) => {
                 const img = document.createElement('img');
                 img.alt = '生成された画像';
                 img.style.maxWidth = '100%';
                 img.style.borderRadius = 'var(--border-radius-md)';
                 img.style.marginTop = '8px';
                 
-                // キャッシュを確認し、なければ生成
                 if (state.imageUrlCache.has(key)) {
                     img.src = state.imageUrlCache.get(key);
                     console.log(`[Memory] キャッシュから画像URLを使用 (Key: ${key})`);
                 } else {
                     try {
-                        const blob = base64ToBlob(imageData.data, imageData.mimeType);
+                        const blob = await base64ToBlob(imageData.data, imageData.mimeType); // ★ await を追加
                         const url = URL.createObjectURL(blob);
                         state.imageUrlCache.set(key, url);
                         img.src = url;
@@ -1193,25 +1192,44 @@ const uiUtils = {
                 return img;
             };
 
-            let imageIndex = 0;
-            const replacedHtml = contentDiv.innerHTML.replace(imagePlaceholderRegex, () => {
-                if (imageIndex < messageData.generated_images.length) {
-                    const imageData = messageData.generated_images[imageIndex];
-                    const key = `${imageCacheKeyPrefix}-${imageIndex}`;
-                    imageIndex++;
-                    return createImageElement(imageData, key).outerHTML;
+            const processImages = async () => {
+                let imageIndex = 0;
+                
+                // innerHTMLを直接書き換えるのは非同期処理と相性が悪いので、DOM操作に切り替え
+                const contentNodes = Array.from(contentDiv.childNodes);
+                for (const node of contentNodes) {
+                    if (node.nodeType === Node.TEXT_NODE && imagePlaceholderRegex.test(node.textContent)) {
+                        const fragments = node.textContent.split(imagePlaceholderRegex);
+                        let first = true;
+                        for (const fragment of fragments) {
+                            if (!first) {
+                                if (imageIndex < messageData.generated_images.length) {
+                                    const imageData = messageData.generated_images[imageIndex];
+                                    const key = `${imageCacheKeyPrefix}-${imageIndex}`;
+                                    imageIndex++;
+                                    const imgElement = await createImageElement(imageData, key);
+                                    contentDiv.insertBefore(imgElement, node);
+                                }
+                            }
+                            if (fragment) {
+                                contentDiv.insertBefore(document.createTextNode(fragment), node);
+                            }
+                            first = false;
+                        }
+                        contentDiv.removeChild(node);
+                    }
                 }
-                return '';
-            });
-            contentDiv.innerHTML = replacedHtml;
 
-            if (imageIndex < messageData.generated_images.length) {
-                for (let i = imageIndex; i < messageData.generated_images.length; i++) {
-                    const imageData = messageData.generated_images[i];
-                    const key = `${imageCacheKeyPrefix}-${i}`;
-                    contentDiv.appendChild(createImageElement(imageData, key));
+                if (imageIndex < messageData.generated_images.length) {
+                    for (let i = imageIndex; i < messageData.generated_images.length; i++) {
+                        const imageData = messageData.generated_images[i];
+                        const key = `${imageCacheKeyPrefix}-${i}`;
+                        const imgElement = await createImageElement(imageData, key);
+                        contentDiv.appendChild(imgElement);
+                    }
                 }
-            }
+            };
+            processImages(); // 非同期処理を実行
         }
 
         if (role === 'model' && messageData && messageData.generated_videos && messageData.generated_videos.length > 0) {
