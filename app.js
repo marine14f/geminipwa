@@ -234,6 +234,8 @@ const state = {
     activeProfileId: null, // 現在アクティブなプロファイルのID
     activeProfile: null, // 現在アクティブなプロファイルの完全なデータ
     profileIconUrls: new Map(),
+    videoUrlCache: new Map(),
+    imageUrlCache: new Map(),
     settings: {
         apiKey: '',
         modelName: DEFAULT_MODEL,
@@ -859,6 +861,17 @@ const uiUtils = {
     // チャットメッセージをレンダリング
     // app.js の uiUtils.renderChatMessages を以下に置換
     renderChatMessages() {
+        // ★★★ ここからが修正箇所 ★★★
+        // 再描画の前に、キャッシュされている全ての画像URLを解放する
+        if (state.imageUrlCache.size > 0) {
+            console.log(`[Memory] renderChatMessages: 再描画のため、${state.imageUrlCache.size}個の画像URLを解放します。`);
+            for (const url of state.imageUrlCache.values()) {
+                URL.revokeObjectURL(url);
+            }
+            state.imageUrlCache.clear();
+        }
+        // ★★★ 修正ここまで ★★★
+
         if (state.editingMessageIndex !== null) {
             const messageElement = elements.messageContainer.querySelector(`.message[data-index="${state.editingMessageIndex}"]`);
             if (messageElement) appLogic.cancelEditMessage(state.editingMessageIndex, messageElement);
@@ -866,16 +879,13 @@ const uiUtils = {
         }
         elements.messageContainer.innerHTML = '';
 
-        // 1. 描画すべきメッセージのインデックスリストを作成
         const visibleMessageIndices = [];
         const processedGroupIds = new Set();
 
         state.currentMessages.forEach((msg, index) => {
             if (msg.isHidden) return;
-
             if (msg.isCascaded && msg.siblingGroupId) {
                 if (!processedGroupIds.has(msg.siblingGroupId)) {
-                    // グループ未処理の場合、選択されている兄弟を探して追加
                     const selectedSibling = state.currentMessages.find(
                         m => m.siblingGroupId === msg.siblingGroupId && m.isSelected && !m.isHidden
                     );
@@ -885,17 +895,13 @@ const uiUtils = {
                     processedGroupIds.add(msg.siblingGroupId);
                 }
             } else {
-                // カスケードでないメッセージは常に追加
                 visibleMessageIndices.push(index);
             }
         });
 
-        // 2. 描画リストに基づいてメッセージを生成
         visibleMessageIndices.forEach(index => {
             const msg = state.currentMessages[index];
             if (!msg) return;
-
-            // ツール応答はUIに直接表示しない
             if (msg.role === 'tool') return;
 
             let cascadeInfo = null;
@@ -913,7 +919,6 @@ const uiUtils = {
             this.appendMessage(msg.role, msg.content, index, false, cascadeInfo, msg.attachments);
         });
         
-
         if (window.Prism) {
             Prism.highlightAll();
         }
@@ -1160,36 +1165,51 @@ const uiUtils = {
         // [IMAGE_HERE] を実際の画像に置換する処理
         const imagePlaceholderRegex = /\[IMAGE_HERE\]/g;
         if (role === 'model' && messageData && messageData.generated_images && messageData.generated_images.length > 0) {
-            console.log(`[Debug] appendMessage: ${messageData.generated_images.length}枚の生成画像をレンダリングします。`); 
-            
+            const imageCacheKeyPrefix = `image-${index}`;
+
+            const createImageElement = (imageData, key) => {
+                const img = document.createElement('img');
+                img.alt = '生成された画像';
+                img.style.maxWidth = '100%';
+                img.style.borderRadius = 'var(--border-radius-md)';
+                img.style.marginTop = '8px';
+                
+                // キャッシュを確認し、なければ生成
+                if (state.imageUrlCache.has(key)) {
+                    img.src = state.imageUrlCache.get(key);
+                    console.log(`[Memory] キャッシュから画像URLを使用 (Key: ${key})`);
+                } else {
+                    try {
+                        const blob = base64ToBlob(imageData.data, imageData.mimeType);
+                        const url = URL.createObjectURL(blob);
+                        state.imageUrlCache.set(key, url);
+                        img.src = url;
+                        console.log(`[Memory] 新しい画像URLを生成・キャッシュしました (Key: ${key})`);
+                    } catch (e) {
+                        console.error(`[Memory] BlobまたはObjectURLの生成に失敗しました (Key: ${key}):`, e);
+                        img.alt = '画像表示エラー';
+                    }
+                }
+                return img;
+            };
+
             let imageIndex = 0;
             const replacedHtml = contentDiv.innerHTML.replace(imagePlaceholderRegex, () => {
                 if (imageIndex < messageData.generated_images.length) {
                     const imageData = messageData.generated_images[imageIndex];
+                    const key = `${imageCacheKeyPrefix}-${imageIndex}`;
                     imageIndex++;
-                    const img = document.createElement('img');
-                    img.alt = '生成された画像';
-                    img.style.maxWidth = '100%';
-                    img.style.borderRadius = 'var(--border-radius-md)';
-                    img.style.marginTop = '8px';
-                    img.src = `data:${imageData.mimeType};base64,${imageData.data}`;
-                    return img.outerHTML;
+                    return createImageElement(imageData, key).outerHTML;
                 }
-                return ''; // プレースホルダーが画像の数より多い場合は空文字に置換
+                return '';
             });
             contentDiv.innerHTML = replacedHtml;
 
-            // プレースホルダーがなかった場合、画像のコンテナを末尾に追加
             if (imageIndex < messageData.generated_images.length) {
                 for (let i = imageIndex; i < messageData.generated_images.length; i++) {
                     const imageData = messageData.generated_images[i];
-                    const img = document.createElement('img');
-                    img.alt = '生成された画像';
-                    img.style.maxWidth = '100%';
-                    img.style.borderRadius = 'var(--border-radius-md)';
-                    img.style.marginTop = '8px';
-                    img.src = `data:${imageData.mimeType};base64,${imageData.data}`;
-                    contentDiv.appendChild(img);
+                    const key = `${imageCacheKeyPrefix}-${i}`;
+                    contentDiv.appendChild(createImageElement(imageData, key));
                 }
             }
         }
@@ -3076,39 +3096,7 @@ const appLogic = {
             uiUtils.adjustTextareaHeight();
             uiUtils.setSendingState(false);
             uiUtils.scrollToBottom();
-
-            // ★★★ ここからがメモリ計測用のコード ★★★
-            // 1. 定期的にメモリ使用量をログに出力 (5秒ごと)
-            setInterval(() => {
-                if (performance.memory) {
-                    const usedMB = (performance.memory.usedJSHeapSize / 1024 / 1024).toFixed(2);
-                    console.log(`[Memory Check] 現在のJSヒープメモリ使用量: ${usedMB} MB`);
-                }
-            }, 5000);
-
-            // 2. 手動チェック用のデバッグボタンをヘッダーに追加
-            const memoryCheckButton = document.createElement('button');
-            memoryCheckButton.innerHTML = `<span class="material-symbols-outlined" style="font-size: 18px;">memory</span>`;
-            memoryCheckButton.title = "メモリ使用量を確認";
-            memoryCheckButton.style.position = 'fixed';
-            memoryCheckButton.style.top = '60px';
-            memoryCheckButton.style.right = '10px';
-            memoryCheckButton.style.zIndex = '100';
-            memoryCheckButton.style.opacity = '0.7';
-            memoryCheckButton.onclick = () => {
-                if (performance.memory) {
-                    const usedMB = (performance.memory.usedJSHeapSize / 1024 / 1024).toFixed(2);
-                    const totalMB = (performance.memory.totalJSHeapSize / 1024 / 1024).toFixed(2);
-                    const limitMB = (performance.memory.jsHeapSizeLimit / 1024 / 1024).toFixed(2);
-                    const message = `[Manual Memory Check]\n使用量: ${usedMB} MB\n確保済み: ${totalMB} MB\n上限: ${limitMB} MB`;
-                    console.log(message);
-                    uiUtils.showCustomAlert(message);
-                } else {
-                    uiUtils.showCustomAlert("お使いのブラウザではメモリ計測APIはサポートされていません。");
-                }
-            };
-            document.body.appendChild(memoryCheckButton);
-            // ★★★ メモリ計測コードここまで ★★★
+            
         }
     },
 
@@ -3454,6 +3442,23 @@ const appLogic = {
         // --- モデル選択時の警告表示リスナー ---
         elements.modelNameSelect.addEventListener('change', () => {
             uiUtils.updateModelWarningMessage();
+        });
+        window.addEventListener('beforeunload', () => {
+            const revokeUrls = (cache, name) => {
+                if (cache.size > 0) {
+                    console.log(`[Memory] ページ離脱のため、${cache.size}個の${name}URLを解放します。`);
+                    for (const url of cache.values()) {
+                        if (url.startsWith('blob:')) {
+                            URL.revokeObjectURL(url);
+                        }
+                    }
+                    cache.clear();
+                }
+            };
+            
+            revokeUrls(state.profileIconUrls, 'アイコン');
+            revokeUrls(state.videoUrlCache, '動画');
+            revokeUrls(state.imageUrlCache, 'チャット画像'); // ★ 追加
         });
     },
 
