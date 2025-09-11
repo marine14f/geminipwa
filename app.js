@@ -147,7 +147,6 @@ const elements = {
     backToChatFromHistoryBtn: document.getElementById('back-to-chat-from-history'),
     backToChatFromSettingsBtn: document.getElementById('back-to-chat-from-settings'),
     newChatBtn: document.getElementById('new-chat-btn'),
-    saveSettingsBtns: document.querySelectorAll('.js-save-settings-btn'),
     updateAppBtn: document.getElementById('update-app-btn'),
     clearDataBtn: document.getElementById('clear-data-btn'),
     importHistoryBtn: document.getElementById('import-history-btn'),
@@ -198,13 +197,11 @@ const elements = {
     profileCardIconContainer: document.getElementById('profile-card-icon-container'),
     profileCardName: document.getElementById('profile-card-name'),
     headerProfileMenu: document.getElementById('header-profile-menu'),
-    
     profileCardHeaderWrapperSettings: document.getElementById('profile-card-header-wrapper-settings'),
     profileCardHeaderSettings: document.getElementById('profile-card-header-settings'),
     profileCardIconContainerSettings: document.getElementById('profile-card-icon-container-settings'),
     profileCardNameSettings: document.getElementById('profile-card-name-settings'),
     headerProfileMenuSettings: document.getElementById('header-profile-menu-settings'),
-
     profileManagementGroup: document.getElementById('profile-management-group'),
     profileDisplayCard: document.getElementById('profile-display-card'),
     profileDisplayIcon: document.getElementById('profile-display-icon'),
@@ -214,7 +211,6 @@ const elements = {
     profileEditNameBtn: document.getElementById('profile-edit-name-btn'),
     profileIconInput: document.getElementById('profile-icon-input'),
     profileResetIconBtn: document.getElementById('profile-reset-icon-btn'),
-
     profileSaveNewBtn: document.getElementById('profile-save-new-btn'),
     profileUpdateBtn: document.getElementById('profile-update-btn'),
     profileDeleteBtn: document.getElementById('profile-delete-btn'),
@@ -1868,7 +1864,7 @@ const uiUtils = {
             elements.sendButton.classList.remove('sending');
             elements.sendButton.title = "送信";
             // 入力が空なら送信ボタン無効化
-            elements.sendButton.disabled = elements.userInput.value.trim() === '';
+            elements.sendButton.disabled = elements.userInput.value.trim() === '' && state.pendingAttachments.length === 0;
             elements.userInput.disabled = false; // 入力欄有効化
             elements.attachFileBtn.disabled = false; // 添付ボタン有効化
             elements.loadingIndicator.classList.add('hidden'); // ローディング非表示
@@ -3153,12 +3149,34 @@ const appLogic = {
 
         // --- チャット関連 ---
         elements.newChatBtn.addEventListener('click', () => this.confirmStartNewChat());
-        elements.sendButton.addEventListener('click', () => { /* ... */ });
+        elements.sendButton.addEventListener('click', () => {
+            if (state.isSending) {
+                this.abortRequest();
+            } else {
+                this.handleSend();
+            }
+        });
         elements.userInput.addEventListener('input', () => uiUtils.adjustTextareaHeight());
-        elements.userInput.addEventListener('keydown', (e) => { /* ... */ });
+        elements.userInput.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.key === 'Enter') {
+                e.preventDefault();
+                if (!elements.sendButton.disabled) this.handleSend();
+                return;
+            }
+            if (state.settings.enterToSend && e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                e.preventDefault();
+                if (!elements.sendButton.disabled) this.handleSend();
+            }
+        });
 
         // --- システムプロンプト ---
-        elements.systemPromptDetails.addEventListener('toggle', (event) => { /* ... */ });
+        elements.systemPromptDetails.addEventListener('toggle', (event) => {
+            if (event.target.open) {
+                this.startEditSystemPrompt();
+            } else if (state.isEditingSystemPrompt) {
+                this.cancelEditSystemPrompt();
+            }
+        });
         elements.saveSystemPromptBtn.addEventListener('click', () => this.saveCurrentSystemPrompt());
         elements.cancelSystemPromptBtn.addEventListener('click', () => this.cancelEditSystemPrompt());
 
