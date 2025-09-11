@@ -3279,9 +3279,6 @@ const appLogic = {
             elements.thoughtTranslationOptionsDiv.classList.toggle('hidden', !isEnabled);
         });
 
-        elements.saveSettingsBtns.forEach(button => {
-            button.addEventListener('click', () => this.saveSettings());
-        });
         if (elements.overlayOpacitySlider) {
             elements.overlayOpacitySlider.addEventListener('input', (e) => {
                 const raw = Number(e.target.value) || 0;
