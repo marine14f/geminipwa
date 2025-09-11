@@ -1163,73 +1163,61 @@ const uiUtils = {
         }
 
         // [IMAGE_HERE] を実際の画像に置換する処理
-        const imagePlaceholderRegex = /\[IMAGE_HERE\]/g;
+        const imagePlaceholderRegex = /<p>\[IMAGE_HERE\]<\/p>|\[IMAGE_HERE\]/g; // <p>タグで囲まれている場合と、そうでない場合の両方に対応
         if (role === 'model' && messageData && messageData.generated_images && messageData.generated_images.length > 0) {
-            const imageCacheKeyPrefix = `image-${index}`;
-
-            const createImageElement = async (imageData, key) => {
-                const img = document.createElement('img');
-                img.alt = '生成された画像';
-                img.style.maxWidth = '100%';
-                img.style.borderRadius = 'var(--border-radius-md)';
-                img.style.marginTop = '8px';
-                
-                if (state.imageUrlCache.has(key)) {
-                    img.src = state.imageUrlCache.get(key);
-                    console.log(`[Memory] キャッシュから画像URLを使用 (Key: ${key})`);
-                } else {
-                    try {
-                        const blob = await base64ToBlob(imageData.data, imageData.mimeType); // ★ await を追加
-                        const url = URL.createObjectURL(blob);
-                        state.imageUrlCache.set(key, url);
-                        img.src = url;
-                        console.log(`[Memory] 新しい画像URLを生成・キャッシュしました (Key: ${key})`);
-                    } catch (e) {
-                        console.error(`[Memory] BlobまたはObjectURLの生成に失敗しました (Key: ${key}):`, e);
-                        img.alt = '画像表示エラー';
-                    }
-                }
-                return img;
-            };
-
+            
             const processImages = async () => {
-                let imageIndex = 0;
-                
-                // innerHTMLを直接書き換えるのは非同期処理と相性が悪いので、DOM操作に切り替え
-                const contentNodes = Array.from(contentDiv.childNodes);
-                for (const node of contentNodes) {
-                    if (node.nodeType === Node.TEXT_NODE && imagePlaceholderRegex.test(node.textContent)) {
-                        const fragments = node.textContent.split(imagePlaceholderRegex);
-                        let first = true;
-                        for (const fragment of fragments) {
-                            if (!first) {
-                                if (imageIndex < messageData.generated_images.length) {
-                                    const imageData = messageData.generated_images[imageIndex];
-                                    const key = `${imageCacheKeyPrefix}-${imageIndex}`;
-                                    imageIndex++;
-                                    const imgElement = await createImageElement(imageData, key);
-                                    contentDiv.insertBefore(imgElement, node);
-                                }
-                            }
-                            if (fragment) {
-                                contentDiv.insertBefore(document.createTextNode(fragment), node);
-                            }
-                            first = false;
+                const imageElements = [];
+                const imageCacheKeyPrefix = `image-${index}`;
+
+                // 1. まず、全ての画像のimg要素を非同期で準備する
+                for (let i = 0; i < messageData.generated_images.length; i++) {
+                    const imageData = messageData.generated_images[i];
+                    const key = `${imageCacheKeyPrefix}-${i}`;
+                    const img = document.createElement('img');
+                    img.alt = '生成された画像';
+                    img.style.maxWidth = '100%';
+                    img.style.borderRadius = 'var(--border-radius-md)';
+                    img.style.marginTop = '8px';
+
+                    if (state.imageUrlCache.has(key)) {
+                        img.src = state.imageUrlCache.get(key);
+                    } else {
+                        try {
+                            const blob = await base64ToBlob(imageData.data, imageData.mimeType);
+                            const url = URL.createObjectURL(blob);
+                            state.imageUrlCache.set(key, url);
+                            img.src = url;
+                        } catch (e) {
+                            console.error(`[Memory] BlobまたはObjectURLの生成に失敗しました (Key: ${key}):`, e);
+                            img.alt = '画像表示エラー';
                         }
-                        contentDiv.removeChild(node);
                     }
+                    imageElements.push(img.outerHTML);
                 }
 
-                if (imageIndex < messageData.generated_images.length) {
-                    for (let i = imageIndex; i < messageData.generated_images.length; i++) {
-                        const imageData = messageData.generated_images[i];
-                        const key = `${imageCacheKeyPrefix}-${i}`;
-                        const imgElement = await createImageElement(imageData, key);
-                        contentDiv.appendChild(imgElement);
+                // 2. 準備したimg要素で、同期的に置換処理を行う
+                let imageIndex = 0;
+                const replacedHtml = contentDiv.innerHTML.replace(imagePlaceholderRegex, () => {
+                    if (imageIndex < imageElements.length) {
+                        return imageElements[imageIndex++];
                     }
+                    return ''; // プレースホルダーが画像の数より多い場合は空文字
+                });
+                contentDiv.innerHTML = replacedHtml;
+
+                // 3. プレースホルダーが足りなかった画像を末尾に追加
+                if (imageIndex < imageElements.length) {
+                    const fragment = document.createDocumentFragment();
+                    for (let i = imageIndex; i < imageElements.length; i++) {
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = imageElements[i];
+                        fragment.appendChild(tempDiv.firstChild);
+                    }
+                    contentDiv.appendChild(fragment);
                 }
             };
-            processImages(); // 非同期処理を実行
+            processImages();
         }
 
         if (role === 'model' && messageData && messageData.generated_videos && messageData.generated_videos.length > 0) {
