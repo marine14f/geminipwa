@@ -19,7 +19,6 @@ const CHATS_STORE = 'chats';
 const CHAT_UPDATEDAT_INDEX = 'updatedAtIndex';
 const CHAT_CREATEDAT_INDEX = 'createdAtIndex';
 const DEFAULT_MODEL = 'gemini-2.5-pro';
-const DEFAULT_STREAMING_SPEED = 12;
 const DEFAULT_TEMPERATURE = 0.5;
 const DEFAULT_MAX_TOKENS = 4000;
 const DEFAULT_TOP_K = 40;
@@ -43,11 +42,12 @@ const INITIAL_RETRY_DELAY = 100; // 初期リトライ遅延時間 (ミリ秒)
 const extensionToMimeTypeMap = {
     // Text Data
     'pdf': 'application/pdf',
-    'js': 'text/javascript',   // 一般的な方を選択
-    'py': 'text/x-python',     // 一般的な方を選択
+    'js': 'text/javascript',
+    'py': 'text/x-python',
     'txt': 'text/plain',
     'html': 'text/html',
-    'htm': 'text/html',        // .htm も考慮
+    'htm': 'text/html',
+    'json': 'text/json',
     'css': 'text/css',
     'md': 'text/md',
     'csv': 'text/csv',
@@ -79,7 +79,7 @@ const extensionToMimeTypeMap = {
     'mp3': 'audio/mp3',
     'aiff': 'audio/aiff',
     'aac': 'audio/aac',
-    'ogg': 'audio/ogg',        // OGG Vorbis
+    'ogg': 'audio/ogg',
     'flac': 'audio/flac',
 };
 
@@ -108,8 +108,6 @@ const elements = {
     apiKeyInput: document.getElementById('api-key'),
     modelNameSelect: document.getElementById('model-name'),
     userDefinedModelsGroup: document.getElementById('user-defined-models-group'),
-    streamingOutputCheckbox: document.getElementById('streaming-output'),
-    streamingSpeedInput: document.getElementById('streaming-speed'),
     systemPromptDefaultTextarea: document.getElementById('system-prompt-default'),
     temperatureInput: document.getElementById('temperature'),
     maxTokensInput: document.getElementById('max-tokens'),
@@ -128,7 +126,6 @@ const elements = {
     dummyModelInput: document.getElementById('dummy-model'),
     concatDummyModelCheckbox: document.getElementById('concat-dummy-model'),
     additionalModelsTextarea: document.getElementById('additional-models'),
-    pseudoStreamingCheckbox: document.getElementById('pseudo-streaming'),
     enterToSendCheckbox: document.getElementById('enter-to-send'),
     historySortOrderSelect: document.getElementById('history-sort-order'),
     darkModeToggle: document.getElementById('dark-mode-toggle'),
@@ -235,8 +232,6 @@ const state = {
     settings: {
         apiKey: '',
         modelName: DEFAULT_MODEL,
-        streamingOutput: false,
-        streamingSpeed: DEFAULT_STREAMING_SPEED,
         systemPrompt: '',
         temperature: null,
         maxTokens: null,
@@ -254,7 +249,6 @@ const state = {
         dummyModel: '',
         concatDummyModel: false,
         additionalModels: '',
-        pseudoStreaming: false,
         enterToSend: true,
         historySortOrder: 'updatedAt',
         darkMode: false,
@@ -283,8 +277,6 @@ const state = {
     backgroundImageUrl: null,
     isSending: false,
     abortController: null,
-    partialStreamContent: '',
-    partialThoughtStreamContent: '',
     editingMessageIndex: null,
     isEditingSystemPrompt: false,
     touchStartX: 0,
@@ -854,57 +846,96 @@ const uiUtils = {
         document.documentElement.style.setProperty('--overlay-opacity-value', opacityValue);
         console.log(`オーバーレイ透明度適用: ${opacityValue}`);
     },
-    // チャットメッセージをレンダリング
-    // app.js の uiUtils.renderChatMessages を以下に置換
-    renderChatMessages() {
-        // ★★★ ここからが修正箇所 ★★★
-        // 再描画の前に、キャッシュされている全ての画像URLを解放する
+
+        // 新しいメッセージ要素をコンテナの末尾に追加する（ちらつき防止用）
+    appendMessage(role, content, index, isStreamingPlaceholder = false, cascadeInfo = null, attachments = null) {
+        const messageElement = this.createMessageElement(role, content, index, isStreamingPlaceholder, cascadeInfo, attachments);
+        if (messageElement) {
+            elements.messageContainer.appendChild(messageElement);
+            if (window.Prism) {
+                // 追加した要素内のコードブロックのみをハイライトする
+                messageElement.querySelectorAll('pre code').forEach((block) => {
+                    Prism.highlightElement(block);
+                });
+            }
+        }
+    },
+
+    // 新しいメッセージ要素をコンテナの末尾に追加する（ちらつき防止用）
+    appendMessage(role, content, index, isStreamingPlaceholder = false, cascadeInfo = null, attachments = null) {
+        const messageElement = this.createMessageElement(role, content, index, isStreamingPlaceholder, cascadeInfo, attachments);
+        if (messageElement) {
+            elements.messageContainer.appendChild(messageElement);
+            if (window.Prism) {
+                // 追加した要素内のコードブロックのみをハイライトする
+                messageElement.querySelectorAll('pre code').forEach((block) => {
+                    Prism.highlightElement(block);
+                });
+            }
+        }
+    },
+
+    // チャットメッセージをレンダリング（ちらつき対策版）
+    renderChatMessages(callback) {
+        const container = elements.messageContainer;
+
         if (state.imageUrlCache.size > 0) {
-            console.log(`[Memory] renderChatMessages: 再描画のため、${state.imageUrlCache.size}個の画像URLを解放します。`);
             for (const url of state.imageUrlCache.values()) {
                 URL.revokeObjectURL(url);
             }
             state.imageUrlCache.clear();
         }
-        // ★★★ 修正ここまで ★★★
 
         if (state.editingMessageIndex !== null) {
-            const messageElement = elements.messageContainer.querySelector(`.message[data-index="${state.editingMessageIndex}"]`);
+            const messageElement = container.querySelector(`.message[data-index="${state.editingMessageIndex}"]`);
             if (messageElement) appLogic.cancelEditMessage(state.editingMessageIndex, messageElement);
             else state.editingMessageIndex = null;
         }
-        elements.messageContainer.innerHTML = '';
 
-        const visibleMessageIndices = [];
+        // --- ちらつき対策：DOM差分更新 ---
+        const existingMessageElements = new Map();
+        container.querySelectorAll('.message').forEach(el => {
+            const index = el.dataset.index;
+            if (index) {
+                existingMessageElements.set(index, el);
+            }
+        });
+
+        const fragment = document.createDocumentFragment();
+        const visibleMessages = [];
         const processedGroupIds = new Set();
+        const requiredIndexes = new Set();
 
         state.currentMessages.forEach((msg, index) => {
             if (msg.isHidden) return;
             if (msg.isCascaded && msg.siblingGroupId) {
                 if (!processedGroupIds.has(msg.siblingGroupId)) {
-                    const selectedSibling = state.currentMessages.find(
-                        m => m.siblingGroupId === msg.siblingGroupId && m.isSelected && !m.isHidden
-                    );
+                    const siblings = state.currentMessages.filter(m => m.siblingGroupId === msg.siblingGroupId && !m.isHidden);
+                    const selectedSibling = siblings.find(m => m.isSelected) || siblings[siblings.length - 1];
                     if (selectedSibling) {
-                        visibleMessageIndices.push(state.currentMessages.indexOf(selectedSibling));
+                        visibleMessages.push(selectedSibling);
                     }
                     processedGroupIds.add(msg.siblingGroupId);
                 }
             } else {
-                visibleMessageIndices.push(index);
+                visibleMessages.push(msg);
             }
         });
 
-        visibleMessageIndices.forEach(index => {
-            const msg = state.currentMessages[index];
-            if (!msg) return;
-            if (msg.role === 'tool') return;
+        visibleMessages.forEach(msg => {
+            const index = state.currentMessages.indexOf(msg);
+            if (index === -1 || msg.role === 'tool') return;
+            
+            requiredIndexes.add(String(index));
+
+            if (existingMessageElements.has(String(index))) {
+                // 既に存在する場合は何もしない（DOMを再利用）
+                return;
+            }
 
             let cascadeInfo = null;
             if (msg.isCascaded && msg.siblingGroupId) {
-                const siblings = state.currentMessages.filter(
-                    m => m.siblingGroupId === msg.siblingGroupId && !m.isHidden
-                );
+                const siblings = state.currentMessages.filter(m => m.siblingGroupId === msg.siblingGroupId && !m.isHidden);
                 const currentIndexInGroup = siblings.findIndex(m => m === msg);
                 cascadeInfo = {
                     currentIndex: currentIndexInGroup + 1,
@@ -912,21 +943,45 @@ const uiUtils = {
                     siblingGroupId: msg.siblingGroupId
                 };
             }
-            this.appendMessage(msg.role, msg.content, index, false, cascadeInfo, msg.attachments);
+            
+            const messageElement = this.createMessageElement(msg.role, msg.content, index, false, cascadeInfo, msg.attachments);
+            if (messageElement) {
+                fragment.appendChild(messageElement);
+            }
+        });
+
+        // 不要になったDOM要素を削除
+        existingMessageElements.forEach((el, index) => {
+            if (!requiredIndexes.has(index)) {
+                el.remove();
+            }
         });
         
+        // 新しいDOM要素を追加
+        if (fragment.childNodes.length > 0) {
+            container.appendChild(fragment);
+        }
+        // --- ここまで ---
+        
         if (window.Prism) {
-            Prism.highlightAll();
+            Prism.highlightAll(); // 全体再ハイライトが必要な場合も考慮
+        }
+        
+        if (typeof callback === 'function') {
+            requestAnimationFrame(() => {
+                callback();
+            });
         }
     },
 
 
-    appendMessage(role, content, index, isStreamingPlaceholder = false, cascadeInfo = null, attachments = null) {
+    createMessageElement(role, content, index, isStreamingPlaceholder = false, cascadeInfo = null, attachments = null) {
+        const messageData = state.currentMessages[index];
+        if (!messageData) return null;
+
         const messageDiv = document.createElement('div');
         messageDiv.classList.add('message', role);
         messageDiv.dataset.index = index;
-
-        const messageData = state.currentMessages[index];
         
         if (role === 'model' && messageData && messageData.thoughtSummary) {
             const thoughtDetails = document.createElement('details');
@@ -1346,99 +1401,7 @@ const uiUtils = {
         if (isStreamingPlaceholder) {
             messageDiv.id = `streaming-message-${index}`;
         }
-        elements.messageContainer.appendChild(messageDiv);
-    },
-
-    // ストリーミング中のメッセージを更新
-    updateStreamingMessage(index, newChar, isThoughtSummary = false) { // newChar は実際には使わなくなる
-        const messageDiv = document.getElementById(`streaming-message-${index}`);
-        if (messageDiv && typeof marked !== 'undefined') {
-            let targetContentDiv;
-            let streamContent;
-
-            if (isThoughtSummary) {
-                targetContentDiv = messageDiv.querySelector(`#streaming-thought-summary-${index}`);
-                streamContent = state.partialThoughtStreamContent; // stateから直接取得
-            } else {
-                targetContentDiv = messageDiv.querySelector('.message-content');
-                streamContent = state.partialStreamContent; // stateから直接取得
-            }
-
-            if (targetContentDiv) {
-                try {
-                    targetContentDiv.innerHTML = marked.parse(streamContent || '');
-                } catch (e) {
-                    console.error(`ストリーミング更新中のMarkdownパースエラー (${isThoughtSummary ? 'Thought' : 'Content'}):`, e);
-                    targetContentDiv.textContent = streamContent;
-                }
-            }
-            if (!isThoughtSummary) {
-                this.scrollToBottom();
-            }
-        }
-    },
-
-    // ストリーミングメッセージの完了処理
-    finalizeStreamingMessage(index) {
-        const messageDiv = document.getElementById(`streaming-message-${index}`);
-        if (messageDiv) {
-            const finalMessageData = state.currentMessages[index];
-            if (!finalMessageData) return;
-
-            // Thought Summary の最終処理
-            if (finalMessageData.thoughtSummary) {
-                const thoughtContentDiv = messageDiv.querySelector(`#streaming-thought-summary-${index}`);
-                if (thoughtContentDiv && typeof marked !== 'undefined') {
-                    try {
-                        thoughtContentDiv.innerHTML = marked.parse(finalMessageData.thoughtSummary || '');
-                    } catch (e) {
-                        console.error("Thought Summary ストリーミング完了時のMarkdownパースエラー:", e);
-                        thoughtContentDiv.textContent = finalMessageData.thoughtSummary || '';
-                    }
-                    thoughtContentDiv.removeAttribute('id'); // IDを削除
-                } else if (thoughtContentDiv) {
-                    thoughtContentDiv.textContent = finalMessageData.thoughtSummary || '';
-                    thoughtContentDiv.removeAttribute('id');
-                }
-            }
-
-            // 通常コンテンツの最終処理
-            const contentDiv = messageDiv.querySelector('.message-content');
-            // stateから最終的なコンテンツを取得
-            const finalRawContent = finalMessageData.content || '';
-            if (contentDiv && typeof marked !== 'undefined') {
-                 try {
-                     // 最終コンテンツをMarkdownとしてパース
-                     contentDiv.innerHTML = marked.parse(finalRawContent);
-                 } catch (e) {
-                     console.error("ストリーミング完了時のMarkdownパースエラー:", e);
-                     contentDiv.textContent = finalRawContent; // エラー時はテキスト表示
-                 }
-            } else if (contentDiv) {
-                contentDiv.textContent = finalRawContent; // markedがない場合のフォールバック
-            }
-            messageDiv.removeAttribute('id'); // IDを削除
-
-            // Prism.jsでシンタックスハイライトを適用
-            if (window.Prism) {
-                messageDiv.querySelectorAll('pre code').forEach((block) => {
-                    Prism.highlightElement(block);
-                });
-            }
-
-            // ストリーミング完了後、カスケードコントロールが必要かチェックして再描画
-            // (リトライ直後など、応答候補が増えた場合に必要)
-            const msgData = state.currentMessages[index];
-            if (msgData && msgData.role === 'model' && msgData.isCascaded) {
-                const siblings = appLogic.getCascadedSiblings(index);
-                if (siblings.length > 1) {
-                    // コントロールを再生成または更新
-                    // 一旦、renderChatMessagesを呼び出すのが簡単かもしれない
-                    this.renderChatMessages(); // UI全体を再描画
-                }
-            }
-        }
-        this.scrollToBottom(); // 最後にスクロール
+        return messageDiv;
     },
 
     // エラーメッセージを表示
@@ -1452,12 +1415,22 @@ const uiUtils = {
 
     // チャットコンテナの最下部へスクロール
     scrollToBottom() {
-        requestAnimationFrame(() => { // 次の描画タイミングで実行
-            const mainContent = elements.chatScreen.querySelector('.main-content');
-            if (mainContent) {
-                mainContent.scrollTop = mainContent.scrollHeight;
-            }
+        const mainContent = elements.chatScreen.querySelector('.main-content');
+        if (!mainContent) return;
+
+        console.log(`[Debug Scroll] 5. scrollToBottom 実行`);
+        console.log(`[Debug Scroll]    - 実行前 scrollTop: ${mainContent.scrollTop}`);
+        console.log(`[Debug Scroll]    - 実行前 scrollHeight: ${mainContent.scrollHeight}`);
+        
+        requestAnimationFrame(() => {
+            mainContent.scrollTop = mainContent.scrollHeight;
         });
+
+        setTimeout(() => {
+            requestAnimationFrame(() => {
+                mainContent.scrollTop = mainContent.scrollHeight;
+            });
+        }, 100);
     },
 
     // チャットタイトルを更新
@@ -1619,8 +1592,6 @@ const uiUtils = {
     applySettingsToUI() {
         elements.apiKeyInput.value = state.settings.apiKey || '';
         elements.modelNameSelect.value = state.settings.modelName || DEFAULT_MODEL;
-        elements.streamingOutputCheckbox.checked = state.settings.streamingOutput;
-        elements.streamingSpeedInput.value = state.settings.streamingSpeed ?? DEFAULT_STREAMING_SPEED;
         elements.systemPromptDefaultTextarea.value = state.settings.systemPrompt || '';
         elements.temperatureInput.value = state.settings.temperature === null ? '' : state.settings.temperature;
         elements.maxTokensInput.value = state.settings.maxTokens === null ? '' : state.settings.maxTokens;
@@ -1640,7 +1611,6 @@ const uiUtils = {
         elements.dummyModelInput.value = state.settings.dummyModel || '';
         elements.concatDummyModelCheckbox.checked = state.settings.concatDummyModel;
         elements.additionalModelsTextarea.value = state.settings.additionalModels || '';
-        elements.pseudoStreamingCheckbox.checked = state.settings.pseudoStreaming;
         elements.enterToSendCheckbox.checked = state.settings.enterToSend;
         elements.historySortOrderSelect.value = state.settings.historySortOrder || 'updatedAt';
         elements.darkModeToggle.checked = state.settings.darkMode;
@@ -2253,16 +2223,8 @@ const apiUtils = {
 
         const isImageGenModel = model === 'gemini-2.5-flash-image-preview';
 
-        let endpointMethod;
-        if (isImageGenModel) {
-            endpointMethod = 'streamGenerateContent?alt=sse&';
-            console.log("使用モード: 画像生成ストリーミング (nano-banana)");
-        } else {
-            endpointMethod = useStreaming
-                ? (usePseudo ? 'generateContent?alt=sse&' : 'streamGenerateContent?alt=sse&')
-                : 'generateContent?';
-            console.log(`使用モード: ${useStreaming ? (usePseudo ? '疑似ストリーミング' : 'リアルタイムストリーミング') : '非ストリーミング'}`);
-        }
+        const endpointMethod = 'generateContent?';
+        console.log(`使用モード: 非ストリーミング`);
 
         const endpoint = `${GEMINI_API_BASE_URL}${model}:${endpointMethod}key=${apiKey}`;
         
@@ -2375,167 +2337,6 @@ const apiUtils = {
                 throw new Error("リクエストがキャンセルされました。");
             } else {
                 throw error;
-            }
-        }
-    },
-
-    // ストリーミングレスポンスを処理
-    async *handleStreamingResponse(response) {
-        if (!response.body) {
-            throw new Error("レスポンスボディがありません。");
-        }
-        const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-        let buffer = '';
-        let lastCandidateInfo = null;
-        let isCancelled = false;
-        let groundingMetadata = null;
-        let finalUsageMetadata = null;
-        let toolCallsBuffer = []; 
-
-        function parseSseDataForYield(jsonString) {
-            try {
-                const chunkJson = JSON.parse(jsonString);
-                if (chunkJson.error) {
-                    console.error("ストリーム内のエラーメッセージ:", chunkJson.error);
-                    const errorMsg = `モデルエラー: ${chunkJson.error.message || JSON.stringify(chunkJson.error)}`;
-                    lastCandidateInfo = { error: chunkJson.error, finishReason: 'ERROR' };
-                    return { type: 'error', error: chunkJson.error, message: errorMsg };
-                }
-
-                let contentText = null;
-                let thoughtText = null;
-                let imageData = null;
-                let currentGroundingMetadata = null;
-                let currentUsageMetadata = null;
-                let currentToolCalls = null;
-
-                if (chunkJson.candidates && chunkJson.candidates.length > 0) {
-                    lastCandidateInfo = chunkJson.candidates[0];
-                    if (lastCandidateInfo?.content?.parts) {
-                        lastCandidateInfo.content.parts.forEach(part => {
-                            if (part.text) {
-                                if (part.thought === true) {
-                                    thoughtText = (thoughtText || '') + part.text;
-                                } else {
-                                    contentText = (contentText || '') + part.text;
-                                }
-                            } else if (part.functionCall) {
-                                if (!currentToolCalls) currentToolCalls = [];
-                                currentToolCalls.push({ functionCall: part.functionCall });
-                            } else if (part.inlineData) {
-                                imageData = part.inlineData;
-                                console.log("ストリームから画像データチャンクを検出:", { mimeType: imageData.mimeType, dataLength: imageData.data?.length });
-                            }
-                        });
-                    }
-                    if (lastCandidateInfo.groundingMetadata) {
-                        currentGroundingMetadata = lastCandidateInfo.groundingMetadata;
-                    }
-                } else if (chunkJson.promptFeedback) {
-                    console.warn("ストリーム内のプロンプトフィードバック:", chunkJson.promptFeedback);
-                    const blockReason = chunkJson.promptFeedback.blockReason || 'SAFETY';
-                    lastCandidateInfo = { finishReason: blockReason, safetyRatings: chunkJson.promptFeedback.safetyRatings };
-                    return { type: 'metadata', finishReason: blockReason, safetyRatings: chunkJson.promptFeedback.safetyRatings };
-                }
-
-                if (chunkJson.usageMetadata) {
-                    currentUsageMetadata = chunkJson.usageMetadata;
-                }
-
-                if (contentText !== null || thoughtText !== null || imageData !== null || currentGroundingMetadata || currentUsageMetadata || currentToolCalls) {
-                    return {
-                        type: 'chunk',
-                        contentText,
-                        thoughtText,
-                        imageData, 
-                        groundingMetadata: currentGroundingMetadata,
-                        usageMetadata: currentUsageMetadata,
-                        toolCalls: currentToolCalls
-                    };
-                }
-                return null;
-            } catch (parseError) {
-                console.warn("ストリーム内の不正なJSONをスキップ:", jsonString, parseError);
-                return null;
-            }
-        }
-
-        try {
-            while (true) {
-                if (state.abortController?.signal.aborted && !isCancelled) {
-                    isCancelled = true;
-                    console.log("ストリーミング中に中断シグナルを検出");
-                    await reader.cancel("User aborted");
-                    throw new Error("リクエストがキャンセルされました。");
-                }
-
-                let readResult;
-                try {
-                    readResult = await reader.read();
-                } catch (readError) {
-                    if (readError.name === 'AbortError' || readError.message === "User aborted" || readError.message.includes("aborted")) {
-                        if (!isCancelled) { isCancelled = true; throw new Error("リクエストがキャンセルされました。"); }
-                        break;
-                    }
-                    throw readError;
-                }
-                const { value, done } = readResult;
-                if (done) break;
-
-                buffer += value;
-
-                while (true) {
-                    const dataPrefixIndex = buffer.indexOf('data: ');
-                    if (dataPrefixIndex === -1) break;
-
-                    const jsonStartIndex = buffer.indexOf('{', dataPrefixIndex);
-                    if (jsonStartIndex === -1) break;
-
-                    let braceCount = 0;
-                    let jsonEndIndex = -1;
-                    for (let i = jsonStartIndex; i < buffer.length; i++) {
-                        if (buffer[i] === '{') braceCount++;
-                        else if (buffer[i] === '}') braceCount--;
-                        if (braceCount === 0) {
-                            jsonEndIndex = i;
-                            break;
-                        }
-                    }
-
-                    if (jsonEndIndex !== -1) {
-                        const jsonString = buffer.substring(jsonStartIndex, jsonEndIndex + 1);
-                        const chunkData = parseSseDataForYield(jsonString);
-                        if (chunkData) {
-                            if (chunkData.groundingMetadata) groundingMetadata = chunkData.groundingMetadata;
-                            if (chunkData.usageMetadata) finalUsageMetadata = chunkData.usageMetadata;
-                            if (chunkData.toolCalls) toolCallsBuffer.push(...chunkData.toolCalls);
-                            yield chunkData;
-                        }
-                        buffer = buffer.substring(jsonEndIndex + 1);
-                    } else {
-                        break; 
-                    }
-                }
-            }
-
-            const finishReason = lastCandidateInfo?.finishReason;
-            const safetyRatings = lastCandidateInfo?.safetyRatings;
-
-            yield {
-                type: 'metadata',
-                finishReason: isCancelled ? 'ABORTED' : finishReason,
-                safetyRatings,
-                groundingMetadata: groundingMetadata,
-                usageMetadata: finalUsageMetadata,
-                toolCalls: toolCallsBuffer.length > 0 ? toolCallsBuffer : null
-            };
-
-        } catch (error) {
-            console.error("ストリームの読み取り/処理エラー:", error);
-            throw new Error(`ストリーミング処理エラー: ${error.message || error}`, { cause: { originalError: error } });
-        } finally {
-            if (!reader.closed && !isCancelled) {
-                try { await reader.cancel("Cleanup cancellation"); } catch(e) { console.error("クリーンアップキャンセル中のエラー:", e); }
             }
         }
     },
@@ -2999,9 +2800,9 @@ const appLogic = {
     getCurrentUiSettings() {
         const settings = {};
         const stringKeys = ['apiKey', 'modelName', 'systemPrompt', 'dummyUser', 'dummyModel', 'additionalModels', 'historySortOrder', 'fontFamily', 'proofreadingModelName', 'proofreadingSystemInstruction', 'googleSearchApiKey', 'googleSearchEngineId', 'headerColor', 'thoughtTranslationModel'];
-        const numberKeys = ['streamingSpeed', 'temperature', 'maxTokens', 'topK', 'topP', 'presencePenalty', 'frequencyPenalty', 'thinkingBudget', 'maxRetries', 'fixedRetryDelaySeconds', 'maxBackoffDelaySeconds', 'overlayOpacity', 'messageOpacity'];
-        const booleanKeys = ['streamingOutput', 'pseudoStreaming', 'enterToSend', 'darkMode', 'hideSystemPromptInChat', 'geminiEnableGrounding', 'geminiEnableFunctionCalling', 'enableSwipeNavigation', 'enableProofreading', 'enableAutoRetry', 'useFixedRetryDelay', 'concatDummyModel', 'includeThoughts', 'enableThoughtTranslation', 'applyDummyToProofread', 'applyDummyToTranslate', 'allowPromptUiChanges', 'forceFunctionCalling'];
-
+        const numberKeys = ['temperature', 'maxTokens', 'topK', 'topP', 'presencePenalty', 'frequencyPenalty', 'thinkingBudget', 'maxRetries', 'fixedRetryDelaySeconds', 'maxBackoffDelaySeconds', 'overlayOpacity', 'messageOpacity'];
+        const booleanKeys = ['enterToSend', 'darkMode', 'hideSystemPromptInChat', 'geminiEnableGrounding', 'geminiEnableFunctionCalling', 'enableSwipeNavigation', 'enableProofreading', 'enableAutoRetry', 'useFixedRetryDelay', 'concatDummyModel', 'includeThoughts', 'enableThoughtTranslation', 'applyDummyToProofread', 'applyDummyToTranslate', 'allowPromptUiChanges', 'forceFunctionCalling'];
+        
         stringKeys.forEach(key => {
             const element = elements[key + 'Input'] || elements[key + 'Select'] || elements[key + 'Textarea'];
             if (element) settings[key] = element.value.trim();
@@ -3145,7 +2946,7 @@ const appLogic = {
         elements.gotoHistoryBtn.addEventListener('click', () => uiUtils.showScreen('history'));
         elements.gotoSettingsBtn.addEventListener('click', () => uiUtils.showScreen('settings'));
         elements.backToChatFromHistoryBtn.addEventListener('click', () => uiUtils.showScreen('chat'));
-        elements.backToChatFromSettingsBtn.addEventListener('click', () => uiUtils.showScreen('chat')); // ★ 追加（復活）
+        elements.backToChatFromSettingsBtn.addEventListener('click', () => uiUtils.showScreen('chat'));
 
         // --- チャット関連 ---
         elements.newChatBtn.addEventListener('click', () => this.confirmStartNewChat());
@@ -3183,53 +2984,6 @@ const appLogic = {
         // --- プロファイル関連 ---
         elements.profileCardHeader.addEventListener('click', () => uiUtils.toggleProfileMenu('header'));
         elements.profileCardHeaderSettings.addEventListener('click', () => uiUtils.toggleProfileMenu('settings')); // ★ 追加
-
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') {
-                console.log("[App] アプリがアクティブになりました。UIの同期を確認します。");
-                
-                const stateMessageCount = state.currentMessages.length;
-                const domMessageCount = elements.messageContainer.querySelectorAll('.message').length;
-
-                console.log(`[App] State上のメッセージ数: ${stateMessageCount}, DOM上のメッセージ数: ${domMessageCount}`);
-
-                // ★★★ ここからが修正箇所 ★★★
-                // stateがDOMより多い場合（バックグラウンドでメッセージが追加された場合）
-                if (stateMessageCount > domMessageCount) {
-                    console.warn(`[App] StateとDOMのメッセージ数に不整合を検知しました (${stateMessageCount - domMessageCount}件の差分)。差分を描画します。`);
-
-                    // 足りない分のメッセージだけを描画する
-                    for (let i = domMessageCount; i < stateMessageCount; i++) {
-                        const msg = state.currentMessages[i];
-                        if (!msg) continue;
-
-                        console.log(`[App] 差分メッセージ (index: ${i}) をDOMに追加します。`);
-                        
-                        // 既存のappendMessageロジックを流用
-                        let cascadeInfo = null;
-                        if (msg.isCascaded && msg.siblingGroupId) {
-                            const siblings = state.currentMessages.filter(
-                                m => m.siblingGroupId === msg.siblingGroupId && !m.isHidden
-                            );
-                            const currentIndexInGroup = siblings.findIndex(m => m === msg);
-                            cascadeInfo = {
-                                currentIndex: currentIndexInGroup + 1,
-                                total: siblings.length,
-                                siblingGroupId: msg.siblingGroupId
-                            };
-                        }
-                        uiUtils.appendMessage(msg.role, msg.content, i, false, cascadeInfo, msg.attachments);
-                    }
-                    
-                    // 最後にPrismでハイライトを再適用し、一番下までスクロール
-                    if (window.Prism) {
-                        Prism.highlightAll();
-                    }
-                    uiUtils.scrollToBottom();
-                }
-                // ★★★ 修正ここまで ★★★
-            }
-        });
 
         elements.profileEditNameBtn.addEventListener('click', () => this.editCurrentProfileName());
         elements.profileIconInput.addEventListener('change', (e) => this.handleProfileIconChange(e.target.files[0]));
@@ -3671,47 +3425,45 @@ const appLogic = {
 
     // 新規チャット開始の確認と実行
     async confirmStartNewChat() {
-        // 送信中なら中断確認
+        const confirmed = await uiUtils.showCustomConfirm("現在のチャットを保存して新規チャットを開始しますか？");
+        if (!confirmed) {
+            console.log("新規チャットの開始をキャンセルしました。");
+            return;
+        }
+
+        // 送信中なら中断
         if (state.isSending) {
-            const confirmed = await uiUtils.showCustomConfirm("送信中です。中断して新規チャットを開始しますか？");
-            if (!confirmed) return;
-            this.abortRequest(); // 送信中断
+            this.abortRequest();
         }
-        // 編集中なら破棄確認
+        // 編集中なら破棄
         if (state.editingMessageIndex !== null) {
-            const confirmed = await uiUtils.showCustomConfirm("編集中です。変更を破棄して新規チャットを開始しますか？");
-            if (!confirmed) return;
             const msgEl = elements.messageContainer.querySelector(`.message[data-index="${state.editingMessageIndex}"]`);
-            this.cancelEditMessage(state.editingMessageIndex, msgEl); // 編集キャンセル
+            this.cancelEditMessage(state.editingMessageIndex, msgEl);
         }
-        // システムプロンプト編集中なら破棄確認
+        // システムプロンプト編集中なら破棄
         if (state.isEditingSystemPrompt) {
-            const confirmed = await uiUtils.showCustomConfirm("システムプロンプト編集中です。変更を破棄して新規チャットを開始しますか？");
-            if (!confirmed) return;
             this.cancelEditSystemPrompt();
         }
-        
-        // 保留中の添付ファイルがあれば破棄確認
+        // 保留中の添付ファイルがあれば破棄
         if (state.pendingAttachments.length > 0) {
-            const confirmedAttach = await uiUtils.showCustomConfirm("添付準備中のファイルがあります。破棄して新規チャットを開始しますか？");
-            if (!confirmedAttach) return;
-            state.pendingAttachments = []; // 破棄
-            uiUtils.updateAttachmentBadgeVisibility(); // バッジ状態更新
+            state.pendingAttachments = [];
+            uiUtils.updateAttachmentBadgeVisibility();
         }
         
-        // 現在のチャットにメッセージまたはシステムプロンプトがあり、IDもあれば保存を試みる
-        if ((state.currentMessages.length > 0 || state.currentSystemPrompt) && state.currentChatId) {
-            try {
+        try {
+            // 現在のチャットに保存すべき内容があれば保存する
+            if ((state.currentMessages.length > 0 || state.currentSystemPrompt) && state.currentChatId) {
                 await dbUtils.saveChat();
-            } catch (error) {
-                console.error("新規チャット開始前のチャット保存失敗:", error);
-                const conf = await uiUtils.showCustomConfirm("現在のチャットの保存に失敗しました。新規チャットを開始しますか？");
-                if (!conf) return; // 保存失敗時にキャンセルされたら中断
             }
+        } catch (error) {
+            console.error("新規チャット開始前のチャット保存失敗:", error);
+            // 保存に失敗しても、ユーザーは新規チャットを望んでいるので処理は続行
+            await uiUtils.showCustomAlert("現在のチャットの保存に失敗しました。");
         }
+
         // 新規チャットを開始
         this.startNewChat();
-        uiUtils.showScreen('chat'); // チャット画面を表示 (URLハッシュも更新)
+        uiUtils.showScreen('chat');
     },
 
     // 新規チャットを開始する (状態リセット)
@@ -4199,8 +3951,7 @@ const appLogic = {
         const turnResults = [];
         let currentTurnHistory = [...messagesForApi];
         let aggregatedSearchResults = [];
-        let aggregatedUiActions = [];
-
+        
         uiUtils.setLoadingIndicatorText('応答生成中...');
 
         const convertToApiFormat = (msg) => {
@@ -4226,7 +3977,6 @@ const appLogic = {
                 generationConfig,
                 systemInstruction,
                 tools: window.functionDeclarations,
-                streamingIndex,
                 isFirstCall: isFirstCallInLoop
             });
 
@@ -4251,15 +4001,26 @@ const appLogic = {
             }
             
             uiUtils.setLoadingIndicatorText('関数実行中...');
-            const { toolResults, containsTerminalAction, search_results, internalUiActions } = await this.executeToolCalls(result.toolCalls);
+            const { toolResults, containsTerminalAction, search_results, internalUiActions } = await this.executeToolCalls(result.toolCalls, currentTurnHistory);
             
             if (search_results && search_results.length > 0) {
                 aggregatedSearchResults.push(...search_results);
             }
+            
+            // ★★★ ここからが修正箇所 ★★★
             if (internalUiActions && internalUiActions.length > 0) {
                 console.log(`[Debug] _internalHandleSend: executeToolCallsから ${internalUiActions.length} 件のUIアクションを受信`);
-                aggregatedUiActions.push(...internalUiActions);
+                // 現在のターンの最後のモデルメッセージにUIアクションを紐付ける
+                const lastModelMsgInTurn = turnResults.filter(m => m.role === 'model').pop();
+                if (lastModelMsgInTurn) {
+                    if (!lastModelMsgInTurn._internal_ui_actions) {
+                        lastModelMsgInTurn._internal_ui_actions = [];
+                    }
+                    lastModelMsgInTurn._internal_ui_actions.push(...internalUiActions);
+                    console.log(`[Debug] _internalHandleSend: ターン結果にUIアクションを紐付けました`, lastModelMsgInTurn._internal_ui_actions);
+                }
             }
+            // ★★★ 修正ここまで ★★★
             
             turnResults.push(...toolResults);
             
@@ -4289,14 +4050,6 @@ const appLogic = {
             if (aggregatedSearchResults.length > 0) {
                 const lastMessage = finalModelMessages[finalModelMessages.length - 1];
                 lastMessage.search_web_results = aggregatedSearchResults;
-            }
-            if (aggregatedUiActions.length > 0) {
-                const lastMessage = finalModelMessages[finalModelMessages.length - 1];
-                if (!lastMessage._internal_ui_actions) {
-                    lastMessage._internal_ui_actions = [];
-                }
-                lastMessage._internal_ui_actions.push(...aggregatedUiActions);
-                console.log(`[Debug] _internalHandleSend: 最終メッセージにUIアクションを紐付けました`, lastMessage._internal_ui_actions);
             }
 
             if (state.settings.enableProofreading) {
@@ -4398,41 +4151,30 @@ const appLogic = {
 
         uiUtils.setSendingState(true);
         
-        // 1. ユーザーメッセージをstateに追加
         const userMessage = { role: 'user', content: text, timestamp: Date.now(), attachments: attachmentsToSend };
         state.currentMessages.push(userMessage);
         
-        // 2. DOMにユーザーメッセージだけを追加
-        const userMessageIndex = state.currentMessages.length - 1;
-        uiUtils.appendMessage(userMessage.role, userMessage.content, userMessageIndex, false, null, userMessage.attachments);
+        uiUtils.renderChatMessages(() => uiUtils.scrollToBottom());
         
-        // 3. UIを更新
         state.pendingAttachments = [];
         uiUtils.updateAttachmentBadgeVisibility();
         elements.userInput.value = '';
         uiUtils.adjustTextareaHeight();
-        uiUtils.scrollToBottom();
 
-        // 4. AI応答用の空のメッセージをstateにだけ追加（DOMにはまだ追加しない）
         const modelMessage = { role: 'model', content: '', timestamp: Date.now() };
         state.currentMessages.push(modelMessage);
         const modelMessageIndex = state.currentMessages.length - 1;
-
-        // 5. DOMへのプレースホルダー追加処理を削除
-        // uiUtils.appendMessage(modelMessage.role, modelMessage.content, modelMessageIndex, true);
-        // uiUtils.scrollToBottom();
-
-        // 6. チャットを保存
+        
         await dbUtils.saveChat();
         
         try {
-            // APIに渡す履歴からは、最後の空のモデルメッセージを除外する
             let historyForApiRaw = state.currentMessages.slice(0, -1).filter(msg => !msg.isCascaded || msg.isSelected);
             
             if (state.settings.dummyUser) {
                 historyForApiRaw.push({ role: 'user', content: state.settings.dummyUser, attachments: [] });
             }
             
+            // ★★★ ここからが修正箇所 ★★★
             const historyForApi = historyForApiRaw.map(msg => {
                 const parts = [];
                 if (msg.content && msg.content.trim() !== '') {
@@ -4440,6 +4182,11 @@ const appLogic = {
                 }
                 if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
                     msg.attachments.forEach(att => parts.push({ inlineData: { mimeType: att.mimeType, data: att.base64Data } }));
+                }
+                if (msg.generated_images && msg.generated_images.length > 0) {
+                    msg.generated_images.forEach(img => {
+                        parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
+                    });
                 }
                 if (msg.role === 'model' && msg.tool_calls) {
                     msg.tool_calls.forEach(toolCall => parts.push({ functionCall: toolCall.functionCall }));
@@ -4449,8 +4196,10 @@ const appLogic = {
                         parts.push({ functionResponse: { name: msg.name, response: msg.response } });
                     }
                 }
+                // originalMessageプロパティを追加しないように修正
                 return { role: msg.role === 'tool' ? 'tool' : (msg.role === 'model' ? 'model' : 'user'), parts };
             }).filter(c => c.parts.length > 0);
+            // ★★★ 修正ここまで ★★★
 
             const generationConfig = {};
             if (state.settings.temperature !== null) generationConfig.temperature = state.settings.temperature;
@@ -4464,14 +4213,12 @@ const appLogic = {
             }
             const systemInstruction = state.currentSystemPrompt?.trim() ? { role: "system", parts: [{ text: state.currentSystemPrompt.trim() }] } : null;
 
-            const newMessages = await this._internalHandleSend(historyForApi, generationConfig, systemInstruction, modelMessageIndex);
+            const newMessages = await this._internalHandleSend(historyForApi, generationConfig, systemInstruction);
             
             const finalAggregatedMessage = this._aggregateMessages(newMessages);
             state.currentMessages[modelMessageIndex] = finalAggregatedMessage;
 
-            // ★ 応答が完了したこの時点で初めてDOMに追加する
-            // 既存のメッセージを一旦クリアし、全件再描画するのが最もシンプルで安全
-            uiUtils.renderChatMessages();
+            uiUtils.renderChatMessages(() => uiUtils.scrollToBottom());
 
             await dbUtils.saveChat();
 
@@ -4480,12 +4227,11 @@ const appLogic = {
             const errorMessage = (error.name !== 'AbortError') ? (error.message || "不明なエラーが発生しました。") : "リクエストがキャンセルされました。";
             
             state.currentMessages[modelMessageIndex] = { role: 'error', content: errorMessage, timestamp: Date.now() };
-            uiUtils.renderChatMessages();
+            uiUtils.renderChatMessages(() => uiUtils.scrollToBottom());
             await dbUtils.saveChat();
         } finally {
             uiUtils.setSendingState(false);
             state.abortController = null;
-            uiUtils.scrollToBottom();
         }
     },
     
@@ -4819,10 +4565,11 @@ const appLogic = {
         }
     },
 
-    async executeToolCalls(toolCalls) {
+    async executeToolCalls(toolCalls, historyForFunctions) {
+        const messagesForFunction = (historyForFunctions || []).map(c => c.originalMessage || c);
         const chat = {
             id: state.currentChatId,
-            messages: state.currentMessages,
+            messages: messagesForFunction,
             systemPrompt: state.currentSystemPrompt,
             persistentMemory: state.currentPersistentMemory
         };
@@ -5143,8 +4890,7 @@ const appLogic = {
             });
             console.log(`メッセージ削除完了 (state)。削除件数: ${indicesToDelete.length}`);
 
-            uiUtils.renderChatMessages();
-            uiUtils.scrollToBottom();
+            uiUtils.renderChatMessages(() => uiUtils.scrollToBottom());
 
             const newFirstUserMsgIndex = state.currentMessages.findIndex(m => m.role === 'user');
             let requiresTitleUpdate = indicesToDelete.includes(originalFirstUserMsgIndex);
@@ -5209,8 +4955,7 @@ const appLogic = {
             
             state.currentMessages.splice(index + 1);
 
-            uiUtils.renderChatMessages();
-            uiUtils.scrollToBottom();
+            uiUtils.renderChatMessages(() => uiUtils.scrollToBottom());
 
             try {
                 let historyForApiRaw = state.currentMessages.filter(msg => {
@@ -5220,6 +4965,7 @@ const appLogic = {
                 if (state.settings.dummyUser) {
                     historyForApiRaw.push({ role: 'user', content: state.settings.dummyUser, attachments: [] });
                 }
+                
                 const historyForApi = historyForApiRaw.map(msg => {
                     const parts = [];
                     if (msg.content && msg.content.trim() !== '') {
@@ -5228,7 +4974,7 @@ const appLogic = {
                     if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
                         msg.attachments.forEach(att => parts.push({ inlineData: { mimeType: att.mimeType, data: att.base64Data } }));
                     }
-                    if (msg.role === 'model' && msg.generated_images && msg.generated_images.length > 0) {
+                    if (msg.generated_images && msg.generated_images.length > 0) {
                         msg.generated_images.forEach(img => {
                             parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
                         });
@@ -5241,7 +4987,8 @@ const appLogic = {
                             parts.push({ functionResponse: { name: msg.name, response: msg.response } });
                         }
                     }
-                    return { role: msg.role === 'tool' ? 'tool' : (msg.role === 'model' ? 'model' : 'user'), parts };
+                    const apiMessage = { role: msg.role === 'tool' ? 'tool' : (msg.role === 'model' ? 'model' : 'user'), parts };
+                    return apiMessage;
                 }).filter(c => c.parts.length > 0);
 
                 const generationConfig = {};
@@ -5275,19 +5022,18 @@ const appLogic = {
                 newAggregatedMessage.siblingGroupId = siblingGroupId;
 
                 state.currentMessages.push(...originalResponses, newAggregatedMessage);
-                uiUtils.renderChatMessages();
+                uiUtils.renderChatMessages(() => uiUtils.scrollToBottom());
                 await dbUtils.saveChat();
 
             } catch(error) {
                 console.error("--- retryFromMessage: 最終catchブロックでエラー捕捉 ---", error);
                 const errorMessage = (error.name !== 'AbortError') ? (error.message || "不明なエラーが発生しました。") : "リクエストがキャンセルされました。";
                 state.currentMessages.push({ role: 'error', content: errorMessage, timestamp: Date.now() });
-                uiUtils.renderChatMessages();
+                uiUtils.renderChatMessages(() => uiUtils.scrollToBottom());
                 await dbUtils.saveChat();
             } finally {
                 uiUtils.setSendingState(false);
                 state.abortController = null; 
-                uiUtils.scrollToBottom();
             }
         }
     },
@@ -5567,8 +5313,6 @@ const appLogic = {
         const { messagesForApi, generationConfig, systemInstruction, tools, isFirstCall } = apiParams;
         let lastError = null;
         const maxRetries = state.settings.enableAutoRetry ? state.settings.maxRetries : 0;
-        const useStreaming = state.settings.streamingOutput || state.settings.modelName === 'gemini-2.5-flash-image-preview';
-        
         const forceCalling = state.settings.forceFunctionCalling && isFirstCall;
 
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -5626,122 +5370,62 @@ const appLogic = {
                     return null;
                 };
 
-                if (useStreaming) {
-                    let fullContent = '';
-                    let fullThoughtSummary = '';
-                    let toolCalls = null;
-                    let images = [];
-                    let finalMetadata = {};
+                // 非ストリーミングの処理に統一
+                const responseData = await response.json();
+                
+                if (responseData.promptFeedback) {
+                    const blockReason = responseData.promptFeedback.blockReason || 'SAFETY';
+                    throw new Error(`APIが応答をブロックしました (理由: ${blockReason})`);
+                }
+                if (!responseData.candidates || responseData.candidates.length === 0) {
+                    throw new Error("API応答に有効な候補(candidates)が含まれていません。プロンプトがブロックされた可能性があります。");
+                }
+                
+                const candidate = responseData.candidates[0];
+                const finishReasonError = getFinishReasonError(candidate);
+                if (finishReasonError) throw finishReasonError;
 
-                    for await (const chunk of apiUtils.handleStreamingResponse(response)) {
-                        if (isFirstChunk) {
-                            // 最初のチャンクが届いた瞬間にDOMにプレースホルダーを追加
-                            const modelMessage = state.currentMessages[streamingIndex];
-                            if (modelMessage) {
-                                uiUtils.appendMessage(modelMessage.role, '', streamingIndex, true);
-                            }
-                            isFirstChunk = false;
+                const parts = candidate.content?.parts || [];
+                let finalContent = '';
+                let finalThoughtSummary = '';
+                let finalToolCalls = [];
+
+                parts.forEach(part => {
+                    if (part.text) {
+                        if (part.thought === true) {
+                            finalThoughtSummary += part.text;
+                        } else {
+                            finalContent += part.text;
                         }
-
-                        if (chunk.type === 'error') {
-                            throw new Error(chunk.message || 'ストリーム内でエラーが発生しました');
-                        }
-                        if (chunk.type === 'chunk') {
-                            if (chunk.contentText) fullContent += chunk.contentText;
-                            if (chunk.thoughtText) fullThoughtSummary += chunk.thoughtText;
-                            if (chunk.toolCalls) toolCalls = (toolCalls || []).concat(chunk.toolCalls);
-                            if (chunk.imageData) images.push(chunk.imageData);
-
-                            const currentMsg = state.currentMessages[streamingIndex];
-                            if(currentMsg) {
-                                currentMsg.content = fullContent;
-                                currentMsg.thoughtSummary = fullThoughtSummary;
-                                uiUtils.updateStreamingMessage(streamingIndex, '', false);
-                                if(fullThoughtSummary) uiUtils.updateStreamingMessage(streamingIndex, '', true);
-                            }
-                        } else if (chunk.type === 'metadata') {
-                            finalMetadata = chunk;
-                        }
+                    } else if (part.functionCall) {
+                        finalToolCalls.push({ functionCall: part.functionCall });
                     }
-                    
-                    const finishReasonError = getFinishReasonError(finalMetadata);
-                    if (finishReasonError) throw finishReasonError;
+                });
 
-                    const safetyError = checkForSafetyRejection(finalMetadata, fullContent, toolCalls, images);
-                    if (safetyError) throw safetyError;
-
-                    if (!fullContent && !toolCalls && images.length === 0) {
-                        throw new Error("APIから空の応答が返されました。");
-                    }
-
-                    console.log("callApiWithRetryが返す直前のデータ:", JSON.stringify({ content: fullContent, images: images.map(img => ({...img, data: img.data.substring(0, 50) + '...'})) }, null, 2));
-
-                    return { 
-                        content: fullContent, 
-                        thoughtSummary: fullThoughtSummary,
-                        toolCalls,
-                        images,
-                        ...finalMetadata,
-                        retryCount: attempt 
-                    };
-
-                } else {
-                    const responseData = await response.json();
-                    
-                    if (responseData.promptFeedback) {
-                        const blockReason = responseData.promptFeedback.blockReason || 'SAFETY';
-                        throw new Error(`APIが応答をブロックしました (理由: ${blockReason})`);
-                    }
-                    if (!responseData.candidates || responseData.candidates.length === 0) {
-                        throw new Error("API応答に有効な候補(candidates)が含まれていません。プロンプトがブロックされた可能性があります。");
-                    }
-                    
-                    const candidate = responseData.candidates[0];
-                    const finishReasonError = getFinishReasonError(candidate);
-                    if (finishReasonError) throw finishReasonError;
-
-                    const parts = candidate.content?.parts || [];
-                    let finalContent = '';
-                    let finalThoughtSummary = '';
-                    let finalToolCalls = [];
-
-                    parts.forEach(part => {
+                if (candidate.thoughts?.parts) {
+                    candidate.thoughts.parts.forEach(part => {
                         if (part.text) {
-                            if (part.thought === true) {
-                                finalThoughtSummary += part.text;
-                            } else {
-                                finalContent += part.text;
-                            }
-                        } else if (part.functionCall) {
-                            finalToolCalls.push({ functionCall: part.functionCall });
+                            finalThoughtSummary += part.text;
                         }
                     });
-
-                    if (candidate.thoughts?.parts) {
-                        candidate.thoughts.parts.forEach(part => {
-                            if (part.text) {
-                                finalThoughtSummary += part.text;
-                            }
-                        });
-                    }
-                    
-                    const safetyError = checkForSafetyRejection(candidate, finalContent, finalToolCalls, []);
-                    if (safetyError) throw safetyError;
-
-                    if (!finalContent && finalToolCalls.length === 0) {
-                        throw new Error("APIから空の応答が返されました。");
-                    }
-
-                    return {
-                        content: finalContent,
-                        thoughtSummary: finalThoughtSummary.trim() || null,
-                        toolCalls: finalToolCalls.length > 0 ? finalToolCalls : null,
-                        finishReason: candidate.finishReason,
-                        safetyRatings: candidate.safetyRatings,
-                        usageMetadata: responseData.usageMetadata,
-                        retryCount: attempt
-                    };
                 }
+                
+                const safetyError = checkForSafetyRejection(candidate, finalContent, finalToolCalls, []);
+                if (safetyError) throw safetyError;
+
+                if (!finalContent && finalToolCalls.length === 0) {
+                    throw new Error("APIから空の応答が返されました。");
+                }
+
+                return {
+                    content: finalContent,
+                    thoughtSummary: finalThoughtSummary.trim() || null,
+                    toolCalls: finalToolCalls.length > 0 ? finalToolCalls : null,
+                    finishReason: candidate.finishReason,
+                    safetyRatings: candidate.safetyRatings,
+                    usageMetadata: responseData.usageMetadata,
+                    retryCount: attempt
+                };
 
             } catch (error) {
                 lastError = error;

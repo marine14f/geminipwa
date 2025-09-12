@@ -1261,6 +1261,7 @@ async function set_background_image({ image_url }) {
     }
   }
   
+
 /**
  * generate_image
  * 画像「生成」専用（編集は非対応）。Function Calling から呼び出される前提。
@@ -1275,119 +1276,125 @@ async function set_background_image({ image_url }) {
  * @param {string} [args.sampleImageSize]  - "1K" | "2K"（Standard/Ultraのみ）
  * @param {string} [args.aspectRatio]      - "1:1" | "3:4" | "4:3" | "9:16" | "16:9"
  *
- * @returns {Promise<{
- *   success: boolean,
- *   images?: Array<{ mimeType: string, base64: string }>,
- *   meta?: { modelUsed: string, prompt: string, numberOfImages: number, aspectRatio?: string, sampleImageSize?: string },
- *   error?: { message: string, code?: string }
- * }>}
+ * @returns {Promise<object>} 処理結果
  */
-async function generate_image(args = {}) {
-  // 既存の GoogleGenAI インスタンス利用（なければ作る）
-  const ai = (window.ai instanceof GoogleGenAI)
-    ? window.ai
-    : new GoogleGenAI({ apiKey: (window.state?.settings?.apiKey || window.GEMINI_API_KEY) });
-
-  const {
-    prompt,
-    model: userModel,
-    numberOfImages = 1,
-    sampleImageSize = "1K",
-    aspectRatio = "1:1",
-  } = args || {};
-
-  if (!prompt || typeof prompt !== "string") {
-    return { success: false, error: { message: "prompt は必須です（英語で渡してください）。" } };
-  }
-
-  // --- モデル選択（ユーザー指定が最優先） ---
-  function pickModel() {
-    if (userModel) return userModel;
-
-    // 簡易ヒューリスティック：多要素/広角/群衆/複雑→ultra、フラット/アイコン/パターン→fast、その他→standard
-    const p = prompt.toLowerCase();
-    const complexHints = ["panorama", "wide", "isometric", "crowd", "complex", "intricate", "many", "detailed composition", "epic", "landscape", "cityscape", "aerial"];
-    const simpleHints  = ["icon", "logo", "flat", "pattern", "sticker", "emoji", "solid background", "simple", "minimal"];
-
-    const isComplex = complexHints.some(h => p.includes(h));
-    const isSimple  = simpleHints.some(h => p.includes(h));
-
-    if (isComplex) return "imagen-4.0-ultra-generate-001";
-    if (isSimple)  return "imagen-4.0-fast-generate-001";
-    return "imagen-4.0-generate-001"; // 既定
-  }
-
-  let modelName = pickModel();
-
-  try {
-    // 共有コンフィグ（Imagen系で使用）
-    const commonConfig = {
-      numberOfImages: Math.min(Math.max(Number(numberOfImages) || 1, 1), 4),
-      aspectRatio,
-      sampleImageSize,
-      personGeneration: "allow_all",
-    };
-
-    let generatedImagesBase64 = [];
-
-    // ユーザーが gemini-2.5-flash-image-preview を明示指定した場合は Gemini 経由で生成
-    if (userModel === "gemini-2.5-flash-image-preview") {
-      const resp = await ai.models.generateContent({
-        model: "gemini-2.5-flash-image-preview",
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-      });
-
-      const gen = resp?.response?.candidates?.[0]?.content?.parts || [];
-      for (const part of gen) {
-        if (part?.inlineData?.mimeType?.startsWith("image/") && part?.inlineData?.data) {
-          generatedImagesBase64.push({ mimeType: part.inlineData.mimeType, data: part.inlineData.data });
+ async function generate_image(args = {}) {
+    const ai = (window.ai instanceof GoogleGenAI)
+      ? window.ai
+      : new GoogleGenAI({ apiKey: (window.state?.settings?.apiKey || window.GEMINI_API_KEY) });
+  
+    const {
+      prompt,
+      model: userModel,
+      numberOfImages = 1,
+      sampleImageSize = "1K",
+      aspectRatio = "1:1",
+    } = args || {};
+  
+    if (!prompt || typeof prompt !== "string") {
+      return { success: false, error: { message: "prompt は必須です（英語で渡してください）。" } };
+    }
+  
+    function pickModel() {
+      if (userModel) return userModel;
+      const p = prompt.toLowerCase();
+      const complexHints = ["panorama", "wide", "isometric", "crowd", "complex", "intricate", "many", "detailed composition", "epic", "landscape", "cityscape", "aerial"];
+      const simpleHints  = ["icon", "logo", "flat", "pattern", "sticker", "emoji", "solid background", "simple", "minimal"];
+      const isComplex = complexHints.some(h => p.includes(h));
+      const isSimple  = simpleHints.some(h => p.includes(h));
+      if (isComplex) return "imagen-4.0-ultra-generate-001";
+      if (isSimple)  return "imagen-4.0-fast-generate-001";
+      return "imagen-4.0-generate-001";
+    }
+  
+    let modelName = pickModel();
+  
+    try {
+      let generatedImagesBase64 = [];
+      let responseMeta = {};
+  
+      if (modelName === "gemini-2.5-flash-image-preview") {
+        console.log("[generate_image] Nano Bananaモデルを使用します。プロンプト以外のパラメータは無視されます。");
+        const resp = await ai.models.generateContent({
+          model: "gemini-2.5-flash-image-preview",
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+        });
+        
+        console.log("[Debug] generate_image (Nano Banana): APIからの完全なレスポンスオブジェクト:", JSON.parse(JSON.stringify(resp)));
+        
+        // ★★★ ここからが修正箇所 ★★★
+        if (resp?.candidates?.length > 0) {
+            resp.candidates.forEach((candidate, i) => {
+                console.log(`[Debug] generate_image (Nano Banana): レスポンス候補[${i}]の詳細:`, JSON.parse(JSON.stringify(candidate)));
+            });
         }
+  
+        const gen = resp?.candidates?.[0]?.content?.parts || [];
+        // ★★★ 修正ここまで ★★★
+  
+        for (const part of gen) {
+          if (part?.inlineData?.mimeType?.startsWith("image/") && part?.inlineData?.data) {
+            generatedImagesBase64.push({ mimeType: part.inlineData.mimeType, data: part.inlineData.data });
+          }
+        }
+        responseMeta = { modelUsed: modelName, prompt, numberOfImages: generatedImagesBase64.length };
+  
+      } else {
+        const commonConfig = {
+          numberOfImages: Math.min(Math.max(Number(numberOfImages) || 1, 1), 4),
+          aspectRatio,
+          sampleImageSize,
+          personGeneration: "allow_all",
+        };
+  
+        const resp = await ai.models.generateImages({
+          model: modelName,
+          prompt,
+          config: commonConfig,
+        });
+  
+        for (const g of (resp?.generatedImages || [])) {
+          const bytes = g?.image?.imageBytes;
+          if (bytes) generatedImagesBase64.push({ mimeType: "image/png", data: bytes });
+        }
+        responseMeta = { ...commonConfig, modelUsed: modelName, prompt, numberOfImages: generatedImagesBase64.length };
       }
-      modelName = "gemini-2.5-flash-image-preview";
-
-    } else {
-      // それ以外は Imagen 4.x を使用
-      modelName = modelName || "imagen-4.0-generate-001";
-      const resp = await ai.models.generateImages({
-        model: modelName,
-        prompt,
-        config: commonConfig,
-      });
-
-      for (const g of (resp?.generatedImages || [])) {
-        const bytes = g?.image?.imageBytes;
-        if (bytes) generatedImagesBase64.push({ mimeType: "image/png", data: bytes });
+  
+      if (generatedImagesBase64.length === 0) {
+          return { success: false, error: { message: "APIからの応答に画像データが含まれていませんでした。" } };
       }
+  
+      return {
+        success: true,
+        message: `${generatedImagesBase64.length}枚の画像の生成に成功しました。`,
+        _internal_ui_action: {
+            type: "display_generated_images",
+            images: generatedImagesBase64
+        },
+        meta: responseMeta
+      };
+  
+    } catch (err) {
+      console.error("[generate_image] error object:", err);
+      let errorMessage = "An unknown error occurred.";
+      if (err.message) {
+          errorMessage = err.message;
+      }
+      if (err.cause && err.cause.error && err.cause.error.message) {
+          errorMessage = err.cause.error.message;
+      } else if (err.errorDetails && err.errorDetails.message) {
+          errorMessage = err.errorDetails.message;
+      }
+      
+      return { 
+          success: false, 
+          error: { 
+              message: `画像生成APIでエラーが発生しました: ${errorMessage}`, 
+              code: err?.status || err?.code 
+          } 
+      };
     }
-
-    if (generatedImagesBase64.length === 0) {
-        return { success: false, error: { message: "画像データの生成に失敗しました。" } };
-    }
-
-    // AIへの応答と、UI処理用の内部アクションを分離して返す
-    return {
-      success: true,
-      message: `${generatedImagesBase64.length}枚の画像の生成に成功しました。`,
-      // UI処理用の内部アクション
-      _internal_ui_action: {
-          type: "display_generated_images",
-          images: generatedImagesBase64
-      },
-      // AIに渡すメタデータ
-      meta: {
-        modelUsed: modelName,
-        prompt,
-        numberOfImages: generatedImagesBase64.length,
-        aspectRatio: commonConfig.aspectRatio,
-        sampleImageSize: commonConfig.sampleImageSize,
-      }
-    };
-
-  } catch (err) {
-    console.error("[generate_image] error:", err);
-    return { success: false, error: { message: String(err?.message || err), code: err?.status || err?.code } };
   }
-}
 
 /**
  * edit_image
@@ -1411,18 +1418,41 @@ async function generate_image(args = {}) {
     if (typeof source_image_message_index !== 'number') return { error: "引数 'source_image_message_index' は必須です。" };
 
     // --- 画像抽出のための内部ヘルパー関数 ---
-    const tryExtractImageParts = async (msg) => {
+    const tryExtractImageParts = (msg) => {
         if (!msg) return null;
-        // 添付ファイル (File/Blobまたはbase64)
+        
+        // 1. ユーザー添付ファイルを確認
         if (msg.attachments && msg.attachments.length > 0) {
             const att = msg.attachments[0];
-            if (att.base64Data) return { mimeType: att.mimeType, data: att.base64Data };
+            if (att.base64Data) {
+                console.log("[tryExtractImageParts] 'attachments'から画像を発見しました。");
+                return { mimeType: att.mimeType, data: att.base64Data };
+            }
         }
-        // 生成済み画像
+        
+        // 2. そのセッションで生成された画像を確認
         if (msg.generated_images && msg.generated_images.length > 0) {
             const img = msg.generated_images[0];
-            if (img.data) return { mimeType: img.mimeType, data: img.data };
+            if (img.data) {
+                console.log("[tryExtractImageParts] 'generated_images'から画像を発見しました。");
+                return { mimeType: img.mimeType, data: img.data };
+            }
         }
+
+        // ★★★ ここからが修正箇所 ★★★
+        // 3. トップレベルのparts配列、またはcontent.parts配列を探索
+        const partsToSearch = msg.parts || (msg.content && msg.content.parts);
+        if (partsToSearch && Array.isArray(partsToSearch)) {
+            for (const part of partsToSearch) {
+                if (part.inlineData && part.inlineData.data) {
+                    console.log("[tryExtractImageParts] 'parts'配列から画像を発見しました。");
+                    return { mimeType: part.inlineData.mimeType, data: part.inlineData.data };
+                }
+            }
+        }
+        // ★★★ 修正ここまで ★★★
+
+        console.warn("[tryExtractImageParts] メッセージから画像を発見できませんでした。", msg);
         return null;
     };
     // --- ヘルパーここまで ---
@@ -1435,7 +1465,7 @@ async function generate_image(args = {}) {
             return { error: `指定されたインデックス(${source_image_message_index})にメッセージが見つかりませんでした。` };
         }
 
-        const sourceImage = await tryExtractImageParts(targetMessage);
+        const sourceImage = tryExtractImageParts(targetMessage); // awaitは不要
 
         if (!sourceImage || !sourceImage.data) {
             return { error: `指定されたメッセージ(インデックス: ${source_image_message_index})から編集可能な画像が見つかりませんでした。` };
@@ -1466,8 +1496,6 @@ async function generate_image(args = {}) {
         });
 
         console.log("[Debug] edit_image: APIからの完全なレスポンスオブジェクト:", JSON.parse(JSON.stringify(resp)));
-        
-        // 正しいパス (resp.candidates) を使用してログを出力
         if (resp?.candidates?.length > 0) {
             resp.candidates.forEach((candidate, i) => {
                 console.log(`[Debug] edit_image: レスポンス候補[${i}]の詳細:`, JSON.parse(JSON.stringify(candidate)));
@@ -1478,7 +1506,6 @@ async function generate_image(args = {}) {
         }
 
         const editedImagesBase64 = [];
-        // 正しいパス (resp.candidates) を使用してデータを抽出
         const gen = resp?.candidates?.[0]?.content?.parts || [];
         for (const part of gen) {
             if (part?.inlineData?.mimeType?.startsWith("image/") && part?.inlineData?.data) {
@@ -2038,7 +2065,7 @@ window.functionDeclarations = [
                 },
                 "model": {
                     "type": "string",
-                    "description": "使用する画像生成モデルを指定します。指定がない場合はプロンプト内容に応じて自動的に選択されます。\n\n- \"imagen-4.0-generate-001\": 標準モデル。汎用的な画像生成に適しています。\n- \"imagen-4.0-ultra-generate-001\": 複雑な構図や多要素を含む画像（風景、群衆、広角など）に適しています。\n- \"imagen-4.0-fast-generate-001\": 単純でフラットな画像（アイコン、パターン、スタンプなど）に適しています。\n- \"gemini-2.5-flash-image-preview\": ユーザーが明示的に指定した場合のみ使用。Geminiによる簡易プレビュー生成を行います。",
+                    "description": "使用する画像生成モデルを指定します。指定がない場合はプロンプト内容に応じて自動的に選択されます。\n\n- \"imagen-4.0-generate-001\": 標準モデル。汎用的な画像生成に適しています。\n- \"imagen-4.0-ultra-generate-001\": 複雑な構図や多要素を含む画像（風景、群衆、広角など）に適しています。\n- \"imagen-4.0-fast-generate-001\": 単純でフラットな画像（アイコン、パターン、スタンプなど）に適しています。\n- \"gemini-2.5-flash-image-preview\": ユーザーが明示的に指定した場合のみ使用。Geminiによる簡易プレビュー生成を行います。関数がエラーを返した場合、その内容をユーザーに出力して下さい。",
                     "enum": [
                     "imagen-4.0-generate-001",
                     "imagen-4.0-ultra-generate-001",
