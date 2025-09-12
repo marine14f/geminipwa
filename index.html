@@ -26,21 +26,9 @@
             <div id="chat-overlay"></div> 
             <header class="app-header">
                 <button id="goto-history-btn" class="header-button" title="履歴一覧へ"><span class="material-symbols-outlined">menu</span></button>
-                <h1 id="chat-title">新規チャット</h1>
-                
-                <!-- ▼▼▼ ここからが修正箇所 ▼▼▼ -->
-                <div id="profile-card-header-wrapper" class="profile-card-wrapper">
-                    <div id="profile-card-header" class="profile-card" title="プロファイルを切り替え">
-                        <div id="profile-card-icon-container" class="profile-icon-container"></div>
-                        <span id="profile-card-name" class="profile-card-name"></span>
-                        <span class="material-symbols-outlined profile-card-arrow">arrow_drop_down</span>
-                    </div>
-                    <div id="header-profile-menu" class="profile-menu hidden"></div>
-                </div>
-                
+                <h1 id="chat-title">新規チャット</h1>                
                 <button id="new-chat-btn" class="new-chat-button" title="新規チャットを開始"><span class="material-symbols-outlined">add</span></button>
                 <button id="goto-settings-btn" class="header-button" title="設定へ"><span class="material-symbols-outlined">settings</span></button>
-                <!-- ▲▲▲ 修正ここまで ▲▲▲ -->
             </header>
             <main class="main-content">
                 <!-- システムプロンプト表示/編集エリア -->
@@ -63,6 +51,13 @@
                 <div id="loading-indicator" class="loading-indicator hidden" aria-live="polite">応答中</div>
             </main>
             <footer class="chat-input-area">
+                <div id="profile-card-header-wrapper" class="profile-card-wrapper">
+                    <div id="profile-card-header" class="profile-card" title="プロファイルを切り替え">
+                        <div id="profile-card-icon-container" class="profile-icon-container"></div>
+                        <span class="material-symbols-outlined profile-card-arrow">arrow_drop_down</span>
+                    </div>
+                    <div id="header-profile-menu" class="profile-menu hidden"></div>
+                </div>
                 <textarea id="user-input" placeholder="メッセージを入力..." rows="1" aria-label="メッセージ入力"></textarea>
                 <!-- 添付ファイルボタンを追加 -->
                 <button id="attach-file-btn" title="ファイルを添付">

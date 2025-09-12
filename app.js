@@ -12,7 +12,7 @@ import("https://esm.run/@google/genai").then(module => {
 
 // --- 定数 ---
 const DB_NAME = 'GeminiPWA_DB';
-const DB_VERSION = 9; 
+const DB_VERSION = 10; 
 const SETTINGS_STORE = 'settings';
 const PROFILES_STORE = 'profiles';
 const CHATS_STORE = 'chats';
@@ -358,19 +358,7 @@ function formatFileSize(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-// FileオブジェクトをBase64文字列に変換 (Promise)
-function fileToBase64(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-            // result は "data:mime/type;base64,..." の形式なので、ヘッダー部分を除去
-            const base64String = reader.result.split(',')[1];
-            resolve(base64String);
-        };
-        reader.onerror = error => reject(error);
-        reader.readAsDataURL(file); // Base64形式で読み込む
-    });
-}
+
 
 // Base64文字列をBlobオブジェクトに変換 (Promise)
 function base64ToBlob(base64, mimeType) {
@@ -456,56 +444,17 @@ const dbUtils = {
                     chatStore.createIndex(CHAT_UPDATEDAT_INDEX, 'updatedAt', { unique: false });
                     chatStore.createIndex(CHAT_CREATEDAT_INDEX, 'createdAt', { unique: false });
                 }
+                if (!db.objectStoreNames.contains(PROFILES_STORE)) {
+                    db.createObjectStore(PROFILES_STORE, { keyPath: 'id', autoIncrement: true });
+                }
 
-                // --- v9へのアップグレード処理 ---
-                if (event.oldVersion < 9) {
-                    console.log("[DB Migration] v9へのアップグレード処理を開始します。");
-                    
-                    const profilesStore = db.createObjectStore(PROFILES_STORE, { keyPath: 'id', autoIncrement: true });
-                    console.log(`[DB Migration] 新しいオブジェクトストア ${PROFILES_STORE} を作成しました。`);
-
-                    // ★★★ ここからが新しいデータ移行ロジック ★★★
-                    // onupgradeneededのトランザクションは自動的に完了を待つ
-                    const settingsStore = transaction.objectStore(SETTINGS_STORE);
-                    const getAllSettingsReq = settingsStore.getAll();
-                    
-                    getAllSettingsReq.onsuccess = () => {
-                        const oldSettingsArray = getAllSettingsReq.result;
-                        
-                        // 移行すべきデータがある場合のみ処理
-                        if (oldSettingsArray.length > 0) {
-                            console.log("[DB Migration] 既存の設定から最初のプロファイルを生成します...");
-                            const oldSettingsObject = {};
-                            oldSettingsArray.forEach(item => {
-                                oldSettingsObject[item.key] = item.value;
-                            });
-
-                            // state.settingsのデフォルト値と古い設定をマージ
-                            const initialProfileSettings = { ...state.settings, ...oldSettingsObject };
-                            delete initialProfileSettings.backgroundImageBlob; 
-
-                            const defaultProfile = {
-                                name: "デフォルトプロファイル",
-                                icon: null,
-                                createdAt: Date.now(),
-                                settings: initialProfileSettings
-                            };
-                            
-                            const addProfileReq = profilesStore.add(defaultProfile);
-                            addProfileReq.onsuccess = (addEvent) => {
-                                const newProfileId = addEvent.target.result;
-                                console.log(`[DB Migration] デフォルトプロファイルを生成しました (ID: ${newProfileId})`);
-
-                                // 古い設定をクリアし、新しいactiveProfileIdを設定
-                                settingsStore.clear().onsuccess = () => {
-                                    settingsStore.put({ key: 'activeProfileId', value: newProfileId });
-                                    console.log(`[DB Migration] SETTINGS_STOREをクリアし、activeProfileIdを ${newProfileId} に設定しました。移行完了。`);
-                                };
-                            };
-                        } else {
-                            console.log("[DB Migration] 移行すべき古い設定はありませんでした。");
-                        }
-                    };
+                // --- v10へのアップグレード処理 ---
+                if (event.oldVersion < 10) {
+                    console.log("[DB Migration] v10へのアップグレード処理を開始します。");
+                    if (!db.objectStoreNames.contains('image_assets')) {
+                        db.createObjectStore('image_assets', { keyPath: 'name' });
+                        console.log(`[DB Migration] 新しいオブジェクトストア 'image_assets' を作成しました。`);
+                    }
                 }
             };
         });
@@ -2150,18 +2099,24 @@ const uiUtils = {
             { name: elements.profileCardName, container: elements.profileCardIconContainer },
             { name: elements.profileCardNameSettings, container: elements.profileCardIconContainerSettings }
         ];
+        
         cards.forEach(card => {
-            if (!card.name || !card.container) return;
-            card.name.textContent = profile.name;
-            if (profile.icon) {
-                let url = state.profileIconUrls.get(profile.id);
-                if (!url) {
-                    url = URL.createObjectURL(profile.icon);
-                    state.profileIconUrls.set(profile.id, url);
+            // アイコンコンテナが存在すれば、アイコンの更新は必ず実行する
+            if (card.container) {
+                if (profile.icon) {
+                    let url = state.profileIconUrls.get(profile.id);
+                    if (!url) {
+                        url = URL.createObjectURL(profile.icon);
+                        state.profileIconUrls.set(profile.id, url);
+                    }
+                    card.container.innerHTML = `<img src="${url}" alt="プロファイルアイコン">`;
+                } else {
+                    card.container.innerHTML = `<span class="material-symbols-outlined">account_circle</span>`;
                 }
-                card.container.innerHTML = `<img src="${url}" alt="プロファイルアイコン">`;
-            } else {
-                card.container.innerHTML = `<span class="material-symbols-outlined">account_circle</span>`;
+            }
+            // 名前の要素が存在する場合のみ、名前を更新する
+            if (card.name) {
+                card.name.textContent = profile.name;
             }
         });
 
@@ -2177,15 +2132,14 @@ const uiUtils = {
             iconImg.src = url;
             iconImg.style.display = 'block';
             iconPlaceholder.style.display = 'none';
-            elements.profileResetIconBtn.style.display = 'flex'; // ★ アイコンがあればリセットボタン表示
+            elements.profileResetIconBtn.style.display = 'flex';
         } else {
             iconImg.style.display = 'none';
             iconPlaceholder.style.display = 'flex';
-            elements.profileResetIconBtn.style.display = 'none'; // ★ アイコンがなければリセットボタン非表示
+            elements.profileResetIconBtn.style.display = 'none';
         }
         elements.profileDisplayNameMain.textContent = profile.name;
         
-        // ★ サブテキストを動的に生成
         const subText = `${profile.settings.modelName || '...'} / T: ${profile.settings.temperature ?? '...'}`;
         elements.profileDisplayNameSub.textContent = subText;
         
@@ -2829,6 +2783,18 @@ const appLogic = {
 
         console.log("[Profile] 現在のUIから設定を取得しました:", settings);
         return settings;
+    },
+
+    fileToBase64(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                const base64String = reader.result.split(',')[1];
+                resolve(base64String);
+            };
+            reader.onerror = error => reject(error);
+            reader.readAsDataURL(file);
+        });
     },
 
     // アプリ初期化
@@ -4007,21 +3973,22 @@ const appLogic = {
                 aggregatedSearchResults.push(...search_results);
             }
             
-            // ★★★ ここからが修正箇所 ★★★
             if (internalUiActions && internalUiActions.length > 0) {
                 console.log(`[Debug] _internalHandleSend: executeToolCallsから ${internalUiActions.length} 件のUIアクションを受信`);
-                // 現在のターンの最後のモデルメッセージにUIアクションを紐付ける
-                const lastModelMsgInTurn = turnResults.filter(m => m.role === 'model').pop();
-                if (lastModelMsgInTurn) {
-                    if (!lastModelMsgInTurn._internal_ui_actions) {
-                        lastModelMsgInTurn._internal_ui_actions = [];
+                // ツール応答メッセージにUIアクションを紐付ける
+                if (toolResults.length > 0) {
+                    // 複数のUIアクションが返る可能性を考慮し、最後だけでなく関連するツール結果に紐付ける
+                    // 今回は単純化のため、最後のツール結果にすべてのアクションをまとめる
+                    const lastToolResult = toolResults[toolResults.length - 1];
+                    if (!lastToolResult._internal_ui_action) {
+                        lastToolResult._internal_ui_action = [];
                     }
-                    lastModelMsgInTurn._internal_ui_actions.push(...internalUiActions);
-                    console.log(`[Debug] _internalHandleSend: ターン結果にUIアクションを紐付けました`, lastModelMsgInTurn._internal_ui_actions);
+                    lastToolResult._internal_ui_action.push(...internalUiActions);
+                    console.log(`[Debug] _internalHandleSend: ツール結果にUIアクションを紐付けました`, lastToolResult._internal_ui_action);
                 }
             }
-            // ★★★ 修正ここまで ★★★
             
+            // UIアクションを含む元のtoolResultsをturnResultsに追加する
             turnResults.push(...toolResults);
             
             const executedFunctionNames = toolResults.map(tr => tr.name);
@@ -4030,6 +3997,7 @@ const appLogic = {
                 lastModelMsg.executedFunctions.push(...executedFunctionNames);
             }
 
+            // API履歴にはUIアクションを含まない整形済みデータを渡す
             const modelMessageForApi = convertToApiFormat(modelMessage);
             const toolResultsForApi = toolResults.map(convertToApiFormat);
             currentTurnHistory.push(modelMessageForApi, ...toolResultsForApi);
@@ -4108,9 +4076,21 @@ const appLogic = {
                     finalAggregatedMessage.search_web_results.push(...msg.search_web_results);
                 }
 
-                if (msg._internal_ui_actions) {
-                    console.log(`[Debug] _aggregateMessages: _internal_ui_actionsを検出`, msg._internal_ui_actions);
-                    msg._internal_ui_actions.forEach(action => {
+                Object.assign(finalAggregatedMessage, {
+                    finishReason: msg.finishReason,
+                    safetyRatings: msg.safetyRatings,
+                    groundingMetadata: msg.groundingMetadata,
+                    usageMetadata: msg.usageMetadata,
+                    retryCount: msg.retryCount,
+                });
+            }
+
+            // toolロールのメッセージもチェックし、UIアクションがあれば集約する
+            if (msg._internal_ui_action) {
+                console.log(`[Debug] _aggregateMessages: _internal_ui_actionを検出`, msg._internal_ui_action);
+                const actions = msg._internal_ui_action; // actions は配列
+                if (Array.isArray(actions)) {
+                    actions.forEach(action => { // 配列の各要素をループで処理
                         if (action.type === 'display_generated_images' && action.images) {
                             finalAggregatedMessage.generated_images.push(...action.images);
                         }
@@ -4119,14 +4099,6 @@ const appLogic = {
                         }
                     });
                 }
-
-                Object.assign(finalAggregatedMessage, {
-                    finishReason: msg.finishReason,
-                    safetyRatings: msg.safetyRatings,
-                    groundingMetadata: msg.groundingMetadata,
-                    usageMetadata: msg.usageMetadata,
-                    retryCount: msg.retryCount,
-                });
             }
         });
         
@@ -5251,7 +5223,7 @@ const appLogic = {
 
         for (const item of state.selectedFilesForUpload) {
             try {
-                const base64Data = await fileToBase64(item.file);
+                const base64Data = await this.fileToBase64(item.file);
 
                 let browserMimeType = item.file.type || '';
                 const fileName = item.file.name;
