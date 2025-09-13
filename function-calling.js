@@ -1060,14 +1060,8 @@ async function set_background_image({ image_url }) {
     }
 
     if (window.appLogic && typeof window.appLogic.applyBackgroundImageFromUrl === 'function') {
-        const result = await window.appLogic.applyBackgroundImageFromUrl(image_url);
-        if (result === true) {
-            const message = `背景画像を一時的に変更しました。この変更はリロードするとリセットされます。`;
-            return { success: true, message: message };
-        } else {
-            // app.jsからエラーメッセージ(string)が返ってきた場合
-            return { error: result };
-        }
+        // 戻り値はオブジェクトなので、そのまま返す
+        return await window.appLogic.applyBackgroundImageFromUrl(image_url);
     } else {
         return { error: "UI更新機能の呼び出しに失敗しました。" };
     }
@@ -1452,7 +1446,6 @@ async function set_background_image({ image_url }) {
         
         console.log("[Debug] generate_image (Nano Banana): APIからの完全なレスポンスオブジェクト:", JSON.parse(JSON.stringify(resp)));
         
-        // ★★★ ここからが修正箇所 ★★★
         if (resp?.candidates?.length > 0) {
             resp.candidates.forEach((candidate, i) => {
                 console.log(`[Debug] generate_image (Nano Banana): レスポンス候補[${i}]の詳細:`, JSON.parse(JSON.stringify(candidate)));
@@ -1460,7 +1453,6 @@ async function set_background_image({ image_url }) {
         }
   
         const gen = resp?.candidates?.[0]?.content?.parts || [];
-        // ★★★ 修正ここまで ★★★
   
         for (const part of gen) {
           if (part?.inlineData?.mimeType?.startsWith("image/") && part?.inlineData?.data) {

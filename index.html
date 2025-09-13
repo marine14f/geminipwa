@@ -54,7 +54,6 @@
                 <div id="profile-card-header-wrapper" class="profile-card-wrapper">
                     <div id="profile-card-header" class="profile-card" title="プロファイルを切り替え">
                         <div id="profile-card-icon-container" class="profile-icon-container"></div>
-                        <span class="material-symbols-outlined profile-card-arrow">arrow_drop_down</span>
                     </div>
                     <div id="header-profile-menu" class="profile-menu hidden"></div>
                 </div>
@@ -147,12 +146,15 @@
 
                     <div class="profile-actions">
                         <button id="profile-save-new-btn" title="現在の設定を新規プロファイルとして保存"><span class="material-symbols-outlined">person_add</span>新規保存</button>
-                        <button id="profile-update-btn" title="現在の設定を上書き保存"><span class="material-symbols-outlined">save</span>上書き保存</button>
                         <button id="profile-delete-btn" title="選択中のプロファイルを削除"><span class="material-symbols-outlined">person_cancel</span>削除</button>
                         <button id="profile-export-btn" title="選択中のプロファイルをファイルに出力"><span class="material-symbols-outlined">upload</span>出力</button>
                         <button id="profile-import-btn" title="プロファイルをファイルから読み込み"><span class="material-symbols-outlined">download</span>取込</button>
                         <input type="file" id="profile-import-input" accept=".json,application/json" class="hidden">
                     </div>
+                    <p class="profile-actions-note">
+                        ※設定項目はリアルタイムで保存されます。<br>
+                        ※新機能の詳細は<a href="https://github.com/kinkan04/Gemini-PWA-Mk-II" target="_blank" rel="noopener noreferrer">リポジトリ</a>を参照。
+                    </p>
                 </div>
                 <div class="settings-group">
                     <h3>基本設定</h3>

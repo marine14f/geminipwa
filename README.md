@@ -9,6 +9,7 @@
 
 ## 目次
 *   [使い方](#使い方)
+*   [Version 0.4 マルチモーダル対応&プロファイル機能](#version-04-マルチモーダル対応プロファイル機能)
 *   [主な機能](#主な機能)
 *   [Function Calling (Tools) の詳細](#function-calling-tools-の詳細)
     *   [Function Callingとは？](#function-callingとは)
@@ -33,7 +34,7 @@ PWAの更新は、以下の手順で行ってください。以前訪問済み�
 1.  設定画面を開き、『アプリを更新（キャッシュクリア）』ボタンを押します。
 2.  万が一、初期化エラーなどが表示された場合は、`Ctrl + Shift + R` (Macの場合は `Cmd + Shift + R`) でページを強制的にリフレッシュしてください。
 
-## Version 0.4 マルチモーダル対応
+## Version 0.4 マルチモーダル対応&プロファイル機能
 
 Version 0.4では、テキストだけでなく画像や動画を扱う**マルチモーダル機能**が大幅に強化されました。AIとの対話を通じて、物語の情景をイラスト化したり、キャラクターの姿を変化させたり、さらには短い動画を生成することも可能です。
 
@@ -63,14 +64,14 @@ Version 0.4では、テキストだけでなく画像や動画を扱う**マル�
 | シンプルな日本語で画像生成を指示した例<br><br>**ユーザー:**<br>`アニメ調の美しいエルフの姫を描いて` <br><br> **AIの行動:**<br> `generate_image`を、引数に`prompt='anime style illustration of a beautiful elf princess`<br>を渡して実行。 | <a href="./images/image01.png" target="_blank"><img src="./images/image01.png" alt="デモ画像のサムネイル" width="300"></a>|
 | プロンプトも含めて細かい設定を指示した例<br><br>**ユーザー:**<br>`以下の設定で画像を生成して下さい。`<br>`使用モデル:imagen-4.0-ultra-generate-001`<br>`解像度:2k`<br>`アスペクト比:16:9`<br>`プロンプト:masterpiece, best quality, beautiful japanese anime-style illustration, `<br> `18 years old female,black long hair , bangs, circle eyes, beautiful pale pink eyes, `<br> `white shirts, red  ribbon bow tie, beige school jacket, `<br> `pastel pink check patterned pleated mini skirt, high school student, cherry blossom,  `<br> `cherry blossoms blooming,beautiful sky, sunny, petals, cute,`<br><br> **AIの行動:**<br> `generate_image`を、引数に`model='imagen-4.0-ultra-generate-001', sampleImageSize='2k',`<br>` aspectRatio=16:9,prompt='masterpiece, best quality, beautiful japanese anime-style`<br>` illustration, 18 years old female, black long hair , bangs, circle eyes, beautiful`<br>` pale pink eyes, white shirts, red  ribbon bow tie, beige school jacket, pastel pink`<br>` check patterned pleated mini skirt, high school student, cherry`<br>` blossom, cherry blossoms blooming, beautiful sky, sunny, petals, cute,`<br>を渡して実行。 | <a href="./images/image02.png" target="_blank"><img src="./images/image02.png" alt="デモ画像のサムネイル" width="300"></a>|
 | モデルが生成した画像を編集した例<br><br>**ユーザー:**<br>`上記の画像を笑顔にして手を振らせて。` <br><br> **AIの行動:**<br> `edit_image`を、引数に`source_image_message_index=1, `<br>`prompt='make her smile and wave her hand`<br>を渡して実行。 | <a href="./images/image03.png" target="_blank"><img src="./images/image03.png" alt="デモ画像のサムネイル" width="300"></a>|
-| シンプルな日本語で動画生成を指示した例(※無料枠は不可)<br><br>**ユーザー:**<br>`上記の画像を動画にして。` <br><br> **AIの行動:**<br> `edit_image`を、引数に`source_image_message_index=1, `<br>`prompt='make her smile and wave her hand`<br>を渡して実行。 | <a href="./images/gif01.gif" target="_blank"><img src="./images/gif01.gif" alt="動画のサムネイル（クリックで再生）" width="300"></a>|
+| シンプルな日本語で動画生成を指示した例(※無料枠は不可)<br><br>**ユーザー:**<br>`上記の画像を動画にして。` <br><br> **AIの行動:**<br> `generate_video`を、引数に`source_image_message_index=1, `<br>`prompt='make her smile and wave her hand`<br>を渡して実行。 | <a href="./images/gif01.gif" target="_blank"><img src="./images/gif01.gif" alt="動画のサムネイル（クリックで再生）" width="300"></a>|
 ### ⚠️ マルチモーダル生成モデル利用に関する重要な注意点
 
 これらのマルチモーダル機能は、Googleの強力な生成AIモデルを利用しますが、APIの利用にはいくつかの制限があります。
 
 *   **無料枠（Free Tier）でのモデル制限**:
     *   無料枠で画像生成・編集が可能なモデルは、現在**`gemini-2.5-flash-image-preview`（通称: Nano Banana）のみ**です。無料枠のRPD（1日でリクエスト可能な数）は100です。
-    *   無料枠ユーザーが画像生成を行う際は、プロンプトに「`gemini-2.5-flash-image-preview`を使用して下さい。」と明示的に記載して下さい。他のモデル（`imagen-4.0`など）が指定されると、APIエラーが発生します。
+    *   無料枠ユーザーが画像生成を行う際は、プロンプトに「`gemini-2.5-flash-image-preview`を使用して下さい。」と明示的に記載して下さい。指定しなかったり、他のモデル（`imagen-4.0`など）が指定されると、APIエラーが発生します。
     *   無料枠で動画生成モデル（Veo3）は使用できません。
     *   FunctionCalling使用時はモデル呼び出し→FunctionCalling実行→モデル呼び出しというステップを踏みます。1回のリクエストで複数回リクエスト消費があることに留意して下さい。自動リトライ機能が作動した場合も同様にカウントが消費されますので、ご注意ください。
 
@@ -85,6 +86,24 @@ Version 0.4では、テキストだけでなく画像や動画を扱う**マル�
 *   **2025/09現在、`gemini-2.5-pro`モデルにて過負荷によるエラーが多発しています。FunctionCalling実行中にエラーが発生した場合は最初からリトライになります。**
 *   **動画生成に関してはRPDが10と非常に少なく、デバッグが進まないため現在テスト実装になります。バグはあるものだと思って下さい。現段階では動画をIndexedDBに保存する処理を入れていないのでリロードしたら消えます。**
 
+### プロファイル機能：AIの使い分けを簡単に
+
+Version 0.4から、APIキーやモデル、システムプロンプト、各種パラメータなどの設定一式を「プロファイル」として名前を付けて保存し、簡単に切り替えられるようになりました。
+
+これにより、例えば以下のようなAIの使い分けが瞬時に可能になります。
+
+| プロファイル名（例） | 主な設定                                                                                             |
+| :------------- | :--------------------------------------------------------------------------------------------------- |
+| **コーディング**   | **モデル:** `gemini-2.5-pro`<br>**システムプロンプト:** `あなたは熟練のプログラマーです...`         |
+| **嫁チャ**         | **モデル:** `gemini-2.5-Pro`<br>**システムプロンプト:** `あなたは31歳の美咲です...` |
+| **小説**         | **モデル:** `gemini-2.5-flash`<br>**システムプロンプト:** `あなたは創造的な作家です...` |
+| **TRPG**         | **モデル:** `gemini-2.5-flash`<br>**システムプロンプト:** `あなたは厳格なゲームマスターです...` |
+
+*   **プロファイルごとに名前とアイコンを設定**でき、視覚的に管理できます。
+*   チャット入力欄の左側にあるアイコンや、設定画面からいつでもプロファイルを切り替えられます。
+*   設定はリアルタイムで自動保存されるため、「上書き保存」ボタンは不要になりました。
+*   チャット画面の背景画像は全てのプロファイルで共用です。
+
 ## 主な機能
 
 ### APIエラー時の自動リトライ
@@ -98,6 +117,9 @@ APIが生成した文章を、別のモデル（デフォルト: `gemini-2.5-fla
 
 ### Function Calling (高機能ツール連携)
 計算、記憶、Web検索、物語進行の管理など、AIが状況に応じて様々なツール（プログラム）を呼び出せる機能です。詳細は次項で解説します。
+
+### プロファイル機能
+APIキーやモデル、システムプロンプトなどの設定一式を「プロファイル」として複数保存し、ワンタッチで切り替えられる機能です。これにより、「コーディング用アシスタント」と「小説執筆パートナー」のように、用途に応じたAIのペルソナを瞬時に使い分けることが可能になります。[詳細はこちら](#プロファイル機能aiの使い分けを簡単に)
 
 ---
 
@@ -169,6 +191,7 @@ AIがユーザーの意図を汲み取り、事前に用意された様々な「
 *   [`generate_image`](#generate_image): テキストプロンプトから画像を生成します。
 *   [`edit_image`](#edit_image): 既存の画像をテキストプロンプトで編集します。
 *   [`generate_video`](#generate_video): テキストや画像から動画を生成します。
+*   [`manage_image_assets`](#manage_image_assets): ブラウザのDBに画像を保存します。
 *   [`set_background_image`](#set_background_image): チャット画面の背景画像を指定したURLの画像に一時的に変更します。
 *   [`display_layered_image`](#display_layered_image): 背景画像とキャラクター画像を重ねて表示します。
 *   [`set_ui_opacity`](#set_ui_opacity): 背景オーバーレイやメッセージバブルの透明度を変更します。
@@ -330,6 +353,8 @@ AIがユーザーの意図を汲み取り、事前に用意された様々な「
         *   imagen-4.0-fast-generate-001
         *   gemini-2.5-flash-image-preview
     *   `numberOfImages` (number): (任意) 生成する枚数（1～4）。
+    *   `sampleImageSize`（string）: （任意）生成画像の解像度を指定します。1Kは標準、2Kは高解像度。
+    *   `aspectRatio`（string）: （任意）生成画像のアスペクト比を["1:1","3:4","4:3","9:16","16:9"]から指定します。指定がなければ1:1。
 *   **使い道**: 物語のシーンや登場人物の姿を視覚化します。（例：「金髪碧眼の美しいエルフの姫の画像を生成して」）
 
 ##### `edit_image`
@@ -343,8 +368,18 @@ AIがユーザーの意図を汲み取り、事前に用意された様々な「
 *   **概要**: テキストプロンプトや既存の画像から短い動画を生成します。`veo-3.0`モデルを使用します。
 *   **引数**:
     *   `prompt` (string): 生成したい動画の内容を表す**英語の**プロンプト。
+    *   `negative_prompt`（string）:（任意）動画に含めたくない要素を説明する**英語の**ネガティブプロンプト。 
     *   `source_image_message_index` (number): (任意) 動画の元になる画像が含まれるメッセージのインデックス番号。
+    *   `aspect_ratio`（string）: （任意）動画のアスペクト比。'16:9' (横長), '9:16' (縦長), '1:1' (正方形) など。デフォルトは '16:9'。
 *   **使い道**: 動きのあるシーンを描写します。（例：「この姫が微笑む動画を生成して」）
+
+##### `manage_image_assets`
+*   **概要**: ユーザーが提供した画像を、後から再利用できるように名前を付けてアプリ内に永続的に保存・管理します。キャラクターの立ち絵や背景など、繰り返し使用する画像を保存するのに使用します。
+*   **引数**:
+    *   `action` (string): 実行する操作を選択します。'save': 画像を保存/上書き, 'get': 保存済み画像を取得して表示, 'delete': 画像を削除, 'list': 保存されている全画像の名前を一覧表示。
+    *   `asset_name`（string）: 画像を識別するための一意の名前。例: 'キャラAの立ち絵', '森の背景'
+    *   `source_image_message_index`（number）：'save'アクション時に必須。保存元となる画像が含まれるメッセージのインデックス番号。ユーザーの現在のプロンプトが0、その一つ前のAIの応答が1となります。
+*   **使い道**: 画像をブラウザのDB(IndexedDB)に保存します。キャラクターの基準となる立ち絵（例：「キャラAの基本の姿」）を一度保存しておけば、以降の会話で「（保存した）キャラAを笑顔にして」のように指示するだけで、**同じキャラクターの表情差分を簡単に作成できます。** これにより、物語を通じてキャラクターの見た目の一貫性を保つことが容易になります。
 
 ##### `set_background_image`
 *   **概要**: チャット画面の背景画像を、指定されたURLの画像に**一時的に**変更します。（※リロードすると元に戻ります）
@@ -384,9 +419,11 @@ AIがユーザーの意図を汲み取り、事前に用意された様々な「
     *   動画を生成する`generate_video`関数を追加。（テスト実装）
     *   画像を生成する`generate_image`関数を追加。
     *   画像を編集する`edit_image`関数を追加。
+    *   画像をデータベースに保存する`manage_image_assets`関数を追加。
     *   背景画像を変更する`set_background_image`関数を追加。
     *   2枚の画像を合成する`display_layered_image`関数を追加。（テスト実装）
     *   オーバーレイの濃さとメッセージバブルの濃さを変更する`set_ui_opacity`関数を追加。
+    *   個別に設定項目を管理できるプロファイル機能を追加。
     *   多くのチャットアプリケーションで採用されている、『Ctrl + Enter: 常に送信』、『Shift + Enter: 常に改行』のショートカット操作に対応。
     *   Prism.jsを導入し、コードブロックの「シンタックハイライト」やコピーに対応。
     *   ファイルのドラッグ&ドロップ添付に対応。
@@ -399,6 +436,7 @@ AIがユーザーの意図を汲み取り、事前に用意された様々な「
     *   システムプロンプトを編集した後、設定画面で保存を行うとデフォルトのシステムプロンプトで上書きされる不具合を修正。
     *   メッセージ追加時のレンダリングを差分レンダリングに切り替えてパフォーマンス低下に対応。
     *   モバイル版でファイルを添付した時、二重に動作してしまう不具合を修正。
+    *   ストリーミング関連の機能を削除。本PWAではストリーミングは非対応とします。
 
 ### Version 0.34 (2025-08-31)
 *   **機能追加**

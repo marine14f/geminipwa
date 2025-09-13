@@ -1080,12 +1080,11 @@ body.dark-mode #chat-screen.drag-over::after {
     cursor: pointer;
     transition: background-color var(--transition-duration) var(--transition-timing);
     max-width: 180px;
-    /* ▼▼▼ ここからが修正箇所 ▼▼▼ */
-    background-color: rgba(255, 255, 255, 0.1); /* 背景を少し明るく */
+    background-color: rgba(255, 255, 255, 0.1); 
     border: 1px solid rgba(255, 255, 255, 0.2);
 }
 .app-header .profile-card:hover {
-    background-color: rgba(255, 255, 255, 0.2); /* ホバー時も少し明るく */
+    background-color: rgba(255, 255, 255, 0.2);
 }
 .profile-icon-container {
     width: 28px;
@@ -1095,7 +1094,7 @@ body.dark-mode #chat-screen.drag-over::after {
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: rgba(255, 255, 255, 0.3); /* アイコン背景をさらに明るく */
+    background-color: rgba(255, 255, 255, 0.3);
     overflow: hidden;
 }
 
@@ -1169,10 +1168,9 @@ body.dark-mode #chat-screen.drag-over::after {
 #profile-management-group {
     background-color: var(--bg-secondary);
     border: 1px solid var(--border-primary);
-    padding-bottom: 12px; /* ボタンとの余白を調整 */
+    padding-bottom: 12px;
 }
 
-/* ▼▼▼ 「プロファイル編集」の文字を削除 ▼▼▼ */
 #profile-management-group h3 {
     display: none;
 }
@@ -1184,7 +1182,7 @@ body.dark-mode #chat-screen.drag-over::after {
     background-color: var(--bg-tertiary);
     padding: 12px 16px;
     border-radius: var(--border-radius-lg);
-    margin-bottom: 16px; /* ボタンとの余白を調整 */
+    margin-bottom: 16px;
     border: 1px solid var(--border-primary);
     box-shadow: var(--shadow-1);
 }
@@ -1287,15 +1285,14 @@ body.dark-mode #chat-screen.drag-over::after {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
     gap: 12px;
-    margin-top: 0; /* ★ 罫線を消したのでmarginをリセット */
-    border-top: none; /* ★ 罫線を削除 */
-    padding-top: 0; /* ★ 罫線を消したのでpaddingをリセット */
+    margin-top: 0; 
+    border-top: none; 
+    padding-top: 0;
 }
 .profile-actions button {
     font-size: 0.8rem;
     padding: 8px 12px;
     justify-content: flex-start;
-    /* ▼▼▼ ボタンの色を変更 ▼▼▼ */
     background-color: var(--bg-button-action);
     color: var(--text-light);
 }
@@ -1320,22 +1317,22 @@ body.dark-mode .profile-actions button {
 
 /* ダークモード時のボタンスタイルを明示的に指定 */
 body.dark-mode #profile-management-group .profile-actions button {
-    background-color: #424242; /* より暗いグレー */
+    background-color: #424242;
     color: var(--text-primary);
 }
 body.dark-mode #profile-management-group .profile-actions button:hover {
-    background-color: #616161; /* ホバー時も暗めのグレー */
+    background-color: #616161;
 }
 
 /* --- Footer Profile Card --- */
 .chat-input-area .profile-card-wrapper {
     position: relative;
     flex-shrink: 0;
-    align-self: flex-end; /* 他のボタンと高さを合わせる */
+    align-self: flex-end; 
 }
 
 .chat-input-area .profile-card {
-    position: relative; /* 矢印を絶対配置するための基準点になります */
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1353,8 +1350,8 @@ body.dark-mode #profile-management-group .profile-actions button:hover {
 }
 
 .chat-input-area .profile-icon-container {
-    width: 28px; /* アイコンサイズを少し戻します */
-    height: 28px;
+    width: 32px;
+    height: 32px;
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -1370,33 +1367,72 @@ body.dark-mode #profile-management-group .profile-actions button:hover {
 }
 
 .chat-input-area .profile-icon-container .material-symbols-outlined {
-    font-size: 24px;
+    font-size: 28px;
     color: var(--text-secondary);
-}
-
-.chat-input-area .profile-card-arrow {
-    position: absolute; /* 親要素を基準に絶対配置します */
-    right: 2px;       /* 右端から2pxの位置 */
-    bottom: 2px;      /* 下端から2pxの位置 */
-    font-size: 16px;  /* 矢印を少し小さくします */
-    color: var(--text-primary);
-    background-color: var(--bg-secondary);
-    border-radius: 50%;
-    padding: 1px;
-    border: 1px solid var(--border-primary);
-    line-height: 1; /* アイコンの縦中央を保証 */
 }
 
 /* --- Footer Dropdown Menu Position --- */
 .chat-input-area .profile-menu {
     position: absolute;
-    bottom: calc(100% + 4px); /* カードの上方向に表示 */
-    left: 0; /* カードの左端に合わせる */
+    bottom: calc(100% + 4px);
+    left: 0;
     background-color: var(--bg-primary);
     border-radius: var(--border-radius-md);
     box-shadow: var(--shadow-3);
     z-index: 100;
     overflow: hidden;
-    min-width: 200px; /* 幅を少し広げる */
+    min-width: 200px;
     border: 1px solid var(--border-primary);
+}
+
+/* --- Profile Menu Item Layout --- */
+.profile-menu-item {
+    gap: 10px;
+    padding: 8px 12px;
+}
+
+.profile-menu-text-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    overflow: hidden; 
+}
+
+.profile-menu-name {
+    font-size: 0.85rem; 
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.profile-menu-model {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.profile-menu-item.active .profile-menu-name {
+    font-weight: 700;
+}
+
+/* --- Profile Actions Note --- */
+.profile-actions-note {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    text-align: right;
+    margin-top: 8px;
+    line-height: 1.4;
+}
+
+.profile-actions-note a {
+    color: var(--text-link);
+    text-decoration: none;
+}
+
+.profile-actions-note a:hover {
+    text-decoration: underline;
 }

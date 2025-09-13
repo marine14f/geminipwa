@@ -2,8 +2,6 @@ import("https://esm.run/@google/genai").then(module => {
     // 正しいクラス名 GoogleGenAI をグローバルスコープに設定
     window.GoogleGenAI = module.GoogleGenAI;
     console.log("Google GenAI SDK (@google/genai) の読み込みが完了しました。");
-    // SDKの読み込みが完了してから、アプリの初期化を実行する
-    appLogic.initializeApp();
 }).catch(err => {
     console.error("Google Gen AI SDKの読み込みに失敗しました:", err);
     // エラーメッセージを画面に表示するなどのフォールバック処理
@@ -288,6 +286,7 @@ const state = {
     currentScreen: 'chat',
     selectedFilesForUpload: [],
     pendingAttachments: [],
+    isTemporaryBackgroundActive: false,
     currentScene: null,
     currentStyleProfiles: {},
 };
@@ -1535,6 +1534,30 @@ const uiUtils = {
         elements.themeColorMeta.content = finalHeaderColor;
         console.log(`ヘッダーカラー適用。テーマカラー: ${finalHeaderColor}`);
     },
+
+    applyBackgroundImage() {
+        // 一時的な背景が適用中の場合は、永続設定で上書きしない
+        if (state.isTemporaryBackgroundActive) {
+            console.log("一時的な背景が適用中のため、永続的な背景の適用をスキップしました。");
+            return;
+        }
+        this.revokeExistingObjectUrl(); // 既存のURLがあれば破棄
+        const blob = state.settings.backgroundImageBlob;
+        if (blob instanceof Blob) {
+            try {
+                state.backgroundImageUrl = URL.createObjectURL(blob);
+                document.documentElement.style.setProperty('--chat-background-image-main', `url("${state.backgroundImageUrl}")`);
+                console.log("背景画像をBlobから適用しました。");
+            } catch (e) {
+                console.error("背景画像のオブジェクトURL生成に失敗:", e);
+                document.documentElement.style.setProperty('--chat-background-image-main', 'none');
+            }
+        } else {
+            document.documentElement.style.setProperty('--chat-background-image-main', 'none');
+        }
+        this.updateBackgroundSettingsUI(); // 設定画面のUIも更新
+    },
+
     // ------------------------------------
 
     // 設定をUIに適用
@@ -1605,6 +1628,7 @@ const uiUtils = {
         this.applyOverlayOpacity();
         this.applyHeaderColor();
         this.updateModelWarningMessage();
+        this.applyBackgroundImage();
     },
 
     // ユーザー指定モデルをコンボボックスに反映
@@ -2032,11 +2056,12 @@ const uiUtils = {
     },
 
     updateProfileSwitcherUI() {
-        // ヘッダーと設定画面の両方のメニューを更新する
-        const menus = [elements.headerProfileMenu, elements.settingsProfileMenu];
+        const menus = [elements.headerProfileMenu, elements.headerProfileMenuSettings];
+
         menus.forEach(menu => {
-            if (!menu) return; // 要素が存在しない場合はスキップ
+            if (!menu) return;
             menu.innerHTML = '';
+            menu.addEventListener('click', e => e.stopPropagation());
         });
 
         state.profiles.forEach(profile => {
@@ -2061,17 +2086,28 @@ const uiUtils = {
                 iconContainer.innerHTML = `<span class="material-symbols-outlined">account_circle</span>`;
             }
 
+            const textContainer = document.createElement('div');
+            textContainer.classList.add('profile-menu-text-container');
+
             const nameSpan = document.createElement('span');
+            nameSpan.classList.add('profile-menu-name');
             nameSpan.textContent = profile.name;
 
+            const modelSpan = document.createElement('span');
+            modelSpan.classList.add('profile-menu-model');
+            // profile.settingsが存在し、modelNameが設定されていれば表示
+            modelSpan.textContent = profile.settings?.modelName || 'モデル未設定';
+
+            textContainer.appendChild(nameSpan);
+            textContainer.appendChild(modelSpan);
+
             menuItem.appendChild(iconContainer);
-            menuItem.appendChild(nameSpan);
+            menuItem.appendChild(textContainer); // textContainerを追加
 
             const switchHandler = (event) => {
-                event.stopPropagation(); // 親要素へのイベント伝播を停止
+                event.stopPropagation();
                 appLogic.switchProfile(profile.id);
-                elements.headerProfileMenu.classList.add('hidden');
-                elements.settingsProfileMenu.classList.add('hidden');
+                menus.forEach(m => m?.classList.add('hidden'));
             };
             
             menus.forEach(menu => {
@@ -2083,10 +2119,6 @@ const uiUtils = {
             });
         });
         
-        // 設定画面のボタンのテキストも更新
-        if (state.activeProfile && elements.profileSwitcherName) {
-            elements.profileSwitcherName.textContent = state.activeProfile.name;
-        }
         console.log("[UI] プロファイルメニューを更新しました。");
     },
 
@@ -2147,10 +2179,18 @@ const uiUtils = {
 
         console.log("[UI] プロファイルカードUIを更新しました。");
     },
+    
 
     toggleProfileMenu(type) {
-        const menu = type === 'header' ? elements.headerProfileMenu : elements.settingsProfileMenu;
-        menu.classList.toggle('hidden');
+        console.log(`[Debug Toggle] toggleProfileMenuが呼び出されました。type: ${type}`);
+        const menu = type === 'header' ? elements.headerProfileMenu : elements.headerProfileMenuSettings;
+        console.log('[Debug Toggle] 対象メニュー要素:', menu);
+        if (menu) {
+            menu.classList.toggle('hidden');
+            console.log(`[Debug Toggle] hiddenクラスをトグルしました。現在のクラス: ${menu.className}`);
+        } else {
+            console.error('[Debug Toggle] エラー: 対象となるメニュー要素が見つかりません。');
+        }
     }
 };
 
@@ -2554,6 +2594,20 @@ const appLogic = {
         await this.handleSend(false, -1, true);
     },
 
+    async loadGlobalSettings() {
+        try {
+            console.log("[GlobalSettings] 共通設定の読み込みを開始します。");
+            const storedBlob = await dbUtils.getSetting('backgroundImageBlob');
+            if (storedBlob && storedBlob.value instanceof Blob) {
+                state.settings.backgroundImageBlob = storedBlob.value;
+                console.log("[GlobalSettings] 背景画像BlobをDBから読み込みました。");
+            }
+        } catch (error) {
+            console.error("[GlobalSettings] 共通設定の読み込み中にエラーが発生しました:", error);
+            // エラーが発生しても起動処理は続行する
+        }
+    },
+
     async loadProfiles() {
         try {
             console.log("[Profile] プロファイルの読み込みを開始します。");
@@ -2612,13 +2666,12 @@ const appLogic = {
         await dbUtils.saveSetting('activeProfileId', newProfileId);
         state.activeProfileId = newProfileId;
         
-        // ★★★ ここからが修正箇所 ★★★
-        // 適用、UI更新、システムプロンプト更新のみ行い、チャットはリセットしない
         this.applyActiveProfile();
         state.currentSystemPrompt = state.settings.systemPrompt || '';
         uiUtils.updateSystemPromptUI();
-        await dbUtils.saveChat(); // 現在のチャットに新しいSPを保存
-        // ★★★ 修正ここまで ★★★
+        await dbUtils.saveChat();
+        
+        uiUtils.updateProfileSwitcherUI();
     },
 
     async saveNewProfile() {
@@ -2727,6 +2780,15 @@ const appLogic = {
 
     handleProfileIconChange(file) {
         if (!file || !file.type.startsWith('image/')) return;
+
+        // 1. 既存のアイコンURLキャッシュがあれば破棄する
+        if (state.activeProfile && state.profileIconUrls.has(state.activeProfile.id)) {
+            const oldUrl = state.profileIconUrls.get(state.activeProfile.id);
+            URL.revokeObjectURL(oldUrl);
+            state.profileIconUrls.delete(state.activeProfile.id);
+            console.log(`[Profile] 古いアイコンキャッシュを破棄しました (ID: ${state.activeProfile.id})`);
+        }
+
         const reader = new FileReader();
         reader.onload = async (e) => {
             const blob = new Blob([e.target.result], { type: file.type });
@@ -2838,6 +2900,9 @@ const appLogic = {
         try {
             await dbUtils.openDB();
 
+            await this.loadGlobalSettings(); // 最初に共通設定を読み込む
+            await this.loadProfiles();       // 次にプロファイル設定を読み込む
+
             let profiles = await dbUtils.getAllProfiles();
             if (profiles.length === 0) {
                 console.log("[Migration] プロファイルが存在しないため、旧設定からのデータ移行処理を実行します。");
@@ -2947,46 +3012,143 @@ const appLogic = {
         elements.saveSystemPromptBtn.addEventListener('click', () => this.saveCurrentSystemPrompt());
         elements.cancelSystemPromptBtn.addEventListener('click', () => this.cancelEditSystemPrompt());
 
-        // --- プロファイル関連 ---
-        elements.profileCardHeader.addEventListener('click', () => uiUtils.toggleProfileMenu('header'));
-        elements.profileCardHeaderSettings.addEventListener('click', () => uiUtils.toggleProfileMenu('settings')); // ★ 追加
-
-        elements.profileEditNameBtn.addEventListener('click', () => this.editCurrentProfileName());
-        elements.profileIconInput.addEventListener('change', (e) => this.handleProfileIconChange(e.target.files[0]));
-        elements.profileResetIconBtn.addEventListener('click', () => this.resetProfileIcon());
-        
-        elements.profileSaveNewBtn.addEventListener('click', () => this.saveNewProfile());
-        elements.profileUpdateBtn.addEventListener('click', () => this.updateCurrentProfile());
-        elements.profileDeleteBtn.addEventListener('click', () => this.deleteCurrentProfile());
-
-        // --- 設定項目（即時保存） ---
-        const setupInstantSave = (element, key) => { // ★ 追加
-            if (!element) return; // ★ 追加
-            element.addEventListener('change', async () => {
-                if (!state.activeProfile) return;
-                let value = element.type === 'checkbox' ? element.checked : element.value;
-                if (element.type === 'range') {
-                    value = parseFloat(element.value) / 100;
-                } else if (element.type === 'number') {
-                    value = parseFloat(element.value);
-                }
-                
-                // state.settings と state.activeProfile.settings の両方を更新
-                state.settings[key] = value;
-                state.activeProfile.settings[key] = value;
-                
-                await dbUtils.updateProfile(state.activeProfile);
-                this.applyActiveProfile();
-                console.log(`[Settings] ${key} を ${value} に更新・保存しました。`);
-            });
-        };
-        
-        // 全ての設定項目に即時保存リスナーを設定
-        Object.keys(state.settings).forEach(key => { // ★ 追加
-            const element = elements[key + 'Input'] || elements[key + 'Select'] || elements[key + 'Textarea'] || elements[key + 'Toggle'] || elements[key + 'Slider'];
-            setupInstantSave(element, key);
+        // --- プロファイルメニューの表示/非表示 ---
+        elements.profileCardHeader.addEventListener('click', (e) => {
+            e.stopPropagation();
+            uiUtils.toggleProfileMenu('header');
+        });
+        elements.profileCardHeaderSettings.addEventListener('click', (e) => {
+            e.stopPropagation();
+            uiUtils.toggleProfileMenu('settings');
         });
 
+        document.addEventListener('click', (e) => {
+            const target = e.target;
+            const isHeaderCardClicked = elements.profileCardHeader.contains(target);
+            const isSettingsCardClicked = elements.profileCardHeaderSettings.contains(target);
+            const isHeaderMenuClicked = elements.headerProfileMenu.contains(target);
+            const isSettingsMenuClicked = elements.headerProfileMenuSettings.contains(target);
+
+            if (!isHeaderCardClicked && !isSettingsCardClicked && !isHeaderMenuClicked && !isSettingsMenuClicked) {
+                elements.headerProfileMenu.classList.add('hidden');
+                elements.headerProfileMenuSettings.classList.add('hidden');
+            }
+        });
+
+        // --- プロファイル編集 ---
+        elements.profileEditNameBtn.addEventListener('click', () => this.editCurrentProfileName());
+        elements.profileIconInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                this.handleProfileIconChange(file);
+            }
+            e.target.value = null;
+        });
+        elements.profileResetIconBtn.addEventListener('click', () => this.resetProfileIcon());
+        elements.profileSaveNewBtn.addEventListener('click', () => this.saveNewProfile());
+        elements.profileDeleteBtn.addEventListener('click', () => this.deleteCurrentProfile());
+        elements.profileExportBtn.addEventListener('click', () => this.exportProfile());
+        elements.profileImportBtn.addEventListener('click', () => elements.profileImportInput.click());
+        elements.profileImportInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) this.importProfile(file);
+            e.target.value = null;
+        });
+
+        // --- 設定項目（即時保存） ---
+        const setupInstantSave = (element, key, eventType = 'change') => {
+            if (element) {
+                // console.log(`✅ [Debug Settings] '${key}' に ${eventType} リスナーを設定します。`, element); // デバッグ完了のためコメントアウト
+                element.addEventListener(eventType, async () => {
+                    if (!state.activeProfile) return;
+                    let value;
+                    switch (element.type) {
+                        case 'checkbox':
+                            value = element.checked;
+                            break;
+                        case 'range':
+                            value = parseFloat(element.value) / 100;
+                            break;
+                        case 'number':
+                            value = parseFloat(element.value);
+                            if (isNaN(value)) value = null;
+                            break;
+                        default:
+                            value = element.value;
+                            break;
+                    }
+                    
+                    state.settings[key] = value;
+                    state.activeProfile.settings[key] = value;
+                    
+                    await dbUtils.updateProfile(state.activeProfile);
+                    
+                    if (key === 'darkMode') uiUtils.applyDarkMode();
+                    if (key === 'fontFamily') uiUtils.applyFontFamily();
+                    if (key === 'hideSystemPromptInChat') uiUtils.toggleSystemPromptVisibility();
+                    if (key === 'overlayOpacity') uiUtils.applyOverlayOpacity();
+                    if (key === 'headerColor') uiUtils.applyHeaderColor();
+                    if (key === 'messageOpacity') document.documentElement.style.setProperty('--message-bubble-opacity', String(value));
+                    if (key === 'modelName') uiUtils.updateModelWarningMessage();
+
+                    // console.log(`[Settings] '${key}' を '${value}' に更新・保存しました。`); // デバッグ完了のためコメントアウト
+                });
+            } else {
+                // console.warn(`❌ [Debug Settings] '${key}' に対応するDOM要素が見つかりません。`); // デバッグ完了のためコメントアウト
+            }
+        };
+        
+        const settingsMap = {
+            apiKey: { element: elements.apiKeyInput, event: 'input' },
+            modelName: { element: elements.modelNameSelect, event: 'change' },
+            systemPrompt: { element: elements.systemPromptDefaultTextarea, event: 'input' },
+            temperature: { element: elements.temperatureInput, event: 'input' },
+            maxTokens: { element: elements.maxTokensInput, event: 'input' },
+            topK: { element: elements.topKInput, event: 'input' },
+            topP: { element: elements.topPInput, event: 'input' },
+            presencePenalty: { element: elements.presencePenaltyInput, event: 'input' },
+            frequencyPenalty: { element: elements.frequencyPenaltyInput, event: 'input' },
+            thinkingBudget: { element: elements.thinkingBudgetInput, event: 'input' },
+            includeThoughts: { element: elements.includeThoughtsToggle, event: 'change' },
+            enableThoughtTranslation: { element: elements.enableThoughtTranslationCheckbox, event: 'change' },
+            thoughtTranslationModel: { element: elements.thoughtTranslationModelSelect, event: 'change' },
+            dummyUser: { element: elements.dummyUserInput, event: 'input' },
+            applyDummyToProofread: { element: elements.applyDummyToProofreadCheckbox, event: 'change' },
+            applyDummyToTranslate: { element: elements.applyDummyToTranslateCheckbox, event: 'change' },
+            dummyModel: { element: elements.dummyModelInput, event: 'input' },
+            concatDummyModel: { element: elements.concatDummyModelCheckbox, event: 'change' },
+            additionalModels: { element: elements.additionalModelsTextarea, event: 'input' },
+            enterToSend: { element: elements.enterToSendCheckbox, event: 'change' },
+            historySortOrder: { element: elements.historySortOrderSelect, event: 'change' },
+            darkMode: { element: elements.darkModeToggle, event: 'change' },
+            fontFamily: { element: elements.fontFamilyInput, event: 'input' },
+            hideSystemPromptInChat: { element: elements.hideSystemPromptToggle, event: 'change' },
+            geminiEnableGrounding: { element: elements.geminiEnableGroundingToggle, event: 'change' },
+            geminiEnableFunctionCalling: { element: elements.geminiEnableFunctionCallingToggle, event: 'change' },
+            enableSwipeNavigation: { element: elements.swipeNavigationToggle, event: 'change' },
+            enableProofreading: { element: elements.enableProofreadingCheckbox, event: 'change' },
+            proofreadingModelName: { element: elements.proofreadingModelNameSelect, event: 'change' },
+            proofreadingSystemInstruction: { element: elements.proofreadingSystemInstructionTextarea, event: 'input' },
+            enableAutoRetry: { element: elements.enableAutoRetryCheckbox, event: 'change' },
+            maxRetries: { element: elements.maxRetriesInput, event: 'input' },
+            useFixedRetryDelay: { element: elements.useFixedRetryDelayCheckbox, event: 'change' },
+            fixedRetryDelaySeconds: { element: elements.fixedRetryDelayInput, event: 'input' },
+            maxBackoffDelaySeconds: { element: elements.maxBackoffDelayInput, event: 'input' },
+            googleSearchApiKey: { element: elements.googleSearchApiKeyInput, event: 'input' },
+            googleSearchEngineId: { element: elements.googleSearchEngineIdInput, event: 'input' },
+            overlayOpacity: { element: elements.overlayOpacitySlider, event: 'input' },
+            messageOpacity: { element: elements.messageOpacitySlider, event: 'input' },
+            headerColor: { element: elements.headerColorInput, event: 'input' },
+            allowPromptUiChanges: { element: document.getElementById('allow-prompt-ui-changes'), event: 'change' },
+            forceFunctionCalling: { element: elements.forceFunctionCallingToggle, event: 'change' }
+        };
+
+        for (const key in settingsMap) {
+            const { element, event } = settingsMap[key];
+            setupInstantSave(element, key, event);
+        }
+
+        // --- その他 ---
         elements.importHistoryBtn.addEventListener('click', () => elements.importHistoryInput.click());
         elements.importHistoryInput.addEventListener('change', (event) => {
             const file = event.target.files[0];
@@ -2998,32 +3160,6 @@ const appLogic = {
             const isEnabled = elements.includeThoughtsToggle.checked;
             elements.thoughtTranslationOptionsDiv.classList.toggle('hidden', !isEnabled);
         });
-
-        if (elements.overlayOpacitySlider) {
-            elements.overlayOpacitySlider.addEventListener('input', (e) => {
-                const raw = Number(e.target.value) || 0;
-                const clamped = Math.max(0, Math.min(95, raw));
-                const v = clamped / 100;
-                
-                if (elements.overlayOpacityValue) {
-                    elements.overlayOpacityValue.textContent = `${clamped}%`;
-                }
-                document.documentElement.style.setProperty('--overlay-opacity-value', v);
-                if (state?.settings) state.settings.overlayOpacity = v;
-            });
-        }
-        if (elements.messageOpacitySlider) {
-            elements.messageOpacitySlider.addEventListener('input', (e) => {
-              const raw = Number(e.target.value) || 100;
-              const clamped = Math.max(10, Math.min(100, raw));
-              const v = clamped / 100;
-              if (elements.messageOpacityValue) {
-                elements.messageOpacityValue.textContent = `${clamped}%`;
-              }
-              document.documentElement.style.setProperty('--message-bubble-opacity', String(v));
-              if (state?.settings) state.settings.messageOpacity = v;
-            });
-          }
         
         elements.updateAppBtn.addEventListener('click', () => this.updateApp());
         elements.clearDataBtn.addEventListener('click', () => this.confirmClearAllData());
@@ -3031,11 +3167,6 @@ const appLogic = {
         elements.enableProofreadingCheckbox.addEventListener('change', () => {
             const isEnabled = elements.enableProofreadingCheckbox.checked;
             elements.proofreadingOptionsDiv.classList.toggle('hidden', !isEnabled);
-        });
-
-        elements.darkModeToggle.addEventListener('change', () => {
-            state.settings.darkMode = elements.darkModeToggle.checked;
-            uiUtils.applyDarkMode();
         });
 
         elements.uploadBackgroundBtn.addEventListener('click', () => elements.backgroundImageInput.click());
@@ -3046,21 +3177,12 @@ const appLogic = {
         });
         elements.deleteBackgroundBtn.addEventListener('click', () => this.confirmDeleteBackgroundImage());
         
-        elements.headerColorInput.addEventListener('input', () => {
-            const newColor = elements.headerColorInput.value;
-            state.settings.headerColor = newColor;
-            uiUtils.applyHeaderColor();
-        });
-
         elements.resetHeaderColorBtn.addEventListener('click', () => {
             state.settings.headerColor = '';
             elements.headerColorInput.value = state.settings.darkMode ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
-            uiUtils.applyHeaderColor();
-        });
-
-        elements.hideSystemPromptToggle.addEventListener('change', () => {
-            state.settings.hideSystemPromptInChat = elements.hideSystemPromptToggle.checked;
-            uiUtils.toggleSystemPromptVisibility();
+            // headerColorの'change'イベントリスナーが自動で保存と適用を行うため、ここでは値をリセットするだけ
+            const event = new Event('input', { bubbles: true });
+            elements.headerColorInput.dispatchEvent(event);
         });
         
         elements.messageContainer.addEventListener('click', (event) => {
@@ -3210,18 +3332,6 @@ const appLogic = {
             }
         });
 
-        elements.messageContainer.addEventListener('click', (event) => {
-            if (event.target.tagName === 'IMG' && event.target.closest('.message-content')) {
-                const modalOverlay = document.getElementById('image-modal-overlay');
-                const modalImg = document.getElementById('image-modal-img');
-                
-                if (modalOverlay && modalImg) {
-                    modalImg.src = event.target.src;
-                    modalOverlay.classList.remove('hidden');
-                }
-            }
-        });
-
         const modalOverlay = document.getElementById('image-modal-overlay');
         const modalCloseBtn = document.getElementById('image-modal-close');
         
@@ -3264,7 +3374,7 @@ const appLogic = {
             
             revokeUrls(state.profileIconUrls, 'アイコン');
             revokeUrls(state.videoUrlCache, '動画');
-            revokeUrls(state.imageUrlCache, 'チャット画像'); // ★ 追加
+            revokeUrls(state.imageUrlCache, 'チャット画像');
         });
     },
 
@@ -4146,7 +4256,6 @@ const appLogic = {
                 historyForApiRaw.push({ role: 'user', content: state.settings.dummyUser, attachments: [] });
             }
             
-            // ★★★ ここからが修正箇所 ★★★
             const historyForApi = historyForApiRaw.map(msg => {
                 const parts = [];
                 if (msg.content && msg.content.trim() !== '') {
@@ -4168,10 +4277,8 @@ const appLogic = {
                         parts.push({ functionResponse: { name: msg.name, response: msg.response } });
                     }
                 }
-                // originalMessageプロパティを追加しないように修正
                 return { role: msg.role === 'tool' ? 'tool' : (msg.role === 'model' ? 'model' : 'user'), parts };
             }).filter(c => c.parts.length > 0);
-            // ★★★ 修正ここまで ★★★
 
             const generationConfig = {};
             if (state.settings.temperature !== null) generationConfig.temperature = state.settings.temperature;
@@ -4338,7 +4445,6 @@ const appLogic = {
             remainingText = text.replace(metadataRegex, '');
         }
     
-        // 正規表現を修正: <|#|role|#| [attributes]>\ncontent\n<|#|/role|#|>
         const blockRegex = /<\|#\|(system|user|model)\|#\|([^>]*)>([\s\S]*?)<\|#\|\/\1\|#\|>/g;
         let match;
     
@@ -4398,8 +4504,7 @@ const appLogic = {
     // -------------------------------
 
     // --- 背景画像ハンドラ ---
-     // 背景画像アップロード処理
-     async handleBackgroundImageUpload(file) {
+    async handleBackgroundImageUpload(file) {
         const maxSize = 5 * 1024 * 1024;
         if (file.size > maxSize) {
             await uiUtils.showCustomAlert(`画像サイズが大きすぎます (${(maxSize / 1024 / 1024).toFixed(1)}MB以下にしてください)`);
@@ -4410,21 +4515,17 @@ const appLogic = {
             return;
         }
         try {
-            state.backgroundImageUrl = null;
-            uiUtils.revokeExistingObjectUrl();
             const blob = file;
-            await dbUtils.saveSetting('backgroundImageBlob', blob);
+            // stateとDBを更新し、新しい関数を呼び出してUIに適用する
             state.settings.backgroundImageBlob = blob;
-            state.backgroundImageUrl = URL.createObjectURL(blob);
-
-            document.documentElement.style.setProperty('--chat-background-image-main', `url("${state.backgroundImageUrl}")`);
-            
-            uiUtils.updateBackgroundSettingsUI();
+            await dbUtils.saveSetting('backgroundImageBlob', blob);
+            uiUtils.applyBackgroundImage();
         } catch (error) {
-            uiUtils.revokeExistingObjectUrl();
-            document.documentElement.style.setProperty('--chat-background-image-main', 'none');
+            console.error("背景画像の保存・適用エラー:", error);
+            // エラー時にはstateとDBをnullに戻し、背景を非表示にする
             state.settings.backgroundImageBlob = null;
-            uiUtils.updateBackgroundSettingsUI();
+            await dbUtils.saveSetting('backgroundImageBlob', null);
+            uiUtils.applyBackgroundImage();
         }
     },
      // 背景画像削除の確認
@@ -4440,6 +4541,8 @@ const appLogic = {
             uiUtils.revokeExistingObjectUrl();
             await dbUtils.saveSetting('backgroundImageBlob', null);
             state.settings.backgroundImageBlob = null;
+
+            state.isTemporaryBackgroundActive = false;
             document.documentElement.style.setProperty('--chat-background-image-main', 'none');
             uiUtils.updateBackgroundSettingsUI();
         } catch (error) {
@@ -5478,27 +5581,25 @@ const appLogic = {
      * @param {string} url - 画像のURL
      * @returns {Promise<object>} 処理結果
      */
-    async applyBackgroundImageFromUrl(url) {
+     async applyBackgroundImageFromUrl(url) {
         if (!url || typeof url !== 'string') {
             return { error: "画像URLが無効です。" };
         }
         console.log(`一時的な背景画像をURLから適用: ${url}`);
         
         // 永続化されている背景設定をメモリ上でのみクリア
-        if (state.settings.backgroundImageBlob) {
-            uiUtils.revokeExistingObjectUrl(); 
-            state.settings.backgroundImageBlob = null;
-            // DBは変更しない
-        }
-
+        uiUtils.revokeExistingObjectUrl();
+        
         // 新しいURLをCSS変数に設定
         document.documentElement.style.setProperty('--chat-background-image-main', `url("${url}")`);
         
-        // サムネイルは非表示にする
-        elements.backgroundThumbnail.classList.add('hidden');
-        elements.deleteBackgroundBtn.classList.add('hidden');
+        // 一時的な背景が適用されたことを示すフラグを立てる
+        state.isTemporaryBackgroundActive = true;
         
-        const message = `背景画像を一時的に変更しました。この変更はリロードすると元に戻ります。`;
+        // サムネイルは非表示にする
+        uiUtils.updateBackgroundSettingsUI();
+        
+        const message = `背景画像を一時的に変更しました。この変更はリロードするか、設定から背景を再設定すると元に戻ります。`;
         return { success: true, message: message };
     },
 
