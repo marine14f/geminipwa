@@ -73,9 +73,16 @@ async function extractImageBlobFromMessage(message) {
 async function manage_image_assets({ action, asset_name, source_image_message_index }, chat) {
     console.log(`[Function Calling] manage_image_assetsが呼び出されました。`, { action, asset_name, source_image_message_index });
     
-    if (!action) return { error: "引数 'action' は必須です。" };
-    if (action !== 'list' && !asset_name) {
+    if (!action) {
+        return { error: "引数 'action' は必須です。" };
+    }
+    // 'list' と 'delete_all' 以外のアクションでは asset_name が必須
+    if (!['list', 'delete_all'].includes(action) && !asset_name) {
         return { error: `アクション '${action}' には 'asset_name' が必須です。` };
+    }
+    // 'save' アクションでは source_image_message_index が必須
+    if (action === 'save' && typeof source_image_message_index !== 'number') {
+        return { error: "アクション 'save' には 'source_image_message_index' が必須です。" };
     }
 
     try {
@@ -118,6 +125,19 @@ async function manage_image_assets({ action, asset_name, source_image_message_in
             case "list": {
                 const keys = await assetDB.list();
                 return { success: true, count: keys.length, asset_names: keys };
+            }
+            case "delete_all": {
+                const keys = await assetDB.list();
+                const count = keys.length;
+                if (count === 0) {
+                    return { success: true, message: "削除する画像アセットはありませんでした。" };
+                }
+                await new Promise((resolve, reject) => {
+                    const request = window.state.db.transaction('image_assets', 'readwrite').objectStore('image_assets').clear();
+                    request.onsuccess = () => resolve();
+                    request.onerror = () => reject(request.error);
+                });
+                return { success: true, message: `${count}件の画像アセットをすべて削除しました。` };
             }
             default:
                 return { error: `無効なアクションです: ${action}` };
@@ -1692,7 +1712,7 @@ window.functionDeclarations = [
                 "properties": {
                     "action": {
                         "type": "STRING",
-                        "description": "実行する操作を選択します。'save': 画像を保存/上書き, 'get': 保存済み画像を取得して表示, 'delete': 画像を削除, 'list': 保存されている全画像の名前を一覧表示。"
+                        "description": "実行する操作を選択します。'save': 画像を保存/上書き, 'get': 保存済み画像を取得して表示, 'delete': 画像を削除, 'list': 保存されている全画像の名前を一覧表示。 'delete_all': 保存されている全ての画像を削除。"
                     },
                     "asset_name": {
                         "type": "STRING",
