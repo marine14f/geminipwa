@@ -29,12 +29,13 @@ const DUPLICATE_SUFFIX = ' (コピー)';
 const IMPORT_PREFIX = '(取込) ';
 const LIGHT_THEME_COLOR = '#4a90e2';
 const DARK_THEME_COLOR = '#007aff';
-const APP_VERSION = "0.34";
+const APP_VERSION = "0.4";
 const SWIPE_THRESHOLD = 50; // スワイプ判定の閾値 (px)
 const ZOOM_THRESHOLD = 1.01; // ズーム状態と判定するスケールの閾値 (誤差考慮)
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 最大ファイルサイズ (例: 10MB)
 const MAX_TOTAL_ATTACHMENT_SIZE = 50 * 1024 * 1024; // 1メッセージあたりの合計添付ファイルサイズ上限 (例: 50MB) - API制限も考慮
 const INITIAL_RETRY_DELAY = 100; // 初期リトライ遅延時間 (ミリ秒)
+const MAX_PROFILES = 5; // プロファイル作成の上限数
 
 // 添付を確定する処理
 const extensionToMimeTypeMap = {
@@ -434,7 +435,7 @@ const dbUtils = {
                 const transaction = event.target.transaction;
                 console.log(`[DB Migration] IndexedDBをバージョン ${event.oldVersion} から ${event.newVersion} へアップグレード中...`);
 
-                // --- 既存ストアの確認 ---
+                // --- 既存ストアの確認と作成 ---
                 if (!db.objectStoreNames.contains(SETTINGS_STORE)) {
                     db.createObjectStore(SETTINGS_STORE, { keyPath: 'key' });
                 }
@@ -446,14 +447,80 @@ const dbUtils = {
                 if (!db.objectStoreNames.contains(PROFILES_STORE)) {
                     db.createObjectStore(PROFILES_STORE, { keyPath: 'id', autoIncrement: true });
                 }
+                if (!db.objectStoreNames.contains('image_assets')) {
+                    db.createObjectStore('image_assets', { keyPath: 'name' });
+                }
 
-                // --- v10へのアップグレード処理 ---
-                if (event.oldVersion < 10) {
-                    console.log("[DB Migration] v10へのアップグレード処理を開始します。");
-                    if (!db.objectStoreNames.contains('image_assets')) {
-                        db.createObjectStore('image_assets', { keyPath: 'name' });
-                        console.log(`[DB Migration] 新しいオブジェクトストア 'image_assets' を作成しました。`);
-                    }
+                if (event.oldVersion < 10) { // プロファイル機能が導入されたv10への移行
+                    console.log("[DB Migration] v10へのデータ移行処理を開始します。");
+                    
+                    const settingsStore = transaction.objectStore(SETTINGS_STORE);
+                    const profilesStore = transaction.objectStore(PROFILES_STORE);
+                    
+                    // onupgradeneededトランザクションは非同期処理の完了を待ってくれる
+                    const getAllSettingsReq = settingsStore.getAll();
+                    
+                    getAllSettingsReq.onsuccess = () => {
+                        const oldSettingsArray = getAllSettingsReq.result;
+                        
+                        if (oldSettingsArray.length > 0) {
+                            console.log("[DB Migration] 既存の設定を検出しました。新しいプロファイル構造に移行します...");
+                            
+                            const oldSettingsObject = {};
+                            oldSettingsArray.forEach(item => {
+                                oldSettingsObject[item.key] = item.value;
+                            });
+
+                            // 新しいプロファイルに含めるべき設定項目キーのリスト
+                            const profileSettingKeys = [
+                                'apiKey', 'modelName', 'systemPrompt', 'temperature', 'maxTokens', 'topK', 'topP',
+                                'presencePenalty', 'frequencyPenalty', 'thinkingBudget', 'includeThoughts',
+                                'enableThoughtTranslation', 'thoughtTranslationModel', 'dummyUser',
+                                'applyDummyToProofread', 'applyDummyToTranslate', 'dummyModel', 'concatDummyModel',
+                                'additionalModels', 'enterToSend', 'historySortOrder', 'darkMode', 'fontFamily',
+                                'hideSystemPromptInChat', 'enableSwipeNavigation', 'enableAutoRetry', 'maxRetries',
+                                'useFixedRetryDelay', 'fixedRetryDelaySeconds', 'maxBackoffDelaySeconds',
+                                'enableProofreading', 'proofreadingModelName', 'proofreadingSystemInstruction',
+                                'geminiEnableGrounding', 'geminiEnableFunctionCalling', 'googleSearchApiKey',
+                                'googleSearchEngineId', 'messageOpacity', 'overlayOpacity', 'headerColor',
+                                'allowPromptUiChanges', 'forceFunctionCalling'
+                            ];
+
+                            const newProfileSettings = {};
+                            profileSettingKeys.forEach(key => {
+                                // stateのデフォルト値をベースに、古い設定値で上書きする
+                                newProfileSettings[key] = oldSettingsObject[key] !== undefined ? oldSettingsObject[key] : state.settings[key];
+                            });
+
+                            const defaultProfile = {
+                                name: "デフォルトプロファイル",
+                                icon: null,
+                                createdAt: Date.now(),
+                                settings: newProfileSettings
+                            };
+                            
+                            const addProfileReq = profilesStore.add(defaultProfile);
+                            
+                            addProfileReq.onsuccess = (addEvent) => {
+                                const newProfileId = addEvent.target.result;
+                                console.log(`[DB Migration] デフォルトプロファイルを生成しました (ID: ${newProfileId})`);
+
+                                // 古い設定のうち、プロファイルに移行したものを削除
+                                profileSettingKeys.forEach(key => {
+                                    settingsStore.delete(key);
+                                });
+
+                                // activeProfileId を新しいプロファイルIDで保存
+                                settingsStore.put({ key: 'activeProfileId', value: newProfileId });
+                                console.log(`[DB Migration] SETTINGS_STOREを整理し、activeProfileIdを設定しました。移行完了。`);
+                            };
+                            addProfileReq.onerror = () => console.error("[DB Migration] プロファイルの追加に失敗しました。");
+
+                        } else {
+                            console.log("[DB Migration] 移行すべき古い設定はありませんでした。");
+                        }
+                    };
+                    getAllSettingsReq.onerror = () => console.error("[DB Migration] 古い設定の読み込みに失敗しました。");
                 }
             };
         });
@@ -823,9 +890,19 @@ const uiUtils = {
         }
     },
 
-    // チャットメッセージをレンダリング（ちらつき対策版）
     renderChatMessages(callback) {
         const container = elements.messageContainer;
+        const mainContent = elements.chatScreen.querySelector('.main-content');
+
+        // --- ちらつき防止 & 確実な再描画ロジック ---
+        // 1. 描画前のスクロール情報を保存
+        const scrollInfo = {
+            isAtBottom: mainContent.scrollHeight - mainContent.clientHeight <= mainContent.scrollTop + 5,
+            scrollTop: mainContent.scrollTop,
+            scrollHeight: mainContent.scrollHeight
+        };
+        // 2. 現在の高さを取得し、min-heightとして設定
+        container.style.minHeight = `${container.scrollHeight}px`;
 
         if (state.imageUrlCache.size > 0) {
             for (const url of state.imageUrlCache.values()) {
@@ -840,19 +917,12 @@ const uiUtils = {
             else state.editingMessageIndex = null;
         }
 
-        // --- ちらつき対策：DOM差分更新 ---
-        const existingMessageElements = new Map();
-        container.querySelectorAll('.message').forEach(el => {
-            const index = el.dataset.index;
-            if (index) {
-                existingMessageElements.set(index, el);
-            }
-        });
+        // 3. コンテナを一度完全に空にする
+        container.innerHTML = '';
 
         const fragment = document.createDocumentFragment();
         const visibleMessages = [];
         const processedGroupIds = new Set();
-        const requiredIndexes = new Set();
 
         state.currentMessages.forEach((msg, index) => {
             if (msg.isHidden) return;
@@ -874,13 +944,6 @@ const uiUtils = {
             const index = state.currentMessages.indexOf(msg);
             if (index === -1 || msg.role === 'tool') return;
             
-            requiredIndexes.add(String(index));
-
-            if (existingMessageElements.has(String(index))) {
-                // 既に存在する場合は何もしない（DOMを再利用）
-                return;
-            }
-
             let cascadeInfo = null;
             if (msg.isCascaded && msg.siblingGroupId) {
                 const siblings = state.currentMessages.filter(m => m.siblingGroupId === msg.siblingGroupId && !m.isHidden);
@@ -897,29 +960,26 @@ const uiUtils = {
                 fragment.appendChild(messageElement);
             }
         });
-
-        // 不要になったDOM要素を削除
-        existingMessageElements.forEach((el, index) => {
-            if (!requiredIndexes.has(index)) {
-                el.remove();
-            }
-        });
         
-        // 新しいDOM要素を追加
-        if (fragment.childNodes.length > 0) {
-            container.appendChild(fragment);
-        }
-        // --- ここまで ---
+        // 4. 新しい要素をすべて追加
+        container.appendChild(fragment);
         
         if (window.Prism) {
-            Prism.highlightAll(); // 全体再ハイライトが必要な場合も考慮
+            Prism.highlightAll();
         }
         
-        if (typeof callback === 'function') {
-            requestAnimationFrame(() => {
-                callback();
-            });
-        }
+        // 5. 次の描画フレームでスクロール位置を復元し、高さを自動に戻す
+        requestAnimationFrame(() => {
+            if (scrollInfo.isAtBottom) {
+                if (typeof callback === 'function') {
+                    callback(); // 通常はscrollToBottom
+                }
+            } else {
+                const newScrollHeight = mainContent.scrollHeight;
+                mainContent.scrollTop = scrollInfo.scrollTop + (newScrollHeight - scrollInfo.scrollHeight);
+            }
+            container.style.minHeight = '';
+        });
     },
 
 
@@ -2652,8 +2712,10 @@ const appLogic = {
         if (state.activeProfile) {
             console.log(`[Profile] プロファイル「${state.activeProfile.name}」(ID: ${state.activeProfile.id}) を適用します。`);
             const { settings } = state.activeProfile;
+            // プロファイルの設定を state.settings にのみ反映させる
             Object.assign(state.settings, settings);
-            uiUtils.applySettingsToUI();
+            // UIへの適用は、呼び出し元が責務を持つ
+            uiUtils.applySettingsToUI(); 
             uiUtils.updateProfileCardUI();
         } else {
             console.error(`[Profile] 適用すべきアクティブなプロファイル (ID: ${state.activeProfileId}) が見つかりません。`);
@@ -2668,15 +2730,15 @@ const appLogic = {
         await dbUtils.saveSetting('activeProfileId', newProfileId);
         state.activeProfileId = newProfileId;
         
+        // プロファイル設定の適用とUI更新のみを行う
         this.applyActiveProfile();
-        state.currentSystemPrompt = state.settings.systemPrompt || '';
-        uiUtils.updateSystemPromptUI();
-        await dbUtils.saveChat();
-        
         uiUtils.updateProfileSwitcherUI();
     },
 
     async saveNewProfile() {
+        if (state.profiles.length >= MAX_PROFILES) {
+            return uiUtils.showCustomAlert(`プロファイルの上限数（${MAX_PROFILES}個）に達しているため、新しいプロファイルを作成できません。`);
+        }
         const profileName = await uiUtils.showCustomPrompt("新しいプロファイル名を入力してください:", "新規プロファイル");
         if (!profileName || !profileName.trim()) {
             console.log("[Profile] 新規保存をキャンセルしました。");
@@ -3553,62 +3615,61 @@ const appLogic = {
 
     // 新規チャットを開始する (状態リセット)
     startNewChat() {
-        state.currentChatId = null; // IDリセット
-        state.currentMessages = []; // メッセージクリア
-
+        state.currentChatId = null;
+        state.currentMessages = [];
         state.currentSystemPrompt = state.settings.systemPrompt || ''; 
         state.pendingAttachments = [];
         state.currentPersistentMemory = {};
-        state.currentScene = { scene_id: "initial", location: "不明な場所" }; // シーン情報を初期化
-        uiUtils.updateSystemPromptUI(); // システムプロンプトUI更新
-        uiUtils.renderChatMessages(); // 表示クリア
-        uiUtils.updateChatTitle(); // タイトルを「新規チャット」に
-        elements.userInput.value = ''; // 入力欄クリア
-        uiUtils.adjustTextareaHeight(); // 高さ調整
-        uiUtils.setSendingState(false); // 送信状態リセット
+        state.currentScene = { scene_id: "initial", location: "不明な場所" };
+        uiUtils.updateSystemPromptUI();
+        uiUtils.renderChatMessages();
+        uiUtils.updateChatTitle();
+        elements.userInput.value = '';
+        uiUtils.adjustTextareaHeight();
+        uiUtils.setSendingState(false);
         state.currentStyleProfiles = {};
     },
 
-    // 指定IDのチャットを読み込む
     async loadChat(id) {
-        // 送信中なら中断確認
+        console.log(`%c[Debug LoadChat] START: チャットID ${id} の読み込みを開始...`, 'color: blue; font-weight: bold;');
+        console.log(`[Debug LoadChat] 1. 読み込み前の state.currentMessages.length: ${state.currentMessages.length}`);
+
+        state.currentMessages = [];
+        console.log(`[Debug LoadChat] 2. state.currentMessages をクリアしました。 length: ${state.currentMessages.length}`);
+
         if (state.isSending) {
             const confirmed = await uiUtils.showCustomConfirm("送信中です。中断して別のチャットを読み込みますか？");
             if (!confirmed) return;
             this.abortRequest();
         }
-        // 編集中なら破棄確認
         if (state.editingMessageIndex !== null) {
             const confirmed = await uiUtils.showCustomConfirm("編集中です。変更を破棄して別のチャットを読み込みますか？");
             if (!confirmed) return;
             const msgEl = elements.messageContainer.querySelector(`.message[data-index="${state.editingMessageIndex}"]`);
             this.cancelEditMessage(state.editingMessageIndex, msgEl);
         }
-        // システムプロンプト編集中なら破棄確認
         if (state.isEditingSystemPrompt) {
             const confirmed = await uiUtils.showCustomConfirm("システムプロンプト編集中です。変更を破棄して別のチャットを読み込みますか？");
             if (!confirmed) return;
             this.cancelEditSystemPrompt();
         }
-        // 保留中の添付ファイルがあれば破棄確認
         if (state.pendingAttachments.length > 0) {
             const confirmedAttach = await uiUtils.showCustomConfirm("添付準備中のファイルがあります。破棄して別のチャットを読み込みますか？");
             if (!confirmedAttach) return;
-            state.pendingAttachments = []; // 破棄
-            uiUtils.updateAttachmentBadgeVisibility(); // バッジ状態更新
+            state.pendingAttachments = [];
+            uiUtils.updateAttachmentBadgeVisibility();
         }
 
         try {
-            const chat = await dbUtils.getChat(id); // DBからチャット取得
+            const chat = await dbUtils.getChat(id);
             if (chat) {
                 state.currentChatId = chat.id;
-                // attachments も含めて読み込む (DBに保存されていれば)
                 state.currentMessages = chat.messages?.map(msg => ({
                     ...msg,
-                    attachments: msg.attachments || [] // attachmentsがなければ空配列
+                    attachments: msg.attachments || []
                 })) || [];
-
-                // 永続メモリを読み込む (存在しなければ空オブジェクト)
+                console.log(`[Debug LoadChat] 3. DBから新しいチャットを読み込みました。 new length: ${state.currentMessages.length}`);
+                
                 state.currentPersistentMemory = chat.persistentMemory || {};
 
                 let needsSave = false;
@@ -3617,11 +3678,9 @@ const appLogic = {
                     const siblings = state.currentMessages.filter(m => m.siblingGroupId === gid);
                     const selected = siblings.filter(m => m.isSelected);
                     if (selected.length === 0 && siblings.length > 0) {
-                        // 選択されているものがない -> 最後のものを選択状態にする
                         siblings[siblings.length - 1].isSelected = true;
                         needsSave = true;
                     } else if (selected.length > 1) {
-                        // 複数選択されている -> 最後のもの以外を解除
                         selected.slice(0, -1).forEach(m => m.isSelected = false);
                         needsSave = true;
                     }
@@ -3629,9 +3688,15 @@ const appLogic = {
                 
                 state.currentSystemPrompt = chat.systemPrompt !== undefined ? chat.systemPrompt : state.settings.systemPrompt;
                 state.pendingAttachments = [];
-                uiUtils.updateSystemPromptUI();
-                uiUtils.renderChatMessages();
+                
                 uiUtils.updateChatTitle(chat.title);
+                uiUtils.updateSystemPromptUI();
+                
+                console.log(`[Debug LoadChat] 4. renderChatMessages を呼び出します...`);
+                uiUtils.renderChatMessages(() => {
+                    uiUtils.scrollToBottom();
+                });
+
                 elements.userInput.value = '';
                 uiUtils.adjustTextareaHeight();
                 uiUtils.setSendingState(false);
@@ -3643,7 +3708,7 @@ const appLogic = {
 
                 history.replaceState({ screen: 'chat' }, '', '#chat');
                 state.currentScreen = 'chat';
-                console.log("チャット読み込み完了:", id, "履歴状態を #chat に設定");
+                console.log(`%c[Debug LoadChat] END: チャット読み込み完了: ${id}`, 'color: blue; font-weight: bold;');
             } else {
                 await uiUtils.showCustomAlert("チャット履歴が見つかりませんでした。");
                 this.startNewChat();
@@ -4844,13 +4909,22 @@ const appLogic = {
             return;
         }
 
-        originalMessage.content = newRawContent;
-        originalMessage.timestamp = Date.now();
-        delete originalMessage.error;
+        // 1. content以外のプロパティをすべて引き継いだ新しいオブジェクトを作成
+        const updatedMessage = {
+            ...originalMessage, // generated_imagesなど、すべてのプロパティをコピー
+            content: newRawContent, // contentプロパティのみを新しい値で上書き
+            timestamp: Date.now()   // タイムスタンプを更新
+        };
+        delete updatedMessage.error; // エラーがあれば削除
+
+        // 2. state内のメッセージオブジェクトを、新しいオブジェクトに丸ごと置き換える
+        state.currentMessages[index] = updatedMessage;
 
         const contentDiv = messageElement.querySelector('.message-content');
-        if(contentDiv && typeof marked !== 'undefined' && originalMessage.role === 'model') {
+        if(contentDiv && typeof marked !== 'undefined' && updatedMessage.role === 'model') {
             try {
+                // 3. UIの更新（画像も再描画されるようにrenderChatMessagesを呼ぶのが確実）
+                //    ただし、今回は部分的な更新で対応
                 contentDiv.innerHTML = marked.parse(newRawContent || '');
             } catch (e) {
                 console.error("編集保存時のMarkdownパースエラー:", e);
@@ -4867,7 +4941,6 @@ const appLogic = {
 
         this.finishEditing(messageElement);
 
-        // Prism.jsでシンタックスハイライトを再適用
         if (window.Prism) {
             messageElement.querySelectorAll('pre code').forEach((block) => {
                 Prism.highlightElement(block);
@@ -4888,7 +4961,11 @@ const appLogic = {
         } catch (error) {
             await uiUtils.showCustomAlert("メッセージ編集後のチャット保存に失敗しました。");
         }
+        
+        // 4. UIの完全な再同期（画像などを再描画させるため）
+        uiUtils.renderChatMessages(() => uiUtils.scrollToBottom());
     },
+
     // メッセージ編集をキャンセル
     cancelEditMessage(index, messageElement = null) {
           if (!messageElement) {
@@ -5700,6 +5777,9 @@ const appLogic = {
         const reader = new FileReader();
         reader.onload = async (event) => {
             try {
+                if (state.profiles.length >= MAX_PROFILES) {
+                    return uiUtils.showCustomAlert(`プロファイルの上限数（${MAX_PROFILES}個）に達しているため、プロファイルをインポートできません。`);
+                }
                 const importedData = JSON.parse(event.target.result);
 
                 if (!importedData.name || !importedData.settings) {
