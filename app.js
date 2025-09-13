@@ -2497,6 +2497,8 @@ function updateCurrentSystemPrompt() {
 
 // --- アプリケーションロジック (appLogic) ---
 const appLogic = {
+    _setupEventListenersCallCount: 0,
+
     timerManager: {
         timers: {}, // { timer_name: { timerId: 123, endTime: 167... } }
         
@@ -2859,6 +2861,10 @@ const appLogic = {
         });
     },
 
+    base64ToBlob(base64, mimeType) {
+        return fetch(`data:${mimeType};base64,${base64}`).then(res => res.blob());
+    },
+
     // アプリ初期化
     async initializeApp() {
         if (typeof marked !== 'undefined') {
@@ -2973,6 +2979,9 @@ const appLogic = {
 
     // イベントリスナーを設定
     setupEventListeners() {
+        this._setupEventListenersCallCount++; // カウンターを増やす
+        console.log(`[Debug Event] setupEventListeners が呼び出されました。(${this._setupEventListenersCallCount}回目)`);
+
         // --- 画面遷移 ---
         elements.gotoHistoryBtn.addEventListener('click', () => uiUtils.showScreen('history'));
         elements.gotoSettingsBtn.addEventListener('click', () => uiUtils.showScreen('settings'));
@@ -5646,6 +5655,88 @@ const appLogic = {
         } finally {
             elements.loadingIndicator.classList.add('hidden');
         }
+    },
+    async exportProfile() {
+        console.log('[Debug Event] exportProfile が呼び出されました。');
+
+        if (!state.activeProfile) {
+            return uiUtils.showCustomAlert("エクスポートするプロファイルが選択されていません。");
+        }
+        
+        // stateのデータを汚染しないようにディープコピーする
+        const profileToExport = JSON.parse(JSON.stringify(state.activeProfile));
+        
+        // アイコンBlobがあればBase64に変換して埋め込む
+        if (state.activeProfile.icon instanceof Blob) {
+            try {
+                const base64Icon = await this.fileToBase64(state.activeProfile.icon);
+                profileToExport.icon = {
+                    mimeType: state.activeProfile.icon.type,
+                    data: base64Icon
+                };
+            } catch (error) {
+                console.error("アイコンのBase64変換に失敗:", error);
+                return uiUtils.showCustomAlert("アイコンのエクスポート処理に失敗しました。");
+            }
+        }
+
+        delete profileToExport.id; // DBのIDは不要なので削除
+
+        const jsonString = JSON.stringify(profileToExport, null, 2);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const safeName = profileToExport.name.replace(/[\\/:*?"<>|]/g, '_');
+        a.href = url;
+        a.download = `${safeName}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    },
+
+    async importProfile(file) {
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            try {
+                const importedData = JSON.parse(event.target.result);
+
+                if (!importedData.name || !importedData.settings) {
+                    throw new Error("無効なファイルです。'name'と'settings'プロパティが必要です。");
+                }
+
+                let newProfile = { ...importedData };
+                
+                if (newProfile.icon && newProfile.icon.data) {
+                    try {
+                        newProfile.icon = await this.base64ToBlob(newProfile.icon.data, newProfile.icon.mimeType);
+                    } catch (error) {
+                        console.error("インポート時のアイコン復元に失敗:", error);
+                        newProfile.icon = null;
+                    }
+                }
+
+                let finalName = newProfile.name;
+                const existingNames = state.profiles.map(p => p.name);
+                while (existingNames.includes(finalName)) {
+                    finalName = `${IMPORT_PREFIX}${finalName}`;
+                }
+                newProfile.name = finalName;
+
+                const newId = await dbUtils.addProfile(newProfile);
+                const newlyAddedProfile = await dbUtils.getProfile(newId);
+                state.profiles.push(newlyAddedProfile);
+                
+                uiUtils.updateProfileSwitcherUI();
+                await uiUtils.showCustomAlert(`プロファイル「${finalName}」をインポートしました。`);
+
+            } catch (error) {
+                console.error("プロファイルのインポートに失敗:", error);
+                await uiUtils.showCustomAlert(`プロファイルのインポートに失敗しました: ${error.message}`);
+            }
+        };
+        reader.readAsText(file);
     },
 }; // appLogic終了
 
