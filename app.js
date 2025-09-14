@@ -2927,6 +2927,40 @@ const appLogic = {
         return fetch(`data:${mimeType};base64,${base64}`).then(res => res.blob());
     },
 
+    _prepareApiHistory(baseMessages) {
+        let history = [...baseMessages];
+        if (state.settings.dummyUser) {
+            history.push({ role: 'user', content: state.settings.dummyUser, attachments: [] });
+        }
+        if (state.settings.dummyModel) {
+            history.push({ role: 'model', content: state.settings.dummyModel, attachments: [] });
+        }
+        
+        return history.map(msg => {
+            const parts = [];
+            if (msg.content && msg.content.trim() !== '') {
+                parts.push({ text: msg.content });
+            }
+            if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
+                msg.attachments.forEach(att => parts.push({ inlineData: { mimeType: att.mimeType, data: att.base64Data } }));
+            }
+            if (msg.generated_images && msg.generated_images.length > 0) {
+                msg.generated_images.forEach(img => {
+                    parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
+                });
+            }
+            if (msg.role === 'model' && msg.tool_calls) {
+                msg.tool_calls.forEach(toolCall => parts.push({ functionCall: toolCall.functionCall }));
+            }
+            if (msg.role === 'tool') {
+                if (msg.name && msg.response) {
+                    parts.push({ functionResponse: { name: msg.name, response: msg.response } });
+                }
+            }
+            return { role: msg.role === 'tool' ? 'tool' : (msg.role === 'model' ? 'model' : 'user'), parts };
+        }).filter(c => c.parts.length > 0);
+    },
+
     // アプリ初期化
     async initializeApp() {
         if (typeof marked !== 'undefined') {
@@ -4095,7 +4129,15 @@ const appLogic = {
          * @param {object} systemInstruction - システムプロンプト。
          * @returns {Promise<Array>} 生成された新しいメッセージオブジェクトの配列。
          */
-    async _internalHandleSend(messagesForApi, generationConfig, systemInstruction, streamingIndex) {
+    async _internalHandleSend(messagesForApi, generationConfig, systemInstruction, streamingIndex) { 
+        // --- ▼▼▼ デバッグ用ログ追加 ▼▼▼ ---
+        console.log('%c[DEBUG] Entering _internalHandleSend', 'color: red; font-weight: bold;');
+        console.log('[DEBUG] Received messagesForApi:', JSON.parse(JSON.stringify(messagesForApi)));
+        const hasDummyUser = messagesForApi.some(msg => msg.parts.some(p => p.text === state.settings.dummyUser));
+        console.log(`[DEBUG] Does messagesForApi contain dummyUser? -> ${hasDummyUser}`);
+        console.log('%c-------------------------------------------', 'color: red;');
+        // --- ▲▲▲ デバッグ用ログ追加 ▲▲▲ ---
+
         let loopCount = 0;
         const MAX_LOOPS = 10;
         const turnResults = [];
@@ -4151,6 +4193,7 @@ const appLogic = {
             }
             
             uiUtils.setLoadingIndicatorText('関数実行中...');
+
             const { toolResults, containsTerminalAction, search_results, internalUiActions } = await this.executeToolCalls(result.toolCalls, currentTurnHistory);
             
             if (search_results && search_results.length > 0) {
@@ -4159,10 +4202,7 @@ const appLogic = {
             
             if (internalUiActions && internalUiActions.length > 0) {
                 console.log(`[Debug] _internalHandleSend: executeToolCallsから ${internalUiActions.length} 件のUIアクションを受信`);
-                // ツール応答メッセージにUIアクションを紐付ける
                 if (toolResults.length > 0) {
-                    // 複数のUIアクションが返る可能性を考慮し、最後だけでなく関連するツール結果に紐付ける
-                    // 今回は単純化のため、最後のツール結果にすべてのアクションをまとめる
                     const lastToolResult = toolResults[toolResults.length - 1];
                     if (!lastToolResult._internal_ui_action) {
                         lastToolResult._internal_ui_action = [];
@@ -4172,7 +4212,6 @@ const appLogic = {
                 }
             }
             
-            // UIアクションを含む元のtoolResultsをturnResultsに追加する
             turnResults.push(...toolResults);
             
             const executedFunctionNames = toolResults.map(tr => tr.name);
@@ -4181,7 +4220,6 @@ const appLogic = {
                 lastModelMsg.executedFunctions.push(...executedFunctionNames);
             }
 
-            // API履歴にはUIアクションを含まない整形済みデータを渡す
             const modelMessageForApi = convertToApiFormat(modelMessage);
             const toolResultsForApi = toolResults.map(convertToApiFormat);
             currentTurnHistory.push(modelMessageForApi, ...toolResultsForApi);
@@ -4324,36 +4362,9 @@ const appLogic = {
         await dbUtils.saveChat();
         
         try {
-            let historyForApiRaw = state.currentMessages.slice(0, -1).filter(msg => !msg.isCascaded || msg.isSelected);
+            const baseHistory = state.currentMessages.slice(0, -1).filter(msg => !msg.isCascaded || msg.isSelected);
+            const historyForApi = this._prepareApiHistory(baseHistory);
             
-            if (state.settings.dummyUser) {
-                historyForApiRaw.push({ role: 'user', content: state.settings.dummyUser, attachments: [] });
-            }
-            
-            const historyForApi = historyForApiRaw.map(msg => {
-                const parts = [];
-                if (msg.content && msg.content.trim() !== '') {
-                    parts.push({ text: msg.content });
-                }
-                if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
-                    msg.attachments.forEach(att => parts.push({ inlineData: { mimeType: att.mimeType, data: att.base64Data } }));
-                }
-                if (msg.generated_images && msg.generated_images.length > 0) {
-                    msg.generated_images.forEach(img => {
-                        parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
-                    });
-                }
-                if (msg.role === 'model' && msg.tool_calls) {
-                    msg.tool_calls.forEach(toolCall => parts.push({ functionCall: toolCall.functionCall }));
-                }
-                if (msg.role === 'tool') {
-                    if (msg.name && msg.response) {
-                        parts.push({ functionResponse: { name: msg.name, response: msg.response } });
-                    }
-                }
-                return { role: msg.role === 'tool' ? 'tool' : (msg.role === 'model' ? 'model' : 'user'), parts };
-            }).filter(c => c.parts.length > 0);
-
             const generationConfig = {};
             if (state.settings.temperature !== null) generationConfig.temperature = state.settings.temperature;
             if (state.settings.maxTokens !== null) generationConfig.maxOutputTokens = state.settings.maxTokens;
@@ -4716,11 +4727,18 @@ const appLogic = {
 
     async executeToolCalls(toolCalls, historyForFunctions) {
         const messagesForFunction = (historyForFunctions || []).map(c => c.originalMessage || c);
+        
+        // ダミープロンプトの数を計算
+        const dummyUserCount = state.settings.dummyUser ? 1 : 0;
+        const dummyModelCount = state.settings.dummyModel ? 1 : 0;
+        const dummyPromptCount = dummyUserCount + dummyModelCount;
+
         const chat = {
             id: state.currentChatId,
             messages: messagesForFunction,
             systemPrompt: state.currentSystemPrompt,
-            persistentMemory: state.currentPersistentMemory
+            persistentMemory: state.currentPersistentMemory,
+            dummy_prompt_count: dummyPromptCount // 計算したダミーの数を追加
         };
     
         const toolResults = [];
@@ -5119,38 +5137,8 @@ const appLogic = {
             uiUtils.renderChatMessages(() => uiUtils.scrollToBottom());
 
             try {
-                let historyForApiRaw = state.currentMessages.filter(msg => {
-                    return !msg.isCascaded || msg.isSelected;
-                });
-
-                if (state.settings.dummyUser) {
-                    historyForApiRaw.push({ role: 'user', content: state.settings.dummyUser, attachments: [] });
-                }
-                
-                const historyForApi = historyForApiRaw.map(msg => {
-                    const parts = [];
-                    if (msg.content && msg.content.trim() !== '') {
-                        parts.push({ text: msg.content });
-                    }
-                    if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
-                        msg.attachments.forEach(att => parts.push({ inlineData: { mimeType: att.mimeType, data: att.base64Data } }));
-                    }
-                    if (msg.generated_images && msg.generated_images.length > 0) {
-                        msg.generated_images.forEach(img => {
-                            parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
-                        });
-                    }
-                    if (msg.role === 'model' && msg.tool_calls) {
-                        msg.tool_calls.forEach(toolCall => parts.push({ functionCall: toolCall.functionCall }));
-                    }
-                    if (msg.role === 'tool') {
-                         if (msg.name && msg.response) {
-                            parts.push({ functionResponse: { name: msg.name, response: msg.response } });
-                        }
-                    }
-                    const apiMessage = { role: msg.role === 'tool' ? 'tool' : (msg.role === 'model' ? 'model' : 'user'), parts };
-                    return apiMessage;
-                }).filter(c => c.parts.length > 0);
+                const baseHistory = state.currentMessages.filter(msg => !msg.isCascaded || msg.isSelected);
+                const historyForApi = this._prepareApiHistory(baseHistory);
 
                 const generationConfig = {};
                 if (state.settings.temperature !== null) generationConfig.temperature = state.settings.temperature;

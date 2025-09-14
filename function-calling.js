@@ -35,7 +35,7 @@
  * @param {object} message - 抽出元のメッセージオブジェクト
  * @returns {Promise<Blob|null>} 画像のBlobオブジェクト、またはnull
  */
-async function extractImageBlobFromMessage(message) {
+ async function extractImageBlobFromMessage(message) {
     if (!message) return null;
     // 添付ファイル（File/Blob or base64）
     if (message.attachments && message.attachments.length > 0) {
@@ -70,17 +70,15 @@ async function extractImageBlobFromMessage(message) {
  * @param {object} chat - 現在のチャットデータ
  * @returns {Promise<object>} 操作結果を含むオブジェクト
  */
-async function manage_image_assets({ action, asset_name, source_image_message_index }, chat) {
+ async function manage_image_assets({ action, asset_name, source_image_message_index }, chat) {
     console.log(`[Function Calling] manage_image_assetsが呼び出されました。`, { action, asset_name, source_image_message_index });
     
     if (!action) {
         return { error: "引数 'action' は必須です。" };
     }
-    // 'list' と 'delete_all' 以外のアクションでは asset_name が必須
     if (!['list', 'delete_all'].includes(action) && !asset_name) {
         return { error: `アクション '${action}' には 'asset_name' が必須です。` };
     }
-    // 'save' アクションでは source_image_message_index が必須
     if (action === 'save' && typeof source_image_message_index !== 'number') {
         return { error: "アクション 'save' には 'source_image_message_index' が必須です。" };
     }
@@ -91,7 +89,15 @@ async function manage_image_assets({ action, asset_name, source_image_message_in
                 if (typeof source_image_message_index !== 'number') return { error: "アクション 'save' には 'source_image_message_index' が必須です。" };
                 
                 const messages = chat.messages || [];
-                const targetMessage = messages[messages.length - 1 - source_image_message_index];
+                const dummyPromptCount = chat?.dummy_prompt_count || 0;
+                const effectiveLength = messages.length - dummyPromptCount;
+                const targetIndex = effectiveLength - 1 - source_image_message_index;
+
+                if (targetIndex < 0 || targetIndex >= messages.length) {
+                    return { error: `計算後のインデックス(${targetIndex})が無効です。AIが指定したインデックス(${source_image_message_index})が履歴の範囲外です。` };
+                }
+                const targetMessage = messages[targetIndex];
+
                 if (!targetMessage) return { error: `指定されたインデックス(${source_image_message_index})にメッセージが見つかりません。` };
 
                 const imageBlob = await extractImageBlobFromMessage(targetMessage);
@@ -1266,18 +1272,31 @@ async function set_background_image({ image_url }) {
       }
   
       // 2) まだ無ければ履歴から抽出
-      if (!request.image) {
-        const source = await resolveSourceImage(mergedHistory, source_image_message_index);
-        if (source?.base64Data) {
-          request.image = {
-            imageBytes: normBase64(source.base64Data),
-            mimeType: source.mimeType || "image/png"
-          };
-          console.log(`画像をリクエストに追加 (${source.via}).`);
-        } else if (typeof source_image_message_index === "number") {
-          return { error: `指定されたインデックス ${source_image_message_index} に有効な画像が見つかりませんでした。` };
+      if (!request.image && typeof source_image_message_index === 'number') {
+        const messages = mergedHistory;
+        const dummyPromptCount = chat?.dummy_prompt_count || 0;
+        const effectiveLength = messages.length - dummyPromptCount;
+        const targetIndex = effectiveLength - 1 - source_image_message_index;
+
+        if (targetIndex < 0 || targetIndex >= messages.length) {
+            throw new Error(`指定されたメッセージ(インデックス: ${source_image_message_index})が見つかりません。計算後のインデックス(${targetIndex})が範囲外です。`);
         }
-      }
+        const targetMessage = messages[targetIndex];
+        if (!targetMessage) {
+            throw new Error(`指定されたインデックス(${source_image_message_index})にメッセージが見つかりません。`);
+        }
+
+        const source = await tryExtractFromMessage(targetMessage);
+        if (source?.base64Data) {
+            request.image = {
+                imageBytes: normBase64(source.base64Data),
+                mimeType: source.mimeType || "image/png"
+            };
+            console.log(`画像をリクエストに追加 (index: ${source_image_message_index} -> calculated: ${targetIndex}).`);
+        } else {
+            throw new Error(`指定されたメッセージ(インデックス: ${source_image_message_index})から有効な画像が見つかりませんでした。`);
+        }
+    }
   
       // i2v/t2v で personGeneration を自動運転
       if (request.image) {
@@ -1546,7 +1565,7 @@ async function set_background_image({ image_url }) {
  * @param {object} chat - 現在のチャットデータ
  * @returns {Promise<object>} 処理結果
  */
- async function edit_image({ prompt, source_images }, chat) {
+async function edit_image({ prompt, source_images }, chat) {
     console.log(`[Function Calling] edit_imageが呼び出されました。`, { prompt, source_images });
 
     const apiKey = window.state?.settings?.apiKey;
@@ -1568,7 +1587,15 @@ async function set_background_image({ image_url }) {
             let imageBlob = null;
             if (typeof source.message_index === 'number') {
                 const messages = chat.messages || [];
-                const targetMessage = messages[messages.length - 1 - source.message_index];
+                const dummyPromptCount = chat?.dummy_prompt_count || 0;
+                const effectiveLength = messages.length - dummyPromptCount;
+                const targetIndex = effectiveLength - 1 - source.message_index;
+
+                if (targetIndex < 0 || targetIndex >= messages.length) {
+                    throw new Error(`指定されたメッセージ(インデックス: ${source.message_index})が見つかりません。計算後のインデックス(${targetIndex})が範囲外です。`);
+                }
+                const targetMessage = messages[targetIndex];
+
                 if (!targetMessage) throw new Error(`指定されたインデックス(${source.message_index})にメッセージが見つかりません。`);
                 imageBlob = await extractImageBlobFromMessage(targetMessage);
                 if (!imageBlob) throw new Error(`指定されたメッセージ(インデックス: ${source.message_index})から画像が見つかりません。`);
