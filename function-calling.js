@@ -1137,7 +1137,7 @@ async function set_background_image({ image_url }) {
  * @param {number} [args.source_image_message_index] - 元画像のメッセージインデックス（0=直近）
  * @param {{mimeType:string,data:string}} [args.source_inline_image] - 直近リクエストから渡す生画像（base64）
  * @param {object} chat - 現在のチャットデータ
- * @returns {Promise<object>} { success, message, video_url, video_base64 } | { error }
+ * @returns {Promise<object>} { success, message, video_url, video_base64 } | { success: false, error: { message, code } }
  */
  async function generate_video(
     { prompt, negative_prompt, aspect_ratio = "16:9", source_image_message_index, source_inline_image },
@@ -1148,9 +1148,9 @@ async function set_background_image({ image_url }) {
     });
   
     const apiKey = window.state?.settings?.apiKey;
-    if (!apiKey) return { error: "APIキーが設定されていません。" };
-    if (typeof window.GoogleGenAI === 'undefined') return { error: "Google Gen AI SDK (@google/genai) が読み込まれていません。" };
-    if (!prompt || !String(prompt).trim()) return { error: "prompt が空です。" };
+    if (!apiKey) return { success: false, error: { message: "APIキーが設定されていません。" } };
+    if (typeof window.GoogleGenAI === 'undefined') return { success: false, error: { message: "Google Gen AI SDK (@google/genai) が読み込まれていません。" } };
+    if (!prompt || !String(prompt).trim()) return { success: false, error: { message: "prompt が空です。" } };
   
     // ローディングUI
     if (window.uiUtils) {
@@ -1394,7 +1394,9 @@ async function set_background_image({ image_url }) {
       });
       if (!res.ok) {
         const t = await res.text().catch(() => "");
-        throw new Error(`動画ダウンロードに失敗: ${res.status} ${res.statusText} ${t}`);
+        const error = new Error(`動画ダウンロードに失敗: ${res.status} ${res.statusText} ${t}`);
+        error.status = res.status;
+        throw error;
       }
   
       const videoBlob = await res.blob();
@@ -1418,11 +1420,18 @@ async function set_background_image({ image_url }) {
 
     } catch (error) {
       console.error(`[Function Calling] generate_videoでエラーが発生しました:`, error);
-      return { error: error.message || String(error) };
+      return { 
+          success: false, 
+          error: { 
+              message: error.message || String(error), 
+              code: error.status || error.code // SDKエラーやfetchエラーのステータスコードを拾う
+          } 
+      };
     } finally {
       if (window.uiUtils) window.elements.loadingIndicator.classList.add('hidden');
     }
-  }
+}
+
   
 
 /**
@@ -1582,6 +1591,15 @@ async function edit_image({ prompt, source_images }, chat) {
             : new GoogleGenAI({ apiKey });
         
         const imageParts = [];
+
+        if (source_images[0] && typeof source_images[0].message_index === 'number') {
+            console.log(`[DEBUG] edit_image: chat.messages を確認`, JSON.parse(JSON.stringify(chat.messages)));
+            const targetIndexForLog = chat.messages.length - 1 - source_images[0].message_index;
+            console.log(`[DEBUG] edit_image: 計算されたインデックス -> ${targetIndexForLog}`);
+            if (chat.messages[targetIndexForLog]) {
+                console.log(`[DEBUG] edit_image: 参照対象のメッセージ ->`, JSON.parse(JSON.stringify(chat.messages[targetIndexForLog])));
+            }
+        }
 
         for (const source of source_images) {
             let imageBlob = null;
@@ -2186,7 +2204,7 @@ window.functionDeclarations = [
           },
           {
             "name": "generate_video",
-            "description": "ユーザーが明示的に動画の生成を指示した場合にのみ、この関数を使用してください。テキストプロンプト、または画像とテキストプロンプトから動画を生成します。重要：この関数を呼び出した後は、その結果を使ってユーザーへの最終的な応答メッセージを生成し、会話を完了させてください。再度関数を呼び出すことは禁止です。応答メッセージには、生成した動画を埋め込む場所を示す `[VIDEO_HERE]` という文字列の目印を必ず1つだけ配置してください。HTMLタグは絶対に生成しないでください。ユーザーの指示から、動画の内容を表す英語のプロンプトを生成して `prompt` 引数に設定してください。動画に含めたくない要素は英語で `negative_prompt` に設定します。ユーザーが『この画像から』『あの猫の絵を』のように元画像を指示した場合、会話の文脈から最も適切と思われる画像が含まれているメッセージのインデックス（番号）を特定し、`source_image_message_index` 引数に設定してください。関数がエラーを返した場合、その内容を分析し、理由をユーザーに出力して下さい。",
+            "description": "ユーザーが明示的に動画の生成を指示した場合にのみ、この関数を使用してください。テキストプロンプト、または画像とテキストプロンプトから動画を生成します。重要：この関数を呼び出した後は、その結果を使ってユーザーへの最終的な応答メッセージを生成し、会話を完了させてください。再度関数を呼び出すことは禁止です。応答メッセージには、生成した動画を埋め込む場所を示す `[VIDEO_HERE]` という文字列の目印を必ず1つだけ配置してください。HTMLタグは絶対に生成しないでください。ユーザーの指示から、動画の内容を表す英語のプロンプトを生成して `prompt` 引数に設定してください。動画に含めたくない要素は英語で `negative_prompt` に設定します。ユーザーが『この画像から』『あの猫の絵を』のように元画像を指示した場合、会話の文脈から最も適切と思われる画像が含まれているメッセージのインデックス（番号）を特定し、`source_image_message_index` 引数に設定してください。関数がエラーを返した場合、エラー番号とエラー文をユーザーに出力して下さい。",
             "parameters": {
                 "type": "OBJECT",
                 "properties": {
@@ -2212,7 +2230,7 @@ window.functionDeclarations = [
         },
         { 
             "name": "generate_image",
-            "description": "ユーザーが明示的に画像の生成を指示した場合にのみ、この関数を使用してください。テキストプロンプトから画像を生成します。重要：この関数を呼び出した後は、その結果を使ってユーザーへの最終的な応答メッセージを生成し、会話を完了させてください。画像以外の余計な定型文（例：「Here is the original image:」など）は絶対に出力しないでください。再度関数を呼び出すことは禁止です。応答メッセージには、生成した画像を埋め込む場所を示す `[IMAGE_HERE]` という文字列の目印を必ず1つだけ配置してください。HTMLタグは絶対に生成しないでください。ユーザーの指示から、動画の内容を表す英語のプロンプトを生成して `prompt` 引数に設定してください。関数がエラーを返した場合、その内容を分析し、理由をユーザーに出力して下さい。",
+            "description": "ユーザーが明示的に画像の生成を指示した場合にのみ、この関数を使用してください。テキストプロンプトから画像を生成します。重要：この関数を呼び出した後は、その結果を使ってユーザーへの最終的な応答メッセージを生成し、会話を完了させてください。画像以外の余計な定型文（例：「Here is the original image:」など）は絶対に出力しないでください。再度関数を呼び出すことは禁止です。応答メッセージには、生成した画像を埋め込む場所を示す `[IMAGE_HERE]` という文字列の目印を必ず1つだけ配置してください。HTMLタグは絶対に生成しないでください。ユーザーの指示から、動画の内容を表す英語のプロンプトを生成して `prompt` 引数に設定してください。関数がエラーを返した場合、エラー番号とエラー文をユーザーに出力して下さい。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -2222,7 +2240,7 @@ window.functionDeclarations = [
                 },
                 "model": {
                     "type": "string",
-                    "description": "使用する画像生成モデルを指定します。指定がない場合はプロンプト内容に応じて自動的に選択されます。\n\n- \"imagen-4.0-generate-001\": 標準モデル。汎用的な画像生成に適しています。\n- \"imagen-4.0-ultra-generate-001\": 複雑な構図や多要素を含む画像（風景、群衆、広角など）に適しています。\n- \"imagen-4.0-fast-generate-001\": 単純でフラットな画像（アイコン、パターン、スタンプなど）に適しています。\n- \"gemini-2.5-flash-image-preview\": ユーザーが明示的に指定した場合のみ使用。Geminiによる簡易プレビュー生成を行います。関数がエラーを返した場合、その内容を分析し、理由をユーザーに出力して下さい。",
+                    "description": "使用する画像生成モデルを指定します。指定がない場合はプロンプト内容に応じて自動的に選択されます。\n\n- \"imagen-4.0-generate-001\": 標準モデル。汎用的な画像生成に適しています。\n- \"imagen-4.0-ultra-generate-001\": 複雑な構図や多要素を含む画像（風景、群衆、広角など）に適しています。\n- \"imagen-4.0-fast-generate-001\": 単純でフラットな画像（アイコン、パターン、スタンプなど）に適しています。\n- \"gemini-2.5-flash-image-preview\": ユーザーが明示的に指定した場合のみ使用。Geminiによる簡易プレビュー生成を行います。",
                     "enum": [
                     "imagen-4.0-generate-001",
                     "imagen-4.0-ultra-generate-001",
@@ -2255,7 +2273,7 @@ window.functionDeclarations = [
         },
         {
             "name": "edit_image",
-            "description": "既存の画像を、テキストプロンプトに基づいて編集します。複数の画像を組み合わせて新しい画像を生成することも可能です。編集元となる画像は、会話履歴または保存済みアセットから柔軟に指定できます。",
+            "description": "既存の画像を、テキストプロンプトに基づいて編集します。複数の画像を組み合わせて新しい画像を生成することも可能です。編集元となる画像は、会話履歴または保存済みアセットから柔軟に指定できます。関数がエラーを返した場合、エラー番号とエラー文をユーザーに出力して下さい。",
             "parameters": {
                 "type": "OBJECT",
                 "properties": {

@@ -1060,7 +1060,7 @@ body.dark-mode #chat-screen.drag-over::after {
     margin: 0;
     margin-right: auto;
     font-size: 1.1rem;
-    font-weight: 500;
+    font-weight: 700;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1435,4 +1435,14 @@ body.dark-mode #profile-management-group .profile-actions button:hover {
 
 .profile-actions-note a:hover {
     text-decoration: underline;
+}
+
+/* --- Empty Model Bubble Fix --- */
+.message.model:not(:has(.thought-summary-details)):has(.message-content:empty) {
+    padding: 0;
+    margin: 0;
+    border: none;
+    box-shadow: none;
+    min-height: 20px; /* 瞬時に表示される際のレイアウトシフトを最小限に抑えるための高さ確保 */
+    background-color: transparent;
 }
