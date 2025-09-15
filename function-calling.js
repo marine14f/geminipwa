@@ -1216,20 +1216,6 @@ async function set_background_image({ image_url }) {
       }
       return null;
     };
-    const resolveSourceImage = async (messages, index) => {
-      // 指定インデックス優先（末尾=直近基準）
-      if (typeof index === "number") {
-        const target = messages[messages.length - 1 - index];
-        const fromIndex = await tryExtractFromMessage(target);
-        if (fromIndex) return { ...fromIndex, via: `indexed(tail:${index})` };
-      }
-      // 直近から後方走査
-      for (let i = messages.length - 1; i >= 0; i--) {
-        const found = await tryExtractFromMessage(messages[i]);
-        if (found) return { ...found, via: `scan@${i}` };
-      }
-      return null;
-    };
     // BlobをBase64文字列に変換するヘルパー
     const blobToBase64 = (blob) => new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -1245,19 +1231,11 @@ async function set_background_image({ image_url }) {
     try {
       const genAI = new window.GoogleGenAI({ apiKey });
   
-      // Gemini API 側の Veo3 は 16:9 のみ安全 → 丸める
       const safeAspect = "16:9";
   
       const request = { model: "veo-3.0-generate-preview", prompt, config: {} };
       if (negative_prompt) request.config.negativePrompt = negative_prompt;
       request.config.aspectRatio = safeAspect;
-  
-      // メッセージ履歴の統合
-      const messagesFromDB = Array.isArray(chat?.messages) ? chat.messages : [];
-      const messagesFromState = Array.isArray(window?.state?.currentMessages) ? window.state.currentMessages : [];
-      const mergedHistory = messagesFromDB.concat(
-        messagesFromState.filter(m => !messagesFromDB.some(db_m => db_m.timestamp === m.timestamp))
-      );
   
       // 1) inline 指定があれば優先
       if (source_inline_image && source_inline_image.data) {
@@ -1271,9 +1249,9 @@ async function set_background_image({ image_url }) {
         }
       }
   
-      // 2) まだ無ければ履歴から抽出
+      // 2) まだ無ければ履歴から抽出 (chat.messages を直接使用)
       if (!request.image && typeof source_image_message_index === 'number') {
-        const messages = mergedHistory;
+        const messages = chat.messages || []; // 引数のchatオブジェクトを使用
         const dummyPromptCount = chat?.dummy_prompt_count || 0;
         const effectiveLength = messages.length - dummyPromptCount;
         const targetIndex = effectiveLength - 1 - source_image_message_index;
@@ -1298,16 +1276,10 @@ async function set_background_image({ image_url }) {
         }
     }
   
-      // i2v/t2v で personGeneration を自動運転
       if (request.image) {
-        // 画像あり → i2v はまず allow_adult（多くの環境で必須）
         request.config.personGeneration = "allow_adult";
-      } else {
-        // 画像なし → t2v は “まず未設定” で試す（環境により allow_all 指定で400になるため）
-        // フォールバック処理側で必要に応じて付与
       }
   
-      // デバッグ出力（未定義ガード済み）
       const imgHead = (request.image?.imageBytes || "").slice(0, 50);
       console.log("SDK経由で動画生成開始リクエストを送信します:", {
         model: request.model,
@@ -1316,7 +1288,6 @@ async function set_background_image({ image_url }) {
         image: request.image ? { mimeType: request.image.mimeType, imageBytesPreview: imgHead ? imgHead + "..." : "(none)" } : undefined
       });
   
-      // personGeneration 周りの環境差を吸収するフォールバック付き呼び出し
       async function tryGenerate(genAI, req) {
         try {
           return await genAI.models.generateVideos(req);
@@ -1328,7 +1299,6 @@ async function set_background_image({ image_url }) {
           const hasImage = !!req.image;
   
           if (!hasImage) {
-            // t2v：未設定 → allow_all → allow_adult
             if (!req.config.personGeneration) {
               req.config.personGeneration = "allow_all";
               return await genAI.models.generateVideos(req);
@@ -1337,7 +1307,6 @@ async function set_background_image({ image_url }) {
               return await genAI.models.generateVideos(req);
             }
           } else {
-            // i2v：allow_adult → （稀に落ちる環境向けに）allow_all
             if (req.config.personGeneration === "allow_adult") {
               req.config.personGeneration = "allow_all";
               return await genAI.models.generateVideos(req);
@@ -1347,11 +1316,9 @@ async function set_background_image({ image_url }) {
         }
       }
   
-      // 送信
       let operation = await tryGenerate(genAI, request);
       console.log("動画生成リクエストを受け付けました。Operation:", operation);
   
-      // ポーリング（最大約3分）
       const MAX_ATTEMPTS = 18;
       let attempts = 0;
       while (!operation.done) {
@@ -1365,7 +1332,6 @@ async function set_background_image({ image_url }) {
   
       console.log("動画生成が完了しました。", operation);
   
-      // operation.response から video 参照を取得
       const resp = operation?.response ?? {};
       const fileRef =
         resp.generatedVideos?.[0]?.video ||
@@ -1377,7 +1343,6 @@ async function set_background_image({ image_url }) {
         throw new Error("動画参照が見つかりませんでした。（generatedVideos / generatedSamples のどちらにも video が無い）");
       }
   
-      // ダウンロードURLを生成
       let downloadUrl = fileRef.uri || null;
       if (!downloadUrl && fileRef.name) {
         downloadUrl = `https://generativelanguage.googleapis.com/v1beta/${encodeURIComponent(fileRef.name)}:download`;
@@ -1387,7 +1352,6 @@ async function set_background_image({ image_url }) {
         throw new Error("動画のダウンロードURLを特定できませんでした。（uri も name も無し）");
       }
   
-      // 取得（SDKのdownloaderでもOK。ここはfetchで統一）
       const res = await fetch(`${downloadUrl}${downloadUrl.includes('?') ? '&' : '?'}key=${apiKey}`, {
         method: 'GET',
         redirect: 'follow'
@@ -1407,7 +1371,6 @@ async function set_background_image({ image_url }) {
       return {
         success: true,
         message: "動画を生成しました。",
-        // UI処理用の内部アクション
         _internal_ui_action: {
             type: "display_generated_videos",
             videos: [{
@@ -1424,13 +1387,14 @@ async function set_background_image({ image_url }) {
           success: false, 
           error: { 
               message: error.message || String(error), 
-              code: error.status || error.code // SDKエラーやfetchエラーのステータスコードを拾う
+              code: error.status || error.code
           } 
       };
     } finally {
       if (window.uiUtils) window.elements.loadingIndicator.classList.add('hidden');
     }
 }
+
 
   
 

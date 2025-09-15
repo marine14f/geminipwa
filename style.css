@@ -312,9 +312,6 @@ body.dark-mode .new-chat-button {
     transform: translateX(0);
     z-index: 1;
 }
-#chat-screen { transform: translateX(0); }
-#history-screen { transform: translateX(-100%); }
-#settings-screen { transform: translateX(100%); }
 
 /* --- Chat Screen --- */
 #chat-screen {
@@ -1446,3 +1443,8 @@ body.dark-mode #profile-management-group .profile-actions button:hover {
     min-height: 20px; /* 瞬時に表示される際のレイアウトシフトを最小限に抑えるための高さ確保 */
     background-color: transparent;
 }
+
+#chat-screen { transform: translateX(0); }
+#history-screen { transform: translateX(-100%); }
+#settings-screen { transform: translateX(100%); }
+

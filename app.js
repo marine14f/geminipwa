@@ -212,7 +212,8 @@ const elements = {
     profileDeleteBtn: document.getElementById('profile-delete-btn'),
     profileExportBtn: document.getElementById('profile-export-btn'),
     profileImportBtn: document.getElementById('profile-import-btn'),
-    profileImportInput: document.getElementById('profile-import-input')
+    profileImportInput: document.getElementById('profile-import-input'),
+    autoScrollToggle: document.getElementById('auto-scroll-toggle')
 };
 
 // --- アプリ状態 ---
@@ -272,6 +273,7 @@ const state = {
         headerColor: '',
         allowPromptUiChanges: true,
         forceFunctionCalling: false,
+        autoScroll: true,
     },
     backgroundImageUrl: null,
     isSending: false,
@@ -891,7 +893,10 @@ const uiUtils = {
     },
 
     renderChatMessages() {
-        console.log(`[DEBUG_RENDER] renderChatMessages 開始`);
+        // ▼▼▼ デバッグ用ログを強化 ▼▼▼
+        const startTime = performance.now();
+        console.log(`%c[PERF_DEBUG] renderChatMessages 開始`, 'color: red; font-weight: bold;', { startTime });
+        // ▲▲▲ デバッグ用ログを強化 ▲▲▲
 
         const container = elements.messageContainer;
         
@@ -965,6 +970,10 @@ const uiUtils = {
         requestAnimationFrame(() => {
             container.style.minHeight = '';
         });
+        // ▼▼▼ デバッグ用ログを強化 ▼▼▼
+        const endTime = performance.now();
+        console.log(`%c[PERF_DEBUG] renderChatMessages 完了`, 'color: red; font-weight: bold;', { endTime, duration: endTime - startTime });
+        // ▲▲▲ デバッグ用ログを強化 ▲▲▲
     },
 
 
@@ -1508,14 +1517,25 @@ const uiUtils = {
                     li.querySelector('.updated-date').textContent = `更新: ${this.formatDate(chat.updatedAt)}`;
 
                     // クリックイベント (アクションボタン以外)
-                    li.onclick = (event) => {
-                        // アクションボタンがクリックされた場合は何もしない
+                    li.onclick = async (event) => {
                         if (!event.target.closest('.history-item-actions button')) {
-                            appLogic.loadChat(chat.id);
-                            this.showScreen('chat'); // チャット画面へ遷移
+                            // ▼▼▼【重要】ここからが新しい処理フロー ▼▼▼
+
+                            // ステップ1: まず画面遷移を開始し、UIを即座に反応させる
+                            // この時点ではチャットの中身は空か、前の状態のまま
+                            const screenTransitionPromise = uiUtils.showScreen('chat');
+
+                            // ステップ2: 画面遷移と並行して、重いチャット読み込み処理を行う
+                            const loadChatPromise = appLogic.loadChat(chat.id);
+
+                            // ステップ3: 両方の処理が完了するのを待つ
+                            // これにより、アニメーション中にDOMが書き換わることを防ぎ、
+                            // 読み込み完了後に確実に画面が表示されることを保証する。
+                            await Promise.all([screenTransitionPromise, loadChatPromise]);
+                            
+                            // ▲▲▲ 新しい処理フローここまで ▲▲▲
                         }
                     };
-
                     // 各アクションボタンのイベントリスナー
                     li.querySelector('.js-edit-title-btn').onclick = (e) => { e.stopPropagation(); appLogic.editHistoryTitle(chat.id, titleEl); };
                     li.querySelector('.js-export-btn').onclick = (e) => { e.stopPropagation(); appLogic.exportChat(chat.id, titleText); };
@@ -1660,6 +1680,7 @@ const uiUtils = {
         document.documentElement.style.setProperty('--message-bubble-opacity', String(state.settings.messageOpacity ?? 1));
         document.getElementById('allow-prompt-ui-changes').checked = state.settings.allowPromptUiChanges;
         elements.forceFunctionCallingToggle.checked = state.settings.forceFunctionCalling;
+        elements.autoScrollToggle.checked = state.settings.autoScroll;
 
         const defaultHeaderColor = state.settings.darkMode ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
         elements.headerColorInput.value = state.settings.headerColor || defaultHeaderColor;
@@ -1743,120 +1764,124 @@ const uiUtils = {
 
     // 画面を表示 (スワイプアニメーション + inert対応 + 戻るボタン対応)
     showScreen(screenName, fromPopState = false) {
-        // 編集中ならキャンセル
-        if (state.editingMessageIndex !== null) {
-             const messageElement = elements.messageContainer.querySelector(`.message[data-index="${state.editingMessageIndex}"]`);
-             if (messageElement) { // 要素が存在する場合のみキャンセル処理
-                appLogic.cancelEditMessage(state.editingMessageIndex, messageElement);
-             } else {
-                state.editingMessageIndex = null; // 要素が見つからない場合はインデックスのみリセット
-             }
-        }
-        // システムプロンプト編集中ならキャンセル
-        if (state.isEditingSystemPrompt) {
-            appLogic.cancelEditSystemPrompt();
-        }
-
-        // 現在の画面と同じなら何もしない
-        if (screenName === state.currentScreen) {
-            // console.log(`showScreen: Already on screen ${screenName}.`); // ログ削減
+        return new Promise((resolve) => {
+          const startTime = performance.now();
+          console.log(`%c[PERF_DEBUG] showScreen('${screenName}') 開始`, 'color: orange; font-weight: bold;', { startTime });
+      
+          // --- 同一画面への重複遷移は無視 ---
+          if (screenName === state.currentScreen) {
+            console.log('[NAV] skip same screen:', screenName);
+            resolve();
             return;
-        }
-
-        const allScreens = [elements.chatScreen, elements.historyScreen, elements.settingsScreen];
-        let activeScreen = null;
-
-        // fromPopStateがfalseの場合のみ履歴操作を行う (UI操作時)
-        if (!fromPopState) {
-            if (screenName === 'history' || screenName === 'settings') {
-                // 履歴/設定画面への遷移時は履歴を追加
-                history.pushState({ screen: screenName }, '', `#${screenName}`);
-                console.log(`Pushed state: ${screenName}`);
-            } else if (screenName === 'chat') {
-                // チャット画面へ戻る遷移 (通常はUIの戻るボタンやpopstateで処理される想定だが、
-                // 直接 showScreen('chat') が呼ばれた場合も考慮)
-                // ここではURLハッシュのみ更新し、履歴スタックは変更しない
-                history.replaceState({ screen: 'chat' }, '', '#chat');
-                console.log(`Replaced state: ${screenName}`);
-            }
-        } else {
-            // popstateイベント経由の場合は履歴操作は行わない
-            console.log(`showScreen called from popstate for ${screenName}`);
-        }
-
-        // まず全ての画面を非アクティブ＆inert状態にする
-        allScreens.forEach(screen => {
-            screen.classList.remove('active');
-            screen.inert = true; // 非アクティブ画面は操作不可に
-        });
-
-        // ターゲット画面に応じてtransformとアクティブ設定
-        if (screenName === 'chat') {
-            activeScreen = elements.chatScreen;
-            elements.chatScreen.style.transform = 'translateX(0)';
-            elements.historyScreen.style.transform = 'translateX(-100%)';
-            elements.settingsScreen.style.transform = 'translateX(100%)';
-            requestAnimationFrame(() => {
-                this.updateSystemPromptUI();
-                this.adjustTextareaHeight();
-                this.scrollToBottom();
-            });
-        } else if (screenName === 'history') {
-            activeScreen = elements.historyScreen;
-            elements.chatScreen.style.transform = 'translateX(100%)';
-            elements.historyScreen.style.transform = 'translateX(0)';
-            elements.settingsScreen.style.transform = 'translateX(200%)';
+          }
+      
+          const chat = elements.chatScreen;
+          const historyEl = elements.historyScreen;
+          const settings = elements.settingsScreen;
+          const allScreens = [chat, historyEl, settings];
+      
+          const pos = {
+            chat: {
+              chat: 'translate3d(0,0,0)',
+              history: 'translate3d(-100%,0,0)',
+              settings: 'translate3d(100%,0,0)',
+            },
+            history: {
+              chat: 'translate3d(100%,0,0)',
+              history: 'translate3d(0,0,0)',
+              settings: 'translate3d(200%,0,0)',
+            },
+            settings: {
+              chat: 'translate3d(-100%,0,0)',
+              history: 'translate3d(-200%,0,0)',
+              settings: 'translate3d(0,0,0)',
+            },
+          };
+      
+          if (screenName === 'chat') {
+            chat.style.transform = pos.chat.chat;
+            historyEl.style.transform = pos.chat.history;
+            settings.style.transform = pos.chat.settings;
+          } else if (screenName === 'history') {
+            chat.style.transform = pos.history.chat;
+            historyEl.style.transform = pos.history.history;
+            settings.style.transform = pos.history.settings;
             this.renderHistoryList();
-        } else if (screenName === 'settings') {
-            activeScreen = elements.settingsScreen;
-            elements.chatScreen.style.transform = 'translateX(-100%)';
-            elements.historyScreen.style.transform = 'translateX(-200%)';
-            elements.settingsScreen.style.transform = 'translateX(0)';
-            this.applySettingsToUI();
-        }
+          } else if (screenName === 'settings') {
 
-        // アニメーション適用とアクティブ化
-        requestAnimationFrame(() => {
-            allScreens.forEach(screen => {
-                screen.style.transition = 'transform 0.3s ease-in-out';
-            });
-            if (activeScreen) {
-                activeScreen.inert = false; // アクティブ画面は操作可能に
-                activeScreen.classList.add('active');
+            chat.style.transform = pos.settings.chat;
+            historyEl.style.transform = pos.settings.history;
+            settings.style.transform = pos.settings.settings;
+          }
+      
+          void elements.appContainer.offsetHeight;
+      
+          let activeScreen = null;
+          if (screenName === 'chat') activeScreen = chat;
+          else if (screenName === 'history') activeScreen = historyEl;
+          else if (screenName === 'settings') activeScreen = settings;
+      
+          if (activeScreen) {
+            activeScreen.classList.add('active');
+            activeScreen.inert = false;
+          }
+          allScreens.forEach((s) => {
+            if (s !== activeScreen) {
+              s.classList.remove('active');
+              s.inert = true;
             }
+          });
+      
+          if (!fromPopState) {
+            const entry = { screen: screenName };
+            if (screenName === 'chat' && state.__navSource === 'history-item') {
+              history.replaceState(entry, '', '#chat');
+            } else {
+              history.pushState(entry, '', `#${screenName}`);
+            }
+          }
+      
+          let finished = false;
+          const finish = () => {
+            if (finished) return;
+            finished = true;
+            state.currentScreen = screenName;
+            const endTime = performance.now();
+            console.log(`%cNavigated to screen: ${screenName}`, 'color: orange; font-weight: bold;');
+            console.log(`%c[PERF_DEBUG] showScreen('${screenName}') アニメーション完了/タイムアウト`, 'color: orange; font-weight: bold;', {
+              endTime,
+              duration: endTime - startTime,
+            });
+            resolve();
+          };
+          requestAnimationFrame(() => requestAnimationFrame(finish));
+          setTimeout(finish, 600);
         });
-
-        // 現在の画面名をstateに保存
-        state.currentScreen = screenName;
-        console.log(`Navigated to screen: ${screenName}`);
     },
 
     // 送信状態を設定
     setSendingState(sending) {
         state.isSending = sending;
         if (sending) {
-            elements.sendButton.innerHTML = '<span class="material-symbols-outlined">stop</span>'; // アイコン変更
-            elements.sendButton.classList.add('sending'); // スタイル変更用クラス
+            elements.sendButton.innerHTML = '<span class="material-symbols-outlined">stop</span>';
+            elements.sendButton.classList.add('sending');
             elements.sendButton.title = "停止";
-            elements.sendButton.disabled = false; // 停止ボタンは常に有効
-            elements.userInput.disabled = true; // 入力欄無効化
-            elements.attachFileBtn.disabled = true; // 添付ボタンも無効化
-            elements.loadingIndicator.classList.remove('hidden'); // ローディング表示
-            elements.loadingIndicator.setAttribute('aria-live', 'polite'); // スクリーンリーダー用
-            // システムプロンプト編集も不可にする
+            elements.sendButton.disabled = false;
+            elements.userInput.disabled = true;
+            elements.attachFileBtn.disabled = true;
+            elements.loadingIndicator.classList.remove('hidden');
+            elements.loadingIndicator.setAttribute('aria-live', 'polite');
             elements.systemPromptDetails.style.pointerEvents = 'none';
             elements.systemPromptDetails.style.opacity = '0.7';
         } else {
-            elements.sendButton.innerHTML = '<span class="material-symbols-outlined">send</span>'; // アイコン変更
+            elements.sendButton.innerHTML = '<span class="material-symbols-outlined">send</span>';
             elements.sendButton.classList.remove('sending');
             elements.sendButton.title = "送信";
-            // 入力が空なら送信ボタン無効化
             elements.sendButton.disabled = elements.userInput.value.trim() === '' && state.pendingAttachments.length === 0;
-            elements.userInput.disabled = false; // 入力欄有効化
-            elements.attachFileBtn.disabled = false; // 添付ボタン有効化
-            elements.loadingIndicator.classList.add('hidden'); // ローディング非表示
+            elements.userInput.disabled = false;
+            elements.attachFileBtn.disabled = false;
+            elements.loadingIndicator.classList.add('hidden');
             elements.loadingIndicator.removeAttribute('aria-live');
-            // システムプロンプト編集を可能にする
             elements.systemPromptDetails.style.pointerEvents = '';
             elements.systemPromptDetails.style.opacity = '';
         }
@@ -1864,13 +1889,12 @@ const uiUtils = {
 
     // テキストエリアの高さを自動調整
     adjustTextareaHeight(textarea = elements.userInput, maxHeight = TEXTAREA_MAX_HEIGHT) {
-        textarea.style.height = 'auto'; // 一旦高さをリセット
+        textarea.style.height = 'auto';
         const scrollHeight = textarea.scrollHeight;
-        // 最大高さを超えないように設定
         textarea.style.height = Math.min(scrollHeight, maxHeight) + 'px';
-        // メイン入力欄の場合、送信ボタンの有効/無効を更新
+        
         if (textarea === elements.userInput && !state.isSending) {
-            elements.sendButton.disabled = textarea.value.trim() === '';
+            elements.sendButton.disabled = textarea.value.trim() === '' && state.pendingAttachments.length === 0;
         }
     },
 
@@ -2233,6 +2257,30 @@ const uiUtils = {
         } else {
             console.error('[Debug Toggle] エラー: 対象となるメニュー要素が見つかりません。');
         }
+    },
+
+    debug_moveChatScreen() {
+        console.log('[DEBUG_TRANSITION] デバッグ用遷移関数を開始します。');
+        const chatScreen = elements.chatScreen;
+    
+        // transitionendイベントリスナーを設定
+        const onTransitionEnd = (event) => {
+            // イベントが本当にchatScreenのtransformプロパティで発生したか確認
+            if (event.target === chatScreen && event.propertyName === 'transform') {
+                console.log('%c[DEBUG_TRANSITION] transitionend イベントが発火しました！', 'color: lime; font-weight: bold;');
+                // 念のためリスナーを削除
+                chatScreen.removeEventListener('transitionend', onTransitionEnd);
+            }
+        };
+        chatScreen.addEventListener('transitionend', onTransitionEnd);
+    
+        // 遷移を開始
+        console.log('[DEBUG_TRANSITION] これから transform を translateX(0) に設定します。');
+        requestAnimationFrame(() => {
+            chatScreen.style.transition = 'transform 0.3s ease-in-out';
+            chatScreen.style.transform = 'translateX(0)';
+            console.log('[DEBUG_TRANSITION] transform を設定しました。イベント発火を待ちます...');
+        });
     }
 };
 
@@ -2952,7 +3000,7 @@ const appLogic = {
                 const html = originalLinkRenderer.call(renderer, href, title, text);
                 return html.replace(/^<a /, '<a target="_blank" rel="noopener noreferrer" ');
             };
-
+    
             marked.setOptions({
                 renderer: renderer,
                 breaks: true,
@@ -2969,24 +3017,22 @@ const appLogic = {
             event.preventDefault();
             console.log('beforeinstallpromptイベントを抑制しました。');
         });
-
+    
         window.debug = {
             getState: () => console.log(state),
             getMemory: () => console.log(state.currentPersistentMemory),
             getChat: async (id) => console.log(await dbUtils.getChat(id || state.currentChatId))
         };
         console.log("デバッグ用ヘルパーを登録しました。コンソールで `debug.getMemory()` を実行できます。");
-
-        uiUtils.showScreen('chat');
-
+    
         registerServiceWorker();
-
+    
         try {
             await dbUtils.openDB();
-
+    
             await this.loadGlobalSettings(); // 最初に共通設定を読み込む
             await this.loadProfiles();       // 次にプロファイル設定を読み込む
-
+    
             let profiles = await dbUtils.getAllProfiles();
             if (profiles.length === 0) {
                 console.log("[Migration] プロファイルが存在しないため、旧設定からのデータ移行処理を実行します。");
@@ -3002,17 +3048,17 @@ const appLogic = {
                     oldSettingsArray.forEach(item => {
                         oldSettingsObject[item.key] = item.value;
                     });
-
+    
                     const initialProfileSettings = { ...state.settings, ...oldSettingsObject };
                     delete initialProfileSettings.backgroundImageBlob;
-
+    
                     const defaultProfile = {
                         name: "デフォルトプロファイル",
                         icon: null,
                         createdAt: Date.now(),
                         settings: initialProfileSettings
                     };
-
+    
                     const newId = await dbUtils.addProfile(defaultProfile);
                     
                     await new Promise((resolve, reject) => {
@@ -3027,25 +3073,32 @@ const appLogic = {
                     console.log("[Migration] 移行すべき古い設定データが見つかりませんでした。新規プロファイルを作成します。");
                 }
             }
-
+    
             await this.loadProfiles();
-
+    
             const chats = await dbUtils.getAllChats(state.settings.historySortOrder);
             if (chats && chats.length > 0) {
                 await this.loadChat(chats[0].id);
             } else {
                 this.startNewChat();
             }
-
+    
             history.replaceState({ screen: 'chat' }, '', '#chat');
             state.currentScreen = 'chat';
             console.log("Initial history state set to #chat");
-
+    
         } catch (error) {
             console.error("初期化失敗:", error);
             await uiUtils.showCustomAlert(`アプリの初期化に失敗しました: ${error}`);
             elements.appContainer.innerHTML = `<p style="padding: 20px; text-align: center; color: red;">アプリの起動に失敗しました。</p>`;
         } finally {
+            // アプリ起動時に各画面の初期位置をJavaScriptで設定する
+            elements.chatScreen.style.transform = 'translateX(0)';
+            elements.historyScreen.style.transform = 'translateX(-100%)';
+            elements.settingsScreen.style.transform = 'translateX(100%)';
+            
+            uiUtils.showScreen('chat', true); // fromPopStateをtrueにして履歴操作を防ぐ
+    
             updateMessageMaxWidthVar();
             this.setupEventListeners();
             this.updateZoomState();
@@ -3057,15 +3110,26 @@ const appLogic = {
 
     // イベントリスナーを設定
     setupEventListeners() {
+        // ▼▼▼【重要】popstateリスナーの重複登録を防止するガード節を追加 ▼▼▼
+        if (!this._popstateBound) {
+            window.addEventListener('popstate', this.handlePopState.bind(this));
+            this._popstateBound = true; // 一度だけ登録するためのフラグ
+            console.log("popstate listener added (once).");
+        }
+        // ▲▲▲ 修正箇所ここまで ▲▲▲
+    
         this._setupEventListenersCallCount++; // カウンターを増やす
         console.log(`[Debug Event] setupEventListeners が呼び出されました。(${this._setupEventListenersCallCount}回目)`);
-
+        if (this._setupEventListenersCallCount > 1) {
+            console.error('%c[CRITICAL_BUG] setupEventListenersが複数回呼び出されています！これがバグの根本原因である可能性が非常に高いです。', 'color: red; font-size: 1.2em; font-weight: bold;');
+        }
+    
         // --- 画面遷移 ---
         elements.gotoHistoryBtn.addEventListener('click', () => uiUtils.showScreen('history'));
         elements.gotoSettingsBtn.addEventListener('click', () => uiUtils.showScreen('settings'));
         elements.backToChatFromHistoryBtn.addEventListener('click', () => uiUtils.showScreen('chat'));
         elements.backToChatFromSettingsBtn.addEventListener('click', () => uiUtils.showScreen('chat'));
-
+    
         // --- チャット関連 ---
         elements.newChatBtn.addEventListener('click', () => this.confirmStartNewChat());
         elements.sendButton.addEventListener('click', () => {
@@ -3087,7 +3151,7 @@ const appLogic = {
                 if (!elements.sendButton.disabled) this.handleSend();
             }
         });
-
+    
         // --- システムプロンプト ---
         elements.systemPromptDetails.addEventListener('toggle', (event) => {
             if (event.target.open) {
@@ -3098,7 +3162,7 @@ const appLogic = {
         });
         elements.saveSystemPromptBtn.addEventListener('click', () => this.saveCurrentSystemPrompt());
         elements.cancelSystemPromptBtn.addEventListener('click', () => this.cancelEditSystemPrompt());
-
+    
         // --- プロファイルメニューの表示/非表示 ---
         elements.profileCardHeader.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -3108,20 +3172,20 @@ const appLogic = {
             e.stopPropagation();
             uiUtils.toggleProfileMenu('settings');
         });
-
+    
         document.addEventListener('click', (e) => {
             const target = e.target;
             const isHeaderCardClicked = elements.profileCardHeader.contains(target);
             const isSettingsCardClicked = elements.profileCardHeaderSettings.contains(target);
             const isHeaderMenuClicked = elements.headerProfileMenu.contains(target);
             const isSettingsMenuClicked = elements.headerProfileMenuSettings.contains(target);
-
+    
             if (!isHeaderCardClicked && !isSettingsCardClicked && !isHeaderMenuClicked && !isSettingsMenuClicked) {
                 elements.headerProfileMenu.classList.add('hidden');
                 elements.headerProfileMenuSettings.classList.add('hidden');
             }
         });
-
+    
         // --- プロファイル編集 ---
         elements.profileEditNameBtn.addEventListener('click', () => this.editCurrentProfileName());
         elements.profileIconInput.addEventListener('change', (e) => {
@@ -3141,7 +3205,7 @@ const appLogic = {
             if (file) this.importProfile(file);
             e.target.value = null;
         });
-
+    
         // --- 設定項目（即時保存） ---
         const setupInstantSave = (element, key, eventType = 'change') => {
             if (element) {
@@ -3176,7 +3240,7 @@ const appLogic = {
                     if (key === 'headerColor') uiUtils.applyHeaderColor();
                     if (key === 'messageOpacity') document.documentElement.style.setProperty('--message-bubble-opacity', String(value));
                     if (key === 'modelName') uiUtils.updateModelWarningMessage();
-
+    
                 });
             } else {
                 console.warn(`❌ [Debug Settings] '${key}' に対応するDOM要素が見つかりません。`);
@@ -3225,14 +3289,15 @@ const appLogic = {
             messageOpacity: { element: elements.messageOpacitySlider, event: 'input' },
             headerColor: { element: elements.headerColorInput, event: 'input' },
             allowPromptUiChanges: { element: document.getElementById('allow-prompt-ui-changes'), event: 'change' },
-            forceFunctionCalling: { element: elements.forceFunctionCallingToggle, event: 'change' }
+            forceFunctionCalling: { element: elements.forceFunctionCallingToggle, event: 'change' },
+            autoScroll: { element: elements.autoScrollToggle, event: 'change' }
         };
-
+    
         for (const key in settingsMap) {
             const { element, event } = settingsMap[key];
             setupInstantSave(element, key, event);
         }
-
+    
         // --- その他 ---
         elements.importHistoryBtn.addEventListener('click', () => elements.importHistoryInput.click());
         elements.importHistoryInput.addEventListener('change', (event) => {
@@ -3240,7 +3305,7 @@ const appLogic = {
             if (file) this.handleHistoryImport(file);
             event.target.value = null;
         });
-
+    
         elements.includeThoughtsToggle.addEventListener('change', () => {
             const isEnabled = elements.includeThoughtsToggle.checked;
             elements.thoughtTranslationOptionsDiv.classList.toggle('hidden', !isEnabled);
@@ -3248,12 +3313,12 @@ const appLogic = {
         
         elements.updateAppBtn.addEventListener('click', () => this.updateApp());
         elements.clearDataBtn.addEventListener('click', () => this.confirmClearAllData());
-
+    
         elements.enableProofreadingCheckbox.addEventListener('change', () => {
             const isEnabled = elements.enableProofreadingCheckbox.checked;
             elements.proofreadingOptionsDiv.classList.toggle('hidden', !isEnabled);
         });
-
+    
         elements.uploadBackgroundBtn.addEventListener('click', () => elements.backgroundImageInput.click());
         elements.backgroundImageInput.addEventListener('change', (event) => {
             const file = event.target.files[0];
@@ -3281,7 +3346,7 @@ const appLogic = {
                 }
             }
         });
-
+    
         document.body.addEventListener('click', (event) => {
             if (!elements.messageContainer.contains(event.target)) {
                 const currentlyShown = elements.messageContainer.querySelector('.message.show-actions');
@@ -3290,23 +3355,22 @@ const appLogic = {
                 }
             }
         }, true); 
-
-        elements.chatScreen.addEventListener('touchstart', this.handleTouchStart.bind(this), { passive: true });
-        elements.chatScreen.addEventListener('touchmove', this.handleTouchMove.bind(this), { passive: false });
-        elements.chatScreen.addEventListener('touchend', this.handleTouchEnd.bind(this));
-
+    
+        // ▼▼▼【重要】ここから3行をコメントアウト ▼▼▼
+        // elements.chatScreen.addEventListener('touchstart', this.handleTouchStart.bind(this), { passive: true });
+        // elements.chatScreen.addEventListener('touchmove', this.handleTouchMove.bind(this), { passive: false });
+        // elements.chatScreen.addEventListener('touchend', this.handleTouchEnd.bind(this));
+        // ▲▲▲ 修正箇所ここまで ▲▲▲
+    
         if ('visualViewport' in window) {
             window.visualViewport.addEventListener('resize', this.updateZoomState.bind(this));
             window.visualViewport.addEventListener('scroll', this.updateZoomState.bind(this));
         } else {
             console.warn("VisualViewport API is not supported in this browser.");
         }
-
-        window.addEventListener('popstate', this.handlePopState.bind(this));
-        console.log("popstate listener added.");
         
         elements.attachFileBtn.addEventListener('click', () => uiUtils.showFileUploadDialog());
-
+    
         elements.fileInput.addEventListener('change', (event) => {
             this.handleFileSelection(event.target.files);
             event.target.value = null;
@@ -3326,7 +3390,7 @@ const appLogic = {
         });
         let menuHideTimer = null;
         const MENU_HIDE_DELAY = 300;
-
+    
         const showMenu = (messageElement) => {
             clearTimeout(menuHideTimer);
             const currentlyShown = elements.messageContainer.querySelector('.message.show-actions');
@@ -3337,7 +3401,7 @@ const appLogic = {
                 messageElement.classList.add('show-actions');
             }
         };
-
+    
         const hideMenu = (messageElement) => {
             menuHideTimer = setTimeout(() => {
                 if (messageElement) {
@@ -3345,14 +3409,14 @@ const appLogic = {
                 }
             }, MENU_HIDE_DELAY);
         };
-
+    
         elements.messageContainer.addEventListener('mouseover', (event) => {
             const messageElement = event.target.closest('.message');
             if (messageElement) {
                 showMenu(messageElement);
             }
         });
-
+    
         elements.messageContainer.addEventListener('mouseout', (event) => {
             const messageElement = event.target.closest('.message');
             if (messageElement) {
@@ -3362,7 +3426,7 @@ const appLogic = {
                 }
             }
         });
-
+    
         elements.messageContainer.addEventListener('mouseover', (event) => {
             const menuElement = event.target.closest('.message-actions, .message-cascade-controls');
             if (menuElement) {
@@ -3372,7 +3436,7 @@ const appLogic = {
                 }
             }
         });
-
+    
         elements.messageContainer.addEventListener('mouseout', (event) => {
             const menuElement = event.target.closest('.message-actions, .message-cascade-controls');
             if (menuElement) {
@@ -3383,9 +3447,9 @@ const appLogic = {
                 }
             }
         });
-
+    
         const chatScreen = elements.chatScreen;
-
+    
         chatScreen.addEventListener('dragover', (event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -3393,7 +3457,7 @@ const appLogic = {
                 chatScreen.classList.add('drag-over');
             }
         });
-
+    
         chatScreen.addEventListener('dragleave', (event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -3401,14 +3465,14 @@ const appLogic = {
                 chatScreen.classList.remove('drag-over');
             }
         });
-
+    
         chatScreen.addEventListener('drop', (event) => {
             event.preventDefault();
             event.stopPropagation();
             chatScreen.classList.remove('drag-over');
-
+    
             if (state.isSending) return;
-
+    
             const files = event.dataTransfer.files;
             if (files && files.length > 0) {
                 console.log(`${files.length}個のファイルがドロップされました。`);
@@ -3416,31 +3480,31 @@ const appLogic = {
                 uiUtils.showFileUploadDialog();
             }
         });
-
+    
         const fileUploadDialog = elements.fileUploadDialog;
-
+    
         fileUploadDialog.addEventListener('dragover', (event) => {
             event.preventDefault();
             event.stopPropagation();
             // 見た目の変化が必要な場合は、ここにクラス追加処理などを記述
             // 例: fileUploadDialog.classList.add('drag-over');
         });
-
+    
         fileUploadDialog.addEventListener('dragleave', (event) => {
             event.preventDefault();
             event.stopPropagation();
             // 見た目の変化を元に戻す処理
             // 例: fileUploadDialog.classList.remove('drag-over');
         });
-
+    
         fileUploadDialog.addEventListener('drop', (event) => {
             event.preventDefault();
             event.stopPropagation();
             // 見た目の変化を元に戻す処理
             // 例: fileUploadDialog.classList.remove('drag-over');
-
+    
             if (state.isSending) return;
-
+    
             const files = event.dataTransfer.files;
             if (files && files.length > 0) {
                 console.log(`${files.length}個のファイルがダイアログにドロップされました。`);
@@ -3449,7 +3513,7 @@ const appLogic = {
                 uiUtils.updateSelectedFilesUI();
             }
         });
-
+    
         const modalOverlay = document.getElementById('image-modal-overlay');
         const modalCloseBtn = document.getElementById('image-modal-close');
         
@@ -3472,7 +3536,7 @@ const appLogic = {
             elements.fixedRetryDelayContainer.classList.toggle('hidden', !useFixed);
             elements.maxBackoffDelayContainer.classList.toggle('hidden', useFixed);
         });
-
+    
         // --- モデル選択時の警告表示リスナー ---
         elements.modelNameSelect.addEventListener('change', () => {
             uiUtils.updateModelWarningMessage();
@@ -3498,11 +3562,16 @@ const appLogic = {
 
     // popstateイベントハンドラ (戻るボタン/ジェスチャー)
     handlePopState(event) {
-        // 履歴スタックから遷移先の画面名を取得、なければチャット画面
-        const targetScreen = event.state?.screen || 'chat';
-        console.log(`popstate event fired: Navigating to screen '${targetScreen}' from history state.`);
-        // showScreenを呼び出す (fromPopState = true を渡して履歴操作を抑制)
-        uiUtils.showScreen(targetScreen, true);
+    const targetScreen = event.state?.screen || 'chat';
+    // ▼▼▼【重要】不要な再描画を防ぐガード節を追加 ▼▼▼
+    if (targetScreen === state.currentScreen) {
+      console.log(`[popstate] same screen -> ignore: ${targetScreen}`);
+      return;
+    }
+    // ▲▲▲ 修正箇所ここまで ▲▲▲
+    console.log(`popstate event fired: Navigating to screen '${targetScreen}' from history state.`);
+    // showScreenを呼び出す (fromPopState = true を渡して履歴操作を抑制)
+    uiUtils.showScreen(targetScreen, true);
     },
 
     // ズーム状態を更新
@@ -3597,7 +3666,6 @@ const appLogic = {
                 uiUtils.showScreen('settings'); // showScreenが履歴操作を行う
             } else { // 右スワイプ (左から右へ) -> 履歴画面へ
                 console.log("右スワイプ検出 -> 履歴画面へ");
-                uiUtils.showScreen('history'); // showScreenが履歴操作を行う
             }
         } else {
             // 閾値未満または縦移動が大きい場合は何もしない
@@ -3677,7 +3745,12 @@ const appLogic = {
         state.currentStyleProfiles = {};
     },
 
+    // app.js の appLogic オブジェクト内
+
     async loadChat(id) {
+        const loadChatStartTime = performance.now();
+        console.log(`%c[PERF_DEBUG] loadChat: START - チャットID ${id} の読み込み処理を開始...`, 'color: red; font-weight: bold;');
+
         console.log(`%c[Debug LoadChat] START: チャットID ${id} の読み込みを開始...`, 'color: blue; font-weight: bold;');
         console.log(`[Debug LoadChat] 1. 読み込み前の state.currentMessages.length: ${state.currentMessages.length}`);
 
@@ -3708,7 +3781,11 @@ const appLogic = {
         }
 
         try {
+            const dbGetStartTime = performance.now();
             const chat = await dbUtils.getChat(id);
+            const dbGetEndTime = performance.now();
+            console.log(`%c[PERF_DEBUG] loadChat: DBからのデータ取得完了 (所要時間: ${dbGetEndTime - dbGetStartTime}ms)`, 'color: red; font-weight: bold;');
+            
             if (chat) {
                 state.currentChatId = chat.id;
                 state.currentMessages = chat.messages?.map(msg => ({
@@ -3740,9 +3817,13 @@ const appLogic = {
                 uiUtils.updateSystemPromptUI();
                 
                 console.log(`[Debug LoadChat] 4. renderChatMessages を呼び出します...`);
-                uiUtils.renderChatMessages(() => {
-                    uiUtils.scrollToBottom();
-                });
+
+                const renderStartTime = performance.now();
+                uiUtils.renderChatMessages();
+                const renderEndTime = performance.now();
+                console.log(`%c[PERF_DEBUG] loadChat: renderChatMessages DOM再構築完了 (所要時間: ${renderEndTime - renderStartTime}ms)`, 'color: red; font-weight: bold;');
+                
+                uiUtils.scrollToBottom();
 
                 elements.userInput.value = '';
                 uiUtils.adjustTextareaHeight();
@@ -3753,8 +3834,10 @@ const appLogic = {
                     await dbUtils.saveChat();
                 }
 
-                history.replaceState({ screen: 'chat' }, '', '#chat');
-                state.currentScreen = 'chat';
+                // ▼▼▼【重要】ここから2行を削除 ▼▼▼
+                // history.replaceState({ screen: 'chat' }, '', '#chat');
+                // state.currentScreen = 'chat';
+                // ▲▲▲ 修正箇所ここまで ▲▲▲
                 console.log(`%c[Debug LoadChat] END: チャット読み込み完了: ${id}`, 'color: blue; font-weight: bold;');
             } else {
                 await uiUtils.showCustomAlert("チャット履歴が見つかりませんでした。");
@@ -3764,9 +3847,13 @@ const appLogic = {
         } catch (error) {
             await uiUtils.showCustomAlert(`チャットの読み込みエラー: ${error}`);
             this.startNewChat();
-            uiUtils.showScreen('chat');
+
         }
+        const loadChatEndTime = performance.now();
+        console.log(`%c[PERF_DEBUG] loadChat: END - 全処理完了 (合計所要時間: ${loadChatEndTime - loadChatStartTime}ms)`, 'color: red; font-weight: bold;');
     },
+
+
 
     // チャットを複製
     async duplicateChat(id) {
@@ -4366,7 +4453,9 @@ const appLogic = {
         uiUtils.updateAttachmentBadgeVisibility();
         elements.userInput.value = '';
         uiUtils.adjustTextareaHeight();
-        uiUtils.scrollToBottom();
+        if (state.settings.autoScroll) {
+            uiUtils.scrollToBottom();
+        }
         
         await dbUtils.saveChat();
         
@@ -4403,6 +4492,11 @@ const appLogic = {
         } finally {
             uiUtils.setSendingState(false);
             state.abortController = null;
+            if (state.settings.autoScroll) {
+                requestAnimationFrame(() => {
+                    uiUtils.scrollToBottom();
+                });
+            }
         }
     },
     
@@ -5207,30 +5301,41 @@ const appLogic = {
             let requiresTitleUpdate = indicesToDelete.includes(originalFirstUserMsgIndex);
 
             try {
+                // 先にUIを完全に更新し、インデックスのズレを解消する
+                uiUtils.renderChatMessages();
+    
                 let newTitleForSave = null;
                 const currentChatData = state.currentChatId ? await dbUtils.getChat(state.currentChatId) : null;
-
+    
                 if (requiresTitleUpdate) {
                     const newFirstUserMessage = newFirstUserMsgIndex !== -1 ? state.currentMessages[newFirstUserMsgIndex] : null;
                     newTitleForSave = newFirstUserMessage ? newFirstUserMessage.content.substring(0, 50) : "無題のチャット";
                 } else if (currentChatData) {
                     newTitleForSave = currentChatData.title;
                 }
-
+    
                 await dbUtils.saveChat(newTitleForSave);
-
+    
                 if (requiresTitleUpdate) {
                     uiUtils.updateChatTitle(newTitleForSave);
                 }
-
+    
                 if (state.currentMessages.length === 0 && !state.currentSystemPrompt && state.currentChatId) {
                     console.log("チャットが空になったためリセットします。");
                     this.startNewChat();
                 }
+                
+                if (state.settings.autoScroll) {
+                    requestAnimationFrame(() => {
+                        uiUtils.scrollToBottom();
+                    });
+                }
+    
             } catch (error) {
                 console.error("メッセージ削除後のチャット保存/取得エラー:", error);
                 await uiUtils.showCustomAlert("メッセージ削除後のチャット保存に失敗しました。");
             }
+    
         } else {
              console.log("削除キャンセル");
         }
@@ -5274,7 +5379,6 @@ const appLogic = {
             });
             // その後stateを更新
             state.currentMessages.splice(index + 1);
-            // --- ▲▲▲ ちらつき修正 ▲▲▲ ---
 
             try {
                 const baseHistory = state.currentMessages.filter(msg => !msg.isCascaded || msg.isSelected);
@@ -5337,6 +5441,11 @@ const appLogic = {
             } finally {
                 uiUtils.setSendingState(false);
                 state.abortController = null; 
+                if (state.settings.autoScroll) {
+                    requestAnimationFrame(() => {
+                        uiUtils.scrollToBottom();
+                    });
+                }
             }
         }
     },
