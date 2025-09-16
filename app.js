@@ -892,7 +892,7 @@ const uiUtils = {
         }
     },
 
-    renderChatMessages() {
+    async renderChatMessages() {
         // ▼▼▼ デバッグ用ログを強化 ▼▼▼
         const startTime = performance.now();
         console.log(`%c[PERF_DEBUG] renderChatMessages 開始`, 'color: red; font-weight: bold;', { startTime });
@@ -938,10 +938,11 @@ const uiUtils = {
             }
         });
 
-        visibleMessages.forEach(msg => {
-            const loopStartTime = performance.now();
+        // ======================= ここからが修正箇所 =======================
+        // forEachの代わりにfor...ofループを使い、awaitで逐次実行する
+        for (const msg of visibleMessages) {
             const index = state.currentMessages.indexOf(msg);
-            if (index === -1 || msg.role === 'tool') return;
+            if (index === -1 || msg.role === 'tool') continue;
             
             let cascadeInfo = null;
             if (msg.isCascaded && msg.siblingGroupId) {
@@ -954,18 +955,13 @@ const uiUtils = {
                 };
             }
             
-            const messageElement = this.createMessageElement(msg.role, msg.content, index, false, cascadeInfo, msg.attachments);
+            // createMessageElementが完了するのを待つ
+            const messageElement = await this.createMessageElement(msg.role, msg.content, index, false, cascadeInfo, msg.attachments);
             if (messageElement) {
                 fragment.appendChild(messageElement);
             }
-
-            const loopEndTime = performance.now();
-            const duration = loopEndTime - loopStartTime;
-            // 処理時間が50msを超えた場合に警告ログを出力
-            if (duration > 50) {
-                console.warn(`[PERF_WARNING] メッセージ(index: ${index}, role: ${msg.role}) の処理に ${duration.toFixed(2)}ms かかりました。コンテンツ:`, msg.content?.substring(0, 100));
-            }
-        });
+        }
+        // ======================= ここまでが修正箇所 =======================
         
         container.appendChild(fragment);
         
