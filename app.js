@@ -939,6 +939,7 @@ const uiUtils = {
         });
 
         visibleMessages.forEach(msg => {
+            const loopStartTime = performance.now();
             const index = state.currentMessages.indexOf(msg);
             if (index === -1 || msg.role === 'tool') return;
             
@@ -956,6 +957,13 @@ const uiUtils = {
             const messageElement = this.createMessageElement(msg.role, msg.content, index, false, cascadeInfo, msg.attachments);
             if (messageElement) {
                 fragment.appendChild(messageElement);
+            }
+
+            const loopEndTime = performance.now();
+            const duration = loopEndTime - loopStartTime;
+            // 処理時間が50msを超えた場合に警告ログを出力
+            if (duration > 50) {
+                console.warn(`[PERF_WARNING] メッセージ(index: ${index}, role: ${msg.role}) の処理に ${duration.toFixed(2)}ms かかりました。コンテンツ:`, msg.content?.substring(0, 100));
             }
         });
         
