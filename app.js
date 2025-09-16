@@ -892,18 +892,14 @@ const uiUtils = {
         }
     },
 
-    renderChatMessages() {
-        // ▼▼▼ デバッグ用ログを強化 ▼▼▼
+    async renderChatMessages() {
         const startTime = performance.now();
         console.log(`%c[PERF_DEBUG] renderChatMessages 開始`, 'color: red; font-weight: bold;', { startTime });
-        // ▲▲▲ デバッグ用ログを強化 ▲▲▲
 
         const container = elements.messageContainer;
         
-        // ちらつき防止策は維持
         container.style.minHeight = `${container.scrollHeight}px`;
 
-        // キャッシュクリアと編集中状態のキャンセル
         if (state.imageUrlCache.size > 0) {
             for (const url of state.imageUrlCache.values()) {
                 URL.revokeObjectURL(url);
@@ -916,7 +912,6 @@ const uiUtils = {
             else state.editingMessageIndex = null;
         }
 
-        // DOMの再構築
         container.innerHTML = '';
         const fragment = document.createDocumentFragment();
         const visibleMessages = [];
@@ -938,9 +933,9 @@ const uiUtils = {
             }
         });
 
-        visibleMessages.forEach(msg => {
+        const elementPromises = visibleMessages.map(async (msg) => {
             const index = state.currentMessages.indexOf(msg);
-            if (index === -1 || msg.role === 'tool') return;
+            if (index === -1 || msg.role === 'tool') return null;
             
             let cascadeInfo = null;
             if (msg.isCascaded && msg.siblingGroupId) {
@@ -953,32 +948,31 @@ const uiUtils = {
                 };
             }
             
-            const messageElement = this.createMessageElement(msg.role, msg.content, index, false, cascadeInfo, msg.attachments);
-            if (messageElement) {
-                fragment.appendChild(messageElement);
-            }
+            return await this.createMessageElement(msg.role, msg.content, index, false, cascadeInfo, msg.attachments);
+        });
+
+        const messageElements = await Promise.all(elementPromises);
+        messageElements.forEach(el => {
+            if (el) fragment.appendChild(el);
         });
         
         container.appendChild(fragment);
         
-        // Prism.jsのハイライト
         if (window.Prism) {
             Prism.highlightAll();
         }
         
-        // ちらつき防止策の解除
         requestAnimationFrame(() => {
             container.style.minHeight = '';
         });
-        // ▼▼▼ デバッグ用ログを強化 ▼▼▼
         const endTime = performance.now();
         console.log(`%c[PERF_DEBUG] renderChatMessages 完了`, 'color: red; font-weight: bold;', { endTime, duration: endTime - startTime });
-        // ▲▲▲ デバッグ用ログを強化 ▲▲▲
     },
 
 
 
-    createMessageElement(role, content, index, isStreamingPlaceholder = false, cascadeInfo = null, attachments = null) {
+
+    async createMessageElement(role, content, index, isStreamingPlaceholder = false, cascadeInfo = null, attachments = null) {
         const messageData = state.currentMessages[index];
         if (!messageData) return null;
 
@@ -1216,15 +1210,13 @@ const uiUtils = {
             }
         }
 
-        // [IMAGE_HERE] を実際の画像に置換する処理
-        const imagePlaceholderRegex = /<p>\[IMAGE_HERE\]<\/p>|\[IMAGE_HERE\]/g; // <p>タグで囲まれている場合と、そうでない場合の両方に対応
+        const imagePlaceholderRegex = /<p>\[IMAGE_HERE\]<\/p>|\[IMAGE_HERE\]/g;
         if (role === 'model' && messageData && messageData.generated_images && messageData.generated_images.length > 0) {
             
             const processImages = async () => {
                 const imageElements = [];
                 const imageCacheKeyPrefix = `image-${index}`;
 
-                // 1. まず、全ての画像のimg要素を非同期で準備する
                 for (let i = 0; i < messageData.generated_images.length; i++) {
                     const imageData = messageData.generated_images[i];
                     const key = `${imageCacheKeyPrefix}-${i}`;
@@ -1250,17 +1242,15 @@ const uiUtils = {
                     imageElements.push(img.outerHTML);
                 }
 
-                // 2. 準備したimg要素で、同期的に置換処理を行う
                 let imageIndex = 0;
                 const replacedHtml = contentDiv.innerHTML.replace(imagePlaceholderRegex, () => {
                     if (imageIndex < imageElements.length) {
                         return imageElements[imageIndex++];
                     }
-                    return ''; // プレースホルダーが画像の数より多い場合は空文字
+                    return '';
                 });
                 contentDiv.innerHTML = replacedHtml;
 
-                // 3. プレースホルダーが足りなかった画像を末尾に追加
                 if (imageIndex < imageElements.length) {
                     const fragment = document.createDocumentFragment();
                     for (let i = imageIndex; i < imageElements.length; i++) {
@@ -1271,7 +1261,7 @@ const uiUtils = {
                     contentDiv.appendChild(fragment);
                 }
             };
-            processImages();
+            await processImages();
         }
 
         if (role === 'model' && messageData && messageData.generated_videos && messageData.generated_videos.length > 0) {
@@ -1406,6 +1396,7 @@ const uiUtils = {
         }
         return messageDiv;
     },
+
 
     // エラーメッセージを表示
     displayError(message, isApiError = false) {
@@ -4425,9 +4416,7 @@ const appLogic = {
     },
     
     async handleSend() {
-        console.log("--- [LOGGING] handleSend: 処理開始 ---");
-
-        if (state.isSending) { console.warn("handleSend: 既に送信中のため処理を中断"); return; }
+        if (state.isSending) { return; }
         if (state.editingMessageIndex !== null) { await uiUtils.showCustomAlert("他のメッセージを編集中です。"); return; }
         if (state.isEditingSystemPrompt) { await uiUtils.showCustomAlert("システムプロンプトを編集中です。"); return; }
 
@@ -4435,13 +4424,11 @@ const appLogic = {
         const attachmentsToSend = [...state.pendingAttachments];
         if (!text && attachmentsToSend.length === 0) return;
 
-        console.log("[LOGGING] handleSend: 1. 送信状態を開始します。");
         uiUtils.setSendingState(true);
         uiUtils.setLoadingIndicatorText('応答生成中...');
         
         const userMessage = { role: 'user', content: text, timestamp: Date.now(), attachments: attachmentsToSend };
         state.currentMessages.push(userMessage);
-        console.log("[LOGGING] handleSend: 2. ユーザーメッセージをUIに追加します。");
         uiUtils.appendMessage(userMessage.role, userMessage.content, state.currentMessages.length - 1, false, null, userMessage.attachments);
         
         const baseHistory = state.currentMessages.filter(msg => !msg.isCascaded || msg.isSelected);
@@ -4450,7 +4437,6 @@ const appLogic = {
         const modelMessage = { role: 'model', content: '', timestamp: Date.now() };
         state.currentMessages.push(modelMessage);
         const modelMessageIndex = state.currentMessages.length - 1;
-        console.log("[LOGGING] handleSend: 3. モデルメッセージのプレースホルダーをUIに追加します。");
         uiUtils.appendMessage(modelMessage.role, modelMessage.content, modelMessageIndex, true);
 
         state.pendingAttachments = [];
@@ -4463,7 +4449,6 @@ const appLogic = {
         }
         
         try {
-            console.log("[LOGGING] handleSend: 4. tryブロックに入りました。_internalHandleSendを呼び出します...");
             const generationConfig = {};
             if (state.settings.temperature !== null) generationConfig.temperature = state.settings.temperature;
             if (state.settings.maxTokens !== null) generationConfig.maxOutputTokens = state.settings.maxTokens;
@@ -4476,32 +4461,23 @@ const appLogic = {
             }
             const systemInstruction = state.currentSystemPrompt?.trim() ? { role: "system", parts: [{ text: state.currentSystemPrompt.trim() }] } : null;
 
-            const newMessagesPromise = this._internalHandleSend(historyForApi, generationConfig, systemInstruction);
-            console.log("[LOGGING] handleSend: 5. _internalHandleSendの呼び出しが完了し、Promiseが返されました。awaitで完了を待ちます。");
-            
-            const newMessages = await newMessagesPromise;
-            console.log("[LOGGING] handleSend: 6. _internalHandleSendのPromiseが解決しました。メッセージを集約します。");
+            const newMessages = await this._internalHandleSend(historyForApi, generationConfig, systemInstruction);
             
             const finalAggregatedMessage = this._aggregateMessages(newMessages);
-            console.log("[LOGGING] handleSend: 7. メッセージの集約が完了しました。stateを更新します。");
             state.currentMessages[modelMessageIndex] = finalAggregatedMessage;
 
-            console.log("[LOGGING] handleSend: 8. UIを再描画します (renderChatMessages)。");
-            uiUtils.renderChatMessages(() => uiUtils.scrollToBottom());
+            await uiUtils.renderChatMessages();
 
-            console.log("[LOGGING] handleSend: 9. 最終的なチャット履歴をDBに保存します。");
             await dbUtils.saveChat();
-            console.log("[LOGGING] handleSend: 10. DBへの保存が完了しました。");
 
         } catch(error) {
-            console.error("[LOGGING] handleSend: 11. catchブロックでエラーを捕捉しました。", error);
+            console.error("--- handleSend: 最終catchブロックでエラー捕捉 ---", error);
             const errorMessage = (error.name !== 'AbortError') ? (error.message || "不明なエラーが発生しました。") : "リクエストがキャンセルされました。";
             
             state.currentMessages[modelMessageIndex] = { role: 'error', content: errorMessage, timestamp: Date.now() };
-            uiUtils.renderChatMessages(() => uiUtils.scrollToBottom());
+            await uiUtils.renderChatMessages();
             await dbUtils.saveChat();
         } finally {
-            console.log("[LOGGING] handleSend: 12. finallyブロックが実行されます。送信状態を解除します。");
             uiUtils.setSendingState(false);
             state.abortController = null;
             if (state.settings.autoScroll) {
@@ -4509,9 +4485,9 @@ const appLogic = {
                     uiUtils.scrollToBottom();
                 });
             }
-            console.log("--- [LOGGING] handleSend: 処理終了 ---");
         }
     },
+
 
     
     // APIリクエストを中断
