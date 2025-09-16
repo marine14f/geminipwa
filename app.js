@@ -4456,9 +4456,7 @@ const appLogic = {
         if (state.settings.autoScroll) {
             uiUtils.scrollToBottom();
         }
-        
-        await dbUtils.saveChat();
-        
+                
         try {
             const generationConfig = {};
             if (state.settings.temperature !== null) generationConfig.temperature = state.settings.temperature;
