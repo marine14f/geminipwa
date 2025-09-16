@@ -364,21 +364,7 @@ function formatFileSize(bytes) {
 
 // Base64文字列をBlobオブジェクトに変換 (Promise)
 function base64ToBlob(base64, mimeType) {
-    return new Promise((resolve, reject) => {
-        try {
-            const byteCharacters = atob(base64);
-            const byteNumbers = new Array(byteCharacters.length);
-            for (let i = 0; i < byteCharacters.length; i++) {
-                byteNumbers[i] = byteCharacters.charCodeAt(i);
-            }
-            const byteArray = new Uint8Array(byteNumbers);
-            const blob = new Blob([byteArray], { type: mimeType });
-            resolve(blob);
-        } catch (error) {
-            console.error(`[DEBUG_IMAGE_ATOB_ERROR] Base64デコードまたはBlob生成でエラーが発生しました。`, error);
-            reject(error);
-        }
-    });
+    return fetch(`data:${mimeType};base64,${base64}`).then(res => res.blob());
 }
 
 // --- Service Worker関連 ---
@@ -906,7 +892,7 @@ const uiUtils = {
         }
     },
 
-    async renderChatMessages() {
+    renderChatMessages() {
         // ▼▼▼ デバッグ用ログを強化 ▼▼▼
         const startTime = performance.now();
         console.log(`%c[PERF_DEBUG] renderChatMessages 開始`, 'color: red; font-weight: bold;', { startTime });
@@ -952,11 +938,9 @@ const uiUtils = {
             }
         });
 
-        // ======================= ここからが修正箇所 =======================
-        // forEachの代わりにfor...ofループを使い、awaitで逐次実行する
-        for (const msg of visibleMessages) {
+        visibleMessages.forEach(msg => {
             const index = state.currentMessages.indexOf(msg);
-            if (index === -1 || msg.role === 'tool') continue;
+            if (index === -1 || msg.role === 'tool') return;
             
             let cascadeInfo = null;
             if (msg.isCascaded && msg.siblingGroupId) {
@@ -969,13 +953,11 @@ const uiUtils = {
                 };
             }
             
-            // createMessageElementが完了するのを待つ
-            const messageElement = await this.createMessageElement(msg.role, msg.content, index, false, cascadeInfo, msg.attachments);
+            const messageElement = this.createMessageElement(msg.role, msg.content, index, false, cascadeInfo, msg.attachments);
             if (messageElement) {
                 fragment.appendChild(messageElement);
             }
-        }
-        // ======================= ここまでが修正箇所 =======================
+        });
         
         container.appendChild(fragment);
         
@@ -996,7 +978,7 @@ const uiUtils = {
 
 
 
-    async createMessageElement(role, content, index, isStreamingPlaceholder = false, cascadeInfo = null, attachments = null) {
+    createMessageElement(role, content, index, isStreamingPlaceholder = false, cascadeInfo = null, attachments = null) {
         const messageData = state.currentMessages[index];
         if (!messageData) return null;
 
@@ -1234,72 +1216,62 @@ const uiUtils = {
             }
         }
 
-        const imagePlaceholderRegex = /<p>\[IMAGE_HERE\]<\/p>|\[IMAGE_HERE\]/g;
+        // [IMAGE_HERE] を実際の画像に置換する処理
+        const imagePlaceholderRegex = /<p>\[IMAGE_HERE\]<\/p>|\[IMAGE_HERE\]/g; // <p>タグで囲まれている場合と、そうでない場合の両方に対応
         if (role === 'model' && messageData && messageData.generated_images && messageData.generated_images.length > 0) {
             
-            // ======================= ここからが修正箇所 =======================
-            const processImages = () => {
-                const imageElementsHtml = [];
-                const imagePromises = [];
-
+            const processImages = async () => {
+                const imageElements = [];
                 const imageCacheKeyPrefix = `image-${index}`;
 
-                messageData.generated_images.forEach((imageData, i) => {
+                // 1. まず、全ての画像のimg要素を非同期で準備する
+                for (let i = 0; i < messageData.generated_images.length; i++) {
+                    const imageData = messageData.generated_images[i];
                     const key = `${imageCacheKeyPrefix}-${i}`;
                     const img = document.createElement('img');
                     img.alt = '生成された画像';
                     img.style.maxWidth = '100%';
                     img.style.borderRadius = 'var(--border-radius-md)';
                     img.style.marginTop = '8px';
-                    
-                    // まずはプレースホルダーとしてimg要素を追加
-                    imageElementsHtml.push(img.outerHTML);
 
-                    // 非同期で画像ソースを設定するPromiseを作成
-                    const promise = new Promise(async (resolve) => {
-                        if (state.imageUrlCache.has(key)) {
-                            img.src = state.imageUrlCache.get(key);
-                        } else {
-                            try {
-                                const blob = await base64ToBlob(imageData.data, imageData.mimeType);
-                                const url = URL.createObjectURL(blob);
-                                state.imageUrlCache.set(key, url);
-                                img.src = url;
-                            } catch (e) {
-                                console.error(`[DEBUG_IMAGE] BlobまたはObjectURLの生成に失敗しました (Key: ${key}):`, e);
-                                img.alt = '画像表示エラー';
-                            }
+                    if (state.imageUrlCache.has(key)) {
+                        img.src = state.imageUrlCache.get(key);
+                    } else {
+                        try {
+                            const blob = await base64ToBlob(imageData.data, imageData.mimeType);
+                            const url = URL.createObjectURL(blob);
+                            state.imageUrlCache.set(key, url);
+                            img.src = url;
+                        } catch (e) {
+                            console.error(`[Memory] BlobまたはObjectURLの生成に失敗しました (Key: ${key}):`, e);
+                            img.alt = '画像表示エラー';
                         }
-                        resolve();
-                    });
-                    imagePromises.push(promise);
-                });
+                    }
+                    imageElements.push(img.outerHTML);
+                }
 
-                // DOM操作を同期的に行う
+                // 2. 準備したimg要素で、同期的に置換処理を行う
                 let imageIndex = 0;
                 const replacedHtml = contentDiv.innerHTML.replace(imagePlaceholderRegex, () => {
-                    return imageIndex < imageElementsHtml.length ? imageElementsHtml[imageIndex++] : '';
+                    if (imageIndex < imageElements.length) {
+                        return imageElements[imageIndex++];
+                    }
+                    return ''; // プレースホルダーが画像の数より多い場合は空文字
                 });
                 contentDiv.innerHTML = replacedHtml;
 
-                if (imageIndex < imageElementsHtml.length) {
+                // 3. プレースホルダーが足りなかった画像を末尾に追加
+                if (imageIndex < imageElements.length) {
                     const fragment = document.createDocumentFragment();
-                    for (let i = imageIndex; i < imageElementsHtml.length; i++) {
+                    for (let i = imageIndex; i < imageElements.length; i++) {
                         const tempDiv = document.createElement('div');
-                        tempDiv.innerHTML = imageElementsHtml[i];
+                        tempDiv.innerHTML = imageElements[i];
                         fragment.appendChild(tempDiv.firstChild);
                     }
                     contentDiv.appendChild(fragment);
                 }
-                
-                // 全ての画像処理Promiseが完了するのを待つ (エラーでも継続)
-                Promise.allSettled(imagePromises).then(() => {
-                     console.log(`[DEBUG_IMAGE] メッセージ(index: ${index})の非同期画像処理がすべて完了/失敗しました。`);
-                });
             };
-
             processImages();
-            // ======================= ここまでが修正箇所 =======================
         }
 
         if (role === 'model' && messageData && messageData.generated_videos && messageData.generated_videos.length > 0) {
@@ -1434,8 +1406,6 @@ const uiUtils = {
         }
         return messageDiv;
     },
-
-
 
     // エラーメッセージを表示
     displayError(message, isApiError = false) {
@@ -3849,7 +3819,7 @@ const appLogic = {
                 console.log(`[Debug LoadChat] 4. renderChatMessages を呼び出します...`);
 
                 const renderStartTime = performance.now();
-                await uiUtils.renderChatMessages();
+                uiUtils.renderChatMessages();
                 const renderEndTime = performance.now();
                 console.log(`%c[PERF_DEBUG] loadChat: renderChatMessages DOM再構築完了 (所要時間: ${renderEndTime - renderStartTime}ms)`, 'color: red; font-weight: bold;');
                 
