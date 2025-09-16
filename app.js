@@ -364,7 +364,27 @@ function formatFileSize(bytes) {
 
 // Base64文字列をBlobオブジェクトに変換 (Promise)
 function base64ToBlob(base64, mimeType) {
-    return fetch(`data:${mimeType};base64,${base64}`).then(res => res.blob());
+    // ======================= ここからが修正箇所 =======================
+    return new Promise((resolve, reject) => {
+        // 5秒のタイムアウトを設定
+        const timeoutId = setTimeout(() => {
+            console.error(`[DEBUG_IMAGE_TIMEOUT] Base64 -> Blob 変換が5秒以上かかったためタイムアウトしました。MIME-Type: ${mimeType}`);
+            reject(new Error("Image conversion timed out."));
+        }, 5000);
+
+        fetch(`data:${mimeType};base64,${base64}`)
+            .then(res => res.blob())
+            .then(blob => {
+                clearTimeout(timeoutId); // 成功したのでタイムアウトを解除
+                resolve(blob);
+            })
+            .catch(error => {
+                clearTimeout(timeoutId); // エラーでもタイムアウトを解除
+                console.error(`[DEBUG_IMAGE_FETCH_ERROR] fetch()によるBlob変換でエラーが発生しました。`, error);
+                reject(error);
+            });
+    });
+    // ======================= ここまでが修正箇所 =======================
 }
 
 // --- Service Worker関連 ---
