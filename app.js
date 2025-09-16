@@ -364,27 +364,21 @@ function formatFileSize(bytes) {
 
 // Base64文字列をBlobオブジェクトに変換 (Promise)
 function base64ToBlob(base64, mimeType) {
-    // ======================= ここからが修正箇所 =======================
     return new Promise((resolve, reject) => {
-        // 5秒のタイムアウトを設定
-        const timeoutId = setTimeout(() => {
-            console.error(`[DEBUG_IMAGE_TIMEOUT] Base64 -> Blob 変換が5秒以上かかったためタイムアウトしました。MIME-Type: ${mimeType}`);
-            reject(new Error("Image conversion timed out."));
-        }, 5000);
-
-        fetch(`data:${mimeType};base64,${base64}`)
-            .then(res => res.blob())
-            .then(blob => {
-                clearTimeout(timeoutId); // 成功したのでタイムアウトを解除
-                resolve(blob);
-            })
-            .catch(error => {
-                clearTimeout(timeoutId); // エラーでもタイムアウトを解除
-                console.error(`[DEBUG_IMAGE_FETCH_ERROR] fetch()によるBlob変換でエラーが発生しました。`, error);
-                reject(error);
-            });
+        try {
+            const byteCharacters = atob(base64);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: mimeType });
+            resolve(blob);
+        } catch (error) {
+            console.error(`[DEBUG_IMAGE_ATOB_ERROR] Base64デコードまたはBlob生成でエラーが発生しました。`, error);
+            reject(error);
+        }
     });
-    // ======================= ここまでが修正箇所 =======================
 }
 
 // --- Service Worker関連 ---
@@ -1002,7 +996,7 @@ const uiUtils = {
 
 
 
-    createMessageElement(role, content, index, isStreamingPlaceholder = false, cascadeInfo = null, attachments = null) {
+    async createMessageElement(role, content, index, isStreamingPlaceholder = false, cascadeInfo = null, attachments = null) {
         const messageData = state.currentMessages[index];
         if (!messageData) return null;
 
@@ -1240,69 +1234,72 @@ const uiUtils = {
             }
         }
 
-        // [IMAGE_HERE] を実際の画像に置換する処理
-        const imagePlaceholderRegex = /<p>\[IMAGE_HERE\]<\/p>|\[IMAGE_HERE\]/g; // <p>タグで囲まれている場合と、そうでない場合の両方に対応
+        const imagePlaceholderRegex = /<p>\[IMAGE_HERE\]<\/p>|\[IMAGE_HERE\]/g;
         if (role === 'model' && messageData && messageData.generated_images && messageData.generated_images.length > 0) {
             
             // ======================= ここからが修正箇所 =======================
-            const processImages = async () => {
-                console.log(`[DEBUG_IMAGE] メッセージ(index: ${index})の画像処理を開始。画像数: ${messageData.generated_images.length}`);
-                const imageElements = [];
+            const processImages = () => {
+                const imageElementsHtml = [];
+                const imagePromises = [];
+
                 const imageCacheKeyPrefix = `image-${index}`;
 
-                for (let i = 0; i < messageData.generated_images.length; i++) {
-                    const imageData = messageData.generated_images[i];
+                messageData.generated_images.forEach((imageData, i) => {
                     const key = `${imageCacheKeyPrefix}-${i}`;
                     const img = document.createElement('img');
                     img.alt = '生成された画像';
                     img.style.maxWidth = '100%';
                     img.style.borderRadius = 'var(--border-radius-md)';
                     img.style.marginTop = '8px';
+                    
+                    // まずはプレースホルダーとしてimg要素を追加
+                    imageElementsHtml.push(img.outerHTML);
 
-                    if (state.imageUrlCache.has(key)) {
-                        img.src = state.imageUrlCache.get(key);
-                        console.log(`[DEBUG_IMAGE] キャッシュから画像URLを使用 (Key: ${key})`);
-                    } else {
-                        try {
-                            const blobStartTime = performance.now();
-                            const blob = await base64ToBlob(imageData.data, imageData.mimeType);
-                            const blobEndTime = performance.now();
-                            console.log(`[DEBUG_IMAGE] Base64 -> Blob 変換成功 (Key: ${key}, 所要時間: ${(blobEndTime - blobStartTime).toFixed(2)}ms, Size: ${blob.size} bytes)`);
-                            
-                            const url = URL.createObjectURL(blob);
-                            state.imageUrlCache.set(key, url);
-                            img.src = url;
-                        } catch (e) {
-                            // エラーログを強化
-                            console.error(`[DEBUG_IMAGE] BlobまたはObjectURLの生成に失敗しました (Key: ${key}):`, e);
-                            img.alt = '画像表示エラー';
+                    // 非同期で画像ソースを設定するPromiseを作成
+                    const promise = new Promise(async (resolve) => {
+                        if (state.imageUrlCache.has(key)) {
+                            img.src = state.imageUrlCache.get(key);
+                        } else {
+                            try {
+                                const blob = await base64ToBlob(imageData.data, imageData.mimeType);
+                                const url = URL.createObjectURL(blob);
+                                state.imageUrlCache.set(key, url);
+                                img.src = url;
+                            } catch (e) {
+                                console.error(`[DEBUG_IMAGE] BlobまたはObjectURLの生成に失敗しました (Key: ${key}):`, e);
+                                img.alt = '画像表示エラー';
+                            }
                         }
-                    }
-                    imageElements.push(img.outerHTML);
-                }
+                        resolve();
+                    });
+                    imagePromises.push(promise);
+                });
 
+                // DOM操作を同期的に行う
                 let imageIndex = 0;
                 const replacedHtml = contentDiv.innerHTML.replace(imagePlaceholderRegex, () => {
-                    if (imageIndex < imageElements.length) {
-                        return imageElements[imageIndex++];
-                    }
-                    return '';
+                    return imageIndex < imageElementsHtml.length ? imageElementsHtml[imageIndex++] : '';
                 });
                 contentDiv.innerHTML = replacedHtml;
 
-                if (imageIndex < imageElements.length) {
+                if (imageIndex < imageElementsHtml.length) {
                     const fragment = document.createDocumentFragment();
-                    for (let i = imageIndex; i < imageElements.length; i++) {
+                    for (let i = imageIndex; i < imageElementsHtml.length; i++) {
                         const tempDiv = document.createElement('div');
-                        tempDiv.innerHTML = imageElements[i];
+                        tempDiv.innerHTML = imageElementsHtml[i];
                         fragment.appendChild(tempDiv.firstChild);
                     }
                     contentDiv.appendChild(fragment);
                 }
-                console.log(`[DEBUG_IMAGE] メッセージ(index: ${index})の画像処理を完了。`);
+                
+                // 全ての画像処理Promiseが完了するのを待つ (エラーでも継続)
+                Promise.allSettled(imagePromises).then(() => {
+                     console.log(`[DEBUG_IMAGE] メッセージ(index: ${index})の非同期画像処理がすべて完了/失敗しました。`);
+                });
             };
-            // ======================= ここまでが修正箇所 =======================
+
             processImages();
+            // ======================= ここまでが修正箇所 =======================
         }
 
         if (role === 'model' && messageData && messageData.generated_videos && messageData.generated_videos.length > 0) {
@@ -1437,6 +1434,7 @@ const uiUtils = {
         }
         return messageDiv;
     },
+
 
 
     // エラーメッセージを表示
