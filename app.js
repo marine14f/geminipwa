@@ -4425,7 +4425,9 @@ const appLogic = {
     },
     
     async handleSend() {
-        if (state.isSending) { return; }
+        console.log("--- [LOGGING] handleSend: 処理開始 ---");
+
+        if (state.isSending) { console.warn("handleSend: 既に送信中のため処理を中断"); return; }
         if (state.editingMessageIndex !== null) { await uiUtils.showCustomAlert("他のメッセージを編集中です。"); return; }
         if (state.isEditingSystemPrompt) { await uiUtils.showCustomAlert("システムプロンプトを編集中です。"); return; }
 
@@ -4433,11 +4435,13 @@ const appLogic = {
         const attachmentsToSend = [...state.pendingAttachments];
         if (!text && attachmentsToSend.length === 0) return;
 
+        console.log("[LOGGING] handleSend: 1. 送信状態を開始します。");
         uiUtils.setSendingState(true);
         uiUtils.setLoadingIndicatorText('応答生成中...');
         
         const userMessage = { role: 'user', content: text, timestamp: Date.now(), attachments: attachmentsToSend };
         state.currentMessages.push(userMessage);
+        console.log("[LOGGING] handleSend: 2. ユーザーメッセージをUIに追加します。");
         uiUtils.appendMessage(userMessage.role, userMessage.content, state.currentMessages.length - 1, false, null, userMessage.attachments);
         
         const baseHistory = state.currentMessages.filter(msg => !msg.isCascaded || msg.isSelected);
@@ -4446,6 +4450,7 @@ const appLogic = {
         const modelMessage = { role: 'model', content: '', timestamp: Date.now() };
         state.currentMessages.push(modelMessage);
         const modelMessageIndex = state.currentMessages.length - 1;
+        console.log("[LOGGING] handleSend: 3. モデルメッセージのプレースホルダーをUIに追加します。");
         uiUtils.appendMessage(modelMessage.role, modelMessage.content, modelMessageIndex, true);
 
         state.pendingAttachments = [];
@@ -4456,8 +4461,9 @@ const appLogic = {
         if (state.settings.autoScroll) {
             uiUtils.scrollToBottom();
         }
-                
+        
         try {
+            console.log("[LOGGING] handleSend: 4. tryブロックに入りました。_internalHandleSendを呼び出します...");
             const generationConfig = {};
             if (state.settings.temperature !== null) generationConfig.temperature = state.settings.temperature;
             if (state.settings.maxTokens !== null) generationConfig.maxOutputTokens = state.settings.maxTokens;
@@ -4470,24 +4476,32 @@ const appLogic = {
             }
             const systemInstruction = state.currentSystemPrompt?.trim() ? { role: "system", parts: [{ text: state.currentSystemPrompt.trim() }] } : null;
 
-            const newMessages = await this._internalHandleSend(historyForApi, generationConfig, systemInstruction);
+            const newMessagesPromise = this._internalHandleSend(historyForApi, generationConfig, systemInstruction);
+            console.log("[LOGGING] handleSend: 5. _internalHandleSendの呼び出しが完了し、Promiseが返されました。awaitで完了を待ちます。");
+            
+            const newMessages = await newMessagesPromise;
+            console.log("[LOGGING] handleSend: 6. _internalHandleSendのPromiseが解決しました。メッセージを集約します。");
             
             const finalAggregatedMessage = this._aggregateMessages(newMessages);
+            console.log("[LOGGING] handleSend: 7. メッセージの集約が完了しました。stateを更新します。");
             state.currentMessages[modelMessageIndex] = finalAggregatedMessage;
 
-            // API応答後、全再描画で最終結果を反映
+            console.log("[LOGGING] handleSend: 8. UIを再描画します (renderChatMessages)。");
             uiUtils.renderChatMessages(() => uiUtils.scrollToBottom());
 
+            console.log("[LOGGING] handleSend: 9. 最終的なチャット履歴をDBに保存します。");
             await dbUtils.saveChat();
+            console.log("[LOGGING] handleSend: 10. DBへの保存が完了しました。");
 
         } catch(error) {
-            console.error("--- handleSend: 最終catchブロックでエラー捕捉 ---", error);
+            console.error("[LOGGING] handleSend: 11. catchブロックでエラーを捕捉しました。", error);
             const errorMessage = (error.name !== 'AbortError') ? (error.message || "不明なエラーが発生しました。") : "リクエストがキャンセルされました。";
             
             state.currentMessages[modelMessageIndex] = { role: 'error', content: errorMessage, timestamp: Date.now() };
             uiUtils.renderChatMessages(() => uiUtils.scrollToBottom());
             await dbUtils.saveChat();
         } finally {
+            console.log("[LOGGING] handleSend: 12. finallyブロックが実行されます。送信状態を解除します。");
             uiUtils.setSendingState(false);
             state.abortController = null;
             if (state.settings.autoScroll) {
@@ -4495,8 +4509,10 @@ const appLogic = {
                     uiUtils.scrollToBottom();
                 });
             }
+            console.log("--- [LOGGING] handleSend: 処理終了 ---");
         }
     },
+
     
     // APIリクエストを中断
     abortRequest() {
