@@ -1228,11 +1228,12 @@ const uiUtils = {
         const imagePlaceholderRegex = /<p>\[IMAGE_HERE\]<\/p>|\[IMAGE_HERE\]/g; // <p>タグで囲まれている場合と、そうでない場合の両方に対応
         if (role === 'model' && messageData && messageData.generated_images && messageData.generated_images.length > 0) {
             
+            // ======================= ここからが修正箇所 =======================
             const processImages = async () => {
+                console.log(`[DEBUG_IMAGE] メッセージ(index: ${index})の画像処理を開始。画像数: ${messageData.generated_images.length}`);
                 const imageElements = [];
                 const imageCacheKeyPrefix = `image-${index}`;
 
-                // 1. まず、全ての画像のimg要素を非同期で準備する
                 for (let i = 0; i < messageData.generated_images.length; i++) {
                     const imageData = messageData.generated_images[i];
                     const key = `${imageCacheKeyPrefix}-${i}`;
@@ -1244,31 +1245,35 @@ const uiUtils = {
 
                     if (state.imageUrlCache.has(key)) {
                         img.src = state.imageUrlCache.get(key);
+                        console.log(`[DEBUG_IMAGE] キャッシュから画像URLを使用 (Key: ${key})`);
                     } else {
                         try {
+                            const blobStartTime = performance.now();
                             const blob = await base64ToBlob(imageData.data, imageData.mimeType);
+                            const blobEndTime = performance.now();
+                            console.log(`[DEBUG_IMAGE] Base64 -> Blob 変換成功 (Key: ${key}, 所要時間: ${(blobEndTime - blobStartTime).toFixed(2)}ms, Size: ${blob.size} bytes)`);
+                            
                             const url = URL.createObjectURL(blob);
                             state.imageUrlCache.set(key, url);
                             img.src = url;
                         } catch (e) {
-                            console.error(`[Memory] BlobまたはObjectURLの生成に失敗しました (Key: ${key}):`, e);
+                            // エラーログを強化
+                            console.error(`[DEBUG_IMAGE] BlobまたはObjectURLの生成に失敗しました (Key: ${key}):`, e);
                             img.alt = '画像表示エラー';
                         }
                     }
                     imageElements.push(img.outerHTML);
                 }
 
-                // 2. 準備したimg要素で、同期的に置換処理を行う
                 let imageIndex = 0;
                 const replacedHtml = contentDiv.innerHTML.replace(imagePlaceholderRegex, () => {
                     if (imageIndex < imageElements.length) {
                         return imageElements[imageIndex++];
                     }
-                    return ''; // プレースホルダーが画像の数より多い場合は空文字
+                    return '';
                 });
                 contentDiv.innerHTML = replacedHtml;
 
-                // 3. プレースホルダーが足りなかった画像を末尾に追加
                 if (imageIndex < imageElements.length) {
                     const fragment = document.createDocumentFragment();
                     for (let i = imageIndex; i < imageElements.length; i++) {
@@ -1278,7 +1283,9 @@ const uiUtils = {
                     }
                     contentDiv.appendChild(fragment);
                 }
+                console.log(`[DEBUG_IMAGE] メッセージ(index: ${index})の画像処理を完了。`);
             };
+            // ======================= ここまでが修正箇所 =======================
             processImages();
         }
 
@@ -1414,6 +1421,7 @@ const uiUtils = {
         }
         return messageDiv;
     },
+
 
     // エラーメッセージを表示
     displayError(message, isApiError = false) {
