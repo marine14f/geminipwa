@@ -3831,7 +3831,7 @@ const appLogic = {
                 console.log(`[Debug LoadChat] 4. renderChatMessages を呼び出します...`);
 
                 const renderStartTime = performance.now();
-                uiUtils.renderChatMessages();
+                await uiUtils.renderChatMessages();
                 const renderEndTime = performance.now();
                 console.log(`%c[PERF_DEBUG] loadChat: renderChatMessages DOM再構築完了 (所要時間: ${renderEndTime - renderStartTime}ms)`, 'color: red; font-weight: bold;');
                 
