@@ -899,10 +899,8 @@ const uiUtils = {
     },
 
     renderChatMessages() {
-        // ▼▼▼ デバッグ用ログを強化 ▼▼▼
         const startTime = performance.now();
         console.log(`%c[PERF_DEBUG] renderChatMessages 開始`, 'color: red; font-weight: bold;', { startTime });
-        // ▲▲▲ デバッグ用ログを強化 ▲▲▲
 
         const container = elements.messageContainer;
         
@@ -976,10 +974,8 @@ const uiUtils = {
         requestAnimationFrame(() => {
             container.style.minHeight = '';
         });
-        // ▼▼▼ デバッグ用ログを強化 ▼▼▼
         const endTime = performance.now();
         console.log(`%c[PERF_DEBUG] renderChatMessages 完了`, 'color: red; font-weight: bold;', { endTime, duration: endTime - startTime });
-        // ▲▲▲ デバッグ用ログを強化 ▲▲▲
     },
 
 
@@ -1498,7 +1494,6 @@ const uiUtils = {
                     // クリックイベント (アクションボタン以外)
                     li.onclick = async (event) => {
                         if (!event.target.closest('.history-item-actions button')) {
-                            // ▼▼▼【重要】ここからが新しい処理フロー ▼▼▼
 
                             // ステップ1: まず画面遷移を開始し、UIを即座に反応させる
                             // この時点ではチャットの中身は空か、前の状態のまま
@@ -1512,7 +1507,6 @@ const uiUtils = {
                             // 読み込み完了後に確実に画面が表示されることを保証する。
                             await Promise.all([screenTransitionPromise, loadChatPromise]);
                             
-                            // ▲▲▲ 新しい処理フローここまで ▲▲▲
                         }
                     };
                     // 各アクションボタンのイベントリスナー
@@ -3522,7 +3516,6 @@ const appLogic = {
         
         elements.attachFileBtn.addEventListener('click', () => uiUtils.showFileUploadDialog());
     
-        // ▼▼▼ 修正箇所 ▼▼▼
         // モバイルでのファイルキャッシュ問題を回避するため、毎回input要素を動的に生成する
         elements.selectFilesBtn.addEventListener('click', () => {
             const fileInput = document.createElement('input');
@@ -3538,7 +3531,6 @@ const appLogic = {
             document.body.appendChild(fileInput);
             fileInput.click();
         });
-        // ▲▲▲ 修正箇所 ▲▲▲
 
         elements.confirmAttachBtn.addEventListener('click', () => this.confirmAttachment());
         elements.cancelAttachBtn.addEventListener('click', () => this.cancelAttachment());
@@ -3722,12 +3714,10 @@ const appLogic = {
     // popstateイベントハンドラ (戻るボタン/ジェスチャー)
     handlePopState(event) {
     const targetScreen = event.state?.screen || 'chat';
-    // ▼▼▼【重要】不要な再描画を防ぐガード節を追加 ▼▼▼
     if (targetScreen === state.currentScreen) {
       console.log(`[popstate] same screen -> ignore: ${targetScreen}`);
       return;
     }
-    // ▲▲▲ 修正箇所ここまで ▲▲▲
     console.log(`popstate event fired: Navigating to screen '${targetScreen}' from history state.`);
     // showScreenを呼び出す (fromPopState = true を渡して履歴操作を抑制)
     uiUtils.showScreen(targetScreen, true);
@@ -3993,10 +3983,6 @@ const appLogic = {
                     await dbUtils.saveChat();
                 }
 
-                // ▼▼▼【重要】ここから2行を削除 ▼▼▼
-                // history.replaceState({ screen: 'chat' }, '', '#chat');
-                // state.currentScreen = 'chat';
-                // ▲▲▲ 修正箇所ここまで ▲▲▲
                 console.log(`%c[Debug LoadChat] END: チャット読み込み完了: ${id}`, 'color: blue; font-weight: bold;');
             } else {
                 await uiUtils.showCustomAlert("チャット履歴が見つかりませんでした。");
@@ -4568,9 +4554,8 @@ const appLogic = {
             
             uiUtils.setLoadingIndicatorText('関数実行中...');
 
-            // ★★★★★ 修正点 ★★★★★
-            // フィルタリングされていない完全な履歴を渡すように変更
-            const { toolResults, containsTerminalAction, search_results, internalUiActions } = await this.executeToolCalls(result.toolCalls, state.currentMessages);
+            const historyForFunctions = state.currentMessages.slice(0, -1);
+            const { toolResults, containsTerminalAction, search_results, internalUiActions } = await this.executeToolCalls(result.toolCalls, historyForFunctions);
             
             if (search_results && search_results.length > 0) {
                 aggregatedSearchResults.push(...search_results);
@@ -5894,10 +5879,8 @@ const appLogic = {
     async handleFileSelection(fileList) {
         if (!fileList || fileList.length === 0) return;
 
-        // ▼▼▼ 修正箇所 ▼▼▼
         // 新しいファイル選択が開始されるたびに、必ずリストをクリアする
         state.selectedFilesForUpload = [];
-        // ▲▲▲ 修正箇所 ▲▲▲
 
         console.log("--- [DEBUG ①] ファイルが選択されました ---");
         Array.from(fileList).forEach(file => {
@@ -5977,7 +5960,6 @@ const appLogic = {
 
         for (const item of state.selectedFilesForUpload) {
             try {
-                // ★★★ 修正点 ★★★
                 // 確実なキャッシュ回避のため、一度Base64に変換し、そこから新しいBlobを再生成する
                 const base64Data = await this.fileToBase64(item.file);
                 const rehydratedBlob = await this.base64ToBlob(base64Data, item.file.type);
@@ -6013,7 +5995,7 @@ const appLogic = {
                 }
 
                 attachmentsToAdd.push({
-                    file: rehydratedBlob, // ★★★ 修正点: 再生成したBlobを格納する
+                    file: rehydratedBlob,
                     name: fileName,
                     mimeType: finalMimeType,
                     base64Data: base64Data

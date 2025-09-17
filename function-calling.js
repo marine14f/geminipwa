@@ -106,10 +106,8 @@
                 }
                 
                 const messages = chat.messages || [];
-                // ▼▼▼ 修正箇所 ▼▼▼
-                // AIが指定したインデックスをそのまま使用する
-                const targetIndex = source_image_message_index;
-                // ▲▲▲ 修正箇所 ▲▲▲
+                // AIが渡すインデックス(0=最新)を、配列の末尾から数える正しいインデックスに変換
+                const targetIndex = messages.length - 1 - source_image_message_index;
 
                 if (targetIndex < 0 || targetIndex >= messages.length) {
                     return { error: `指定されたインデックス(${source_image_message_index})が無効です。履歴の範囲外です。` };
@@ -124,10 +122,8 @@
                     return { error: `指定されたメッセージから保存可能な画像が見つかりませんでした。` };
                 }
 
-                // ▼▼▼ デバッグログ③を追加 ▼▼▼
                 console.log("--- [DEBUG ③] DBに保存する直前のBlob情報 ---");
                 console.log(`Blobサイズ: ${imageBlob.size}, 種類: ${imageBlob.type}`);
-                // ▲▲▲ デバッグログ③ここまで ▲▲▲
 
                 const newAsset = {
                     name: asset_name,
@@ -1546,7 +1542,7 @@ async function generate_image(args = {}) {
                 const messages = chat.messages || [];
 
                 // AIが指定したインデックスをそのまま使用する
-                const targetIndex = source.message_index;
+                const targetIndex = messages.length - 1 - source.message_index;
 
                 if (targetIndex < 0 || targetIndex >= messages.length) {
                     throw new Error(`指定されたメッセージ(インデックス: ${source.message_index})が無効です。履歴の範囲外です。`);
@@ -1578,14 +1574,12 @@ async function generate_image(args = {}) {
             return { error: "編集対象の有効な画像ソースが見つかりませんでした。" };
         }
 
-        const contents = [
-            { role: "user", parts: imageParts },
-            { role: "user", parts: [{ text: prompt }] }
-        ];
+        // 画像パーツの配列に、テキストプロンプトも追加する
+        imageParts.push({ text: prompt });
 
         const resp = await ai.models.generateContent({
             model: "gemini-2.5-flash-image-preview",
-            contents: contents
+            contents: imageParts
         });
 
         const editedImagesBase64 = [];
