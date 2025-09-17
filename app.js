@@ -5894,15 +5894,18 @@ const appLogic = {
     async handleFileSelection(fileList) {
         if (!fileList || fileList.length === 0) return;
 
-        // ▼▼▼ デバッグログ①を追加 ▼▼▼
+        // ▼▼▼ 修正箇所 ▼▼▼
+        // 新しいファイル選択が開始されるたびに、必ずリストをクリアする
+        state.selectedFilesForUpload = [];
+        // ▲▲▲ 修正箇所 ▲▲▲
+
         console.log("--- [DEBUG ①] ファイルが選択されました ---");
         Array.from(fileList).forEach(file => {
             console.log(`ファイル名: ${file.name}, サイズ: ${file.size}, 種類: ${file.type}`);
         });
-        // ▲▲▲ デバッグログ①ここまで ▲▲▲
 
         const newFiles = Array.from(fileList);
-        let currentTotalSize = state.selectedFilesForUpload.reduce((sum, item) => sum + item.file.size, 0);
+        let currentTotalSize = 0; // クリアしたので0からスタート
         let addedCount = 0;
         let skippedCount = 0;
         let sizeError = false;
@@ -5922,12 +5925,7 @@ const appLogic = {
                 continue;
             }
 
-            if (state.selectedFilesForUpload.some(item => item.file.name === file.name)) {
-                console.log(`ファイル "${file.name}" は既に追加されています。スキップします。`);
-                skippedCount++;
-                continue;
-            }
-
+            // 配列はクリアされているので、重複チェックは不要
             state.selectedFilesForUpload.push({ file: file });
             currentTotalSize += file.size;
             addedCount++;
@@ -5940,12 +5938,13 @@ const appLogic = {
             await uiUtils.showCustomAlert(`合計ファイルサイズの上限 (${formatFileSize(MAX_TOTAL_ATTACHMENT_SIZE)}) を超えるため、一部のファイルは追加されませんでした。`);
         }
         if (skippedCount > 0) {
-            console.log(`${skippedCount}個のファイルがスキップされました（サイズ超過または重複）。`);
+            console.log(`${skippedCount}個のファイルがスキップされました（サイズ超過）。`);
         }
 
         uiUtils.updateSelectedFilesUI();
         console.log(`${addedCount}個のファイルが選択リストに追加されました。`);
     },
+    
 
     removeSelectedFile(indexToRemove) {
         if (indexToRemove >= 0 && indexToRemove < state.selectedFilesForUpload.length) {
