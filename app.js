@@ -5965,12 +5965,10 @@ const appLogic = {
             return;
         }
 
-        // ▼▼▼ デバッグログ②を追加 ▼▼▼
         console.log("--- [DEBUG ②] 添付が確定されました ---");
         state.selectedFilesForUpload.forEach(item => {
             console.log(`確定されたファイル: ${item.file.name}, サイズ: ${item.file.size}`);
         });
-        // ▲▲▲ デバッグログ②ここまで ▲▲▲
 
         elements.confirmAttachBtn.disabled = true;
         elements.confirmAttachBtn.textContent = '処理中...';
@@ -5980,7 +5978,11 @@ const appLogic = {
 
         for (const item of state.selectedFilesForUpload) {
             try {
-                const base64Data = await this.fileToBase64(item.file);
+                // ▼▼▼ 修正箇所 ▼▼▼
+                // Fileオブジェクトから新しいBlobを強制的に複製し、ブラウザの内部キャッシュ参照を断ち切る
+                const fileBlob = item.file.slice(0, item.file.size, item.file.type);
+                const base64Data = await this.fileToBase64(fileBlob);
+                // ▲▲▲ 修正箇所 ▲▲▲
 
                 let browserMimeType = item.file.type || '';
                 const fileName = item.file.name;
@@ -6006,7 +6008,10 @@ const appLogic = {
                 }
 
                 attachmentsToAdd.push({
-                    file: item.file,
+                    // ▼▼▼ 修正箇所 ▼▼▼
+                    // 元のFileオブジェクトではなく、複製したBlobを格納する
+                    file: fileBlob,
+                    // ▲▲▲ 修正箇所 ▲▲▲
                     name: fileName,
                     mimeType: finalMimeType,
                     base64Data: base64Data
@@ -6030,6 +6035,7 @@ const appLogic = {
             uiUtils.updateAttachmentBadgeVisibility();
         }
     },
+
 
     cancelAttachment() {
         state.selectedFilesForUpload = [];
