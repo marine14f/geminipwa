@@ -124,6 +124,11 @@
                     return { error: `指定されたメッセージから保存可能な画像が見つかりませんでした。` };
                 }
 
+                // ▼▼▼ デバッグログ③を追加 ▼▼▼
+                console.log("--- [DEBUG ③] DBに保存する直前のBlob情報 ---");
+                console.log(`Blobサイズ: ${imageBlob.size}, 種類: ${imageBlob.type}`);
+                // ▲▲▲ デバッグログ③ここまで ▲▲▲
+
                 const newAsset = {
                     name: asset_name,
                     blob: imageBlob,
@@ -1186,75 +1191,9 @@ async function set_background_image({ image_url }) {
       window.elements.loadingIndicator.classList.remove('hidden');
     }
   
-    // --- ヘルパー関数 ---
-    const normBase64 = (s) => (s || "").replace(/\s+/g, "");
-    const dataUrlToParts = (dataUrl) => {
-      const m = /^data:([^;]+);base64,(.+)$/i.exec(dataUrl || "");
-      if (!m) return null;
-      return { mimeType: m[1], base64Data: m[2] };
-    };
-    const inlineDataToParts = (inlineData) => {
-      if (!inlineData || !inlineData.data) return null;
-      return { mimeType: inlineData.mimeType || "application/octet-stream", base64Data: inlineData.data };
-    };
-    const fileToParts = (file) => new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result || "";
-        const base64String = String(result).split(',')[1] || "";
-        resolve({
-          mimeType: file.type || "application/octet-stream",
-          base64Data: base64String
-        });
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-    const tryExtractFromMessage = async (msg) => {
-      if (!msg) return null;
-  
-      // 添付ファイル（File/Blob or base64格納）優先
-      if (msg.attachments && msg.attachments.length > 0) {
-        const attachment = msg.attachments[0];
-        if (attachment.file instanceof File || attachment.file instanceof Blob) {
-          return await fileToParts(attachment.file);
-        }
-        if (attachment.base64Data) {
-          return { mimeType: attachment.mimeType, base64Data: attachment.base64Data };
-        }
-      }
-  
-      // 生成画像キャッシュ（自前構造）
-      if (msg.generated_images && msg.generated_images.length > 0) {
-        const img = msg.generated_images[0];
-        if (img?.data) {
-          return { mimeType: img.mimeType || "application/octet-stream", base64Data: img.data };
-        }
-      }
-  
-      // parts（inlineData / data URL テキスト）
-      const partsArr = Array.isArray(msg.parts)
-        ? msg.parts
-        : (Array.isArray(msg.content?.parts) ? msg.content.parts : []);
-      if (Array.isArray(partsArr)) {
-        for (const p of partsArr) {
-          if (p?.inlineData) return inlineDataToParts(p.inlineData);
-          if (typeof p?.text === "string" && p.text.startsWith("data:")) return dataUrlToParts(p.text);
-        }
-      }
-      return null;
-    };
-    // BlobをBase64文字列に変換するヘルパー
-    const blobToBase64 = (blob) => new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-            const result = reader.result || "";
-            const base64String = String(result).split(',')[1] || "";
-            resolve(base64String);
-        };
-        reader.onerror = (error) => reject(error);
-        reader.readAsDataURL(blob);
-    });
+    // ▼▼▼ 修正箇所 ▼▼▼
+    // 関数内の古いヘルパー関数を削除
+    // ▲▲▲ 修正箇所 ▲▲▲
   
     try {
       const genAI = new window.GoogleGenAI({ apiKey });
@@ -1267,41 +1206,47 @@ async function set_background_image({ image_url }) {
   
       // 1) inline 指定があれば優先
       if (source_inline_image && source_inline_image.data) {
-        const direct = inlineDataToParts(source_inline_image);
-        if (direct?.base64Data) {
-          request.image = {
-            imageBytes: normBase64(direct.base64Data),
-            mimeType: direct.mimeType || "image/png"
-          };
-          console.log(`画像をリクエストに追加 (direct inlineData).`);
+        // ▼▼▼ 修正箇所 ▼▼▼
+        // 内部ヘルパーの代わりに appLogic を使用
+        const base64Data = source_inline_image.data.replace(/\s+/g, "");
+        if (base64Data) {
+            request.image = {
+                imageBytes: base64Data,
+                mimeType: source_inline_image.mimeType || "image/png"
+            };
+            console.log(`画像をリクエストに追加 (direct inlineData).`);
         }
+        // ▲▲▲ 修正箇所 ▲▲▲
       }
   
       // 2) まだ無ければ履歴から抽出 (chat.messages を直接使用)
       if (!request.image && typeof source_image_message_index === 'number') {
-        const messages = chat.messages || []; // 引数のchatオブジェクトを使用
-        const dummyPromptCount = chat?.dummy_prompt_count || 0;
-        const effectiveLength = messages.length - dummyPromptCount;
-        const targetIndex = effectiveLength - 1 - source_image_message_index;
+        const messages = chat.messages || [];
+        const targetIndex = source_image_message_index;
 
         if (targetIndex < 0 || targetIndex >= messages.length) {
-            throw new Error(`指定されたメッセージ(インデックス: ${source_image_message_index})が見つかりません。計算後のインデックス(${targetIndex})が範囲外です。`);
+            throw new Error(`指定されたメッセージ(インデックス: ${source_image_message_index})が見つかりません。インデックスが範囲外です。`);
         }
         const targetMessage = messages[targetIndex];
         if (!targetMessage) {
             throw new Error(`指定されたインデックス(${source_image_message_index})にメッセージが見つかりません。`);
         }
 
-        const source = await tryExtractFromMessage(targetMessage);
-        if (source?.base64Data) {
+        // ▼▼▼ 修正箇所 ▼▼▼
+        // グローバルで修正済みの extractImageBlobFromMessage を使用
+        const imageBlob = await extractImageBlobFromMessage(targetMessage);
+
+        if (imageBlob) {
+            const base64Data = await window.appLogic.fileToBase64(imageBlob);
             request.image = {
-                imageBytes: normBase64(source.base64Data),
-                mimeType: source.mimeType || "image/png"
+                imageBytes: base64Data,
+                mimeType: imageBlob.type || "image/png"
             };
-            console.log(`画像をリクエストに追加 (index: ${source_image_message_index} -> calculated: ${targetIndex}).`);
+            console.log(`画像をリクエストに追加 (index: ${source_image_message_index}).`);
         } else {
             throw new Error(`指定されたメッセージ(インデックス: ${source_image_message_index})から有効な画像が見つかりませんでした。`);
         }
+        // ▲▲▲ 修正箇所 ▲▲▲
     }
   
       if (request.image) {
@@ -1393,7 +1338,10 @@ async function set_background_image({ image_url }) {
   
       const videoBlob = await res.blob();
       const videoUrl = URL.createObjectURL(videoBlob);
-      const videoBase64 = await blobToBase64(videoBlob);
+      // ▼▼▼ 修正箇所 ▼▼▼
+      // BlobをBase64に変換するヘルパーを appLogic から呼び出す
+      const videoBase64 = await window.appLogic.fileToBase64(videoBlob);
+      // ▲▲▲ 修正箇所 ▲▲▲
       console.log("動画のBlob URLとBase64データを生成しました。");
   
       return {
@@ -1422,6 +1370,7 @@ async function set_background_image({ image_url }) {
       if (window.uiUtils) window.elements.loadingIndicator.classList.add('hidden');
     }
 }
+
 
 
   
