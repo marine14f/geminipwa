@@ -3267,6 +3267,7 @@ const appLogic = {
 
 
     // イベントリスナーを設定
+    // イベントリスナーを設定
     setupEventListeners() {
         if (!this._popstateBound) {
             window.addEventListener('popstate', this.handlePopState.bind(this));
@@ -3512,12 +3513,6 @@ const appLogic = {
             }
         }, true); 
     
-        // ▼▼▼【重要】ここから3行をコメントアウト ▼▼▼
-        // elements.chatScreen.addEventListener('touchstart', this.handleTouchStart.bind(this), { passive: true });
-        // elements.chatScreen.addEventListener('touchmove', this.handleTouchMove.bind(this), { passive: false });
-        // elements.chatScreen.addEventListener('touchend', this.handleTouchEnd.bind(this));
-        // ▲▲▲ 修正箇所ここまで ▲▲▲
-    
         if ('visualViewport' in window) {
             window.visualViewport.addEventListener('resize', this.updateZoomState.bind(this));
             window.visualViewport.addEventListener('scroll', this.updateZoomState.bind(this));
@@ -3527,10 +3522,24 @@ const appLogic = {
         
         elements.attachFileBtn.addEventListener('click', () => uiUtils.showFileUploadDialog());
     
-        elements.fileInput.addEventListener('change', (event) => {
-            this.handleFileSelection(event.target.files);
-            event.target.value = null;
+        // ▼▼▼ 修正箇所 ▼▼▼
+        // モバイルでのファイルキャッシュ問題を回避するため、毎回input要素を動的に生成する
+        elements.selectFilesBtn.addEventListener('click', () => {
+            const fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.multiple = true;
+            fileInput.style.display = 'none';
+
+            fileInput.addEventListener('change', (event) => {
+                this.handleFileSelection(event.target.files);
+                document.body.removeChild(fileInput); // 使い終わったら要素を削除
+            });
+
+            document.body.appendChild(fileInput);
+            fileInput.click();
         });
+        // ▲▲▲ 修正箇所 ▲▲▲
+
         elements.confirmAttachBtn.addEventListener('click', () => this.confirmAttachment());
         elements.cancelAttachBtn.addEventListener('click', () => this.cancelAttachment());
         elements.fileUploadDialog.addEventListener('close', () => {
@@ -3642,22 +3651,16 @@ const appLogic = {
         fileUploadDialog.addEventListener('dragover', (event) => {
             event.preventDefault();
             event.stopPropagation();
-            // 見た目の変化が必要な場合は、ここにクラス追加処理などを記述
-            // 例: fileUploadDialog.classList.add('drag-over');
         });
     
         fileUploadDialog.addEventListener('dragleave', (event) => {
             event.preventDefault();
             event.stopPropagation();
-            // 見た目の変化を元に戻す処理
-            // 例: fileUploadDialog.classList.remove('drag-over');
         });
     
         fileUploadDialog.addEventListener('drop', (event) => {
             event.preventDefault();
             event.stopPropagation();
-            // 見た目の変化を元に戻す処理
-            // 例: fileUploadDialog.classList.remove('drag-over');
     
             if (state.isSending) return;
     
@@ -3665,7 +3668,6 @@ const appLogic = {
             if (files && files.length > 0) {
                 console.log(`${files.length}個のファイルがダイアログにドロップされました。`);
                 this.handleFileSelection(files);
-                // ダイアログは既に開いているので、UIの更新のみ行う
                 uiUtils.updateSelectedFilesUI();
             }
         });
@@ -3715,6 +3717,7 @@ const appLogic = {
             revokeUrls(state.imageUrlCache, 'チャット画像');
         });
     },
+    
 
     // popstateイベントハンドラ (戻るボタン/ジェスチャー)
     handlePopState(event) {
