@@ -32,18 +32,38 @@
 
 /**
  * メッセージオブジェクトから画像データをBlob形式で抽出するヘルパー
- * 新アーキテクチャ: imageIds を元にDBからBlobを取得する
+ * 添付画像(attachments)と生成画像(imageIds)の両方に対応
  * @param {object} message - 抽出元のメッセージオブジェクト
  * @returns {Promise<Blob|null>} 画像のBlobオブジェクト、またはnull
  */
-async function extractImageBlobFromMessage(message) {
+ async function extractImageBlobFromMessage(message) {
     if (!message) return null;
 
-    // 新アーキテクチャ: message.imageIds を優先的にチェック
+    // 優先順位1: ユーザーが添付した画像 (message.attachments) をチェック
+    if (message.attachments && message.attachments.length > 0) {
+        const imageAttachment = message.attachments.find(att => att.mimeType && att.mimeType.startsWith('image/'));
+        if (imageAttachment) {
+            // .file プロパティがBlob/Fileオブジェクトとして存在する場合、それを優先的に使用
+            if (imageAttachment.file instanceof Blob) {
+                 console.log(`[extractImageBlob] 添付ファイル (${imageAttachment.name}) からBlobを取得しました。`);
+                 return imageAttachment.file;
+            }
+            // .file がない場合 (インポートデータなど)、base64から復元を試みる
+            if (imageAttachment.base64Data && imageAttachment.mimeType) {
+                try {
+                    console.log(`[extractImageBlob] 添付ファイルのBase64データからBlobを復元します。`);
+                    return await window.appLogic.base64ToBlob(imageAttachment.base64Data, imageAttachment.mimeType);
+                } catch (e) {
+                    console.error("[extractImageBlob] Base64からのBlob復元に失敗:", e);
+                }
+            }
+        }
+    }
+
+    // 優先順位2: AIが生成した画像 (message.imageIds) をチェック
     if (message.imageIds && message.imageIds.length > 0) {
         const imageId = message.imageIds[0]; // 最初の画像IDを使用
-        console.log(`[extractImageBlob] 新形式の画像ID (${imageId}) を検出しました。DBからBlobを取得します。`);
-        // app.jsで定義したグローバルなappLogicオブジェクト経由でヘルパー関数を呼び出す
+        console.log(`[extractImageBlob] 生成画像のID (${imageId}) を検出しました。DBからBlobを取得します。`);
         if (window.appLogic && typeof window.appLogic.getImageBlobById === 'function') {
             return await window.appLogic.getImageBlobById(imageId);
         } else {
@@ -54,7 +74,8 @@ async function extractImageBlobFromMessage(message) {
     
     console.log("[extractImageBlob] メッセージ内に参照可能な画像が見つかりませんでした。");
     return null;
-};
+}
+
 
 
 
