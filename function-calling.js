@@ -32,39 +32,36 @@
 
 /**
  * メッセージオブジェクトから画像データをBlob形式で抽出するヘルパー
+ * 新アーキテクチャ: imageIds を元にDBからBlobを取得する
  * @param {object} message - 抽出元のメッセージオブジェクト
  * @returns {Promise<Blob|null>} 画像のBlobオブジェクト、またはnull
  */
- async function extractImageBlobFromMessage(message) {
+async function extractImageBlobFromMessage(message) {
     if (!message) return null;
-    // 添付ファイル（File/Blob or base64）
-    if (message.attachments && message.attachments.length > 0) {
-        const att = message.attachments[0];
-        if (att.file instanceof Blob) return att.file;
-        if (att.base64Data) return await fetch(`data:${att.mimeType};base64,${att.base64Data}`).then(res => res.blob());
-    }
-    // 生成済み画像（base64）
-    if (message.generated_images && message.generated_images.length > 0) {
-        const img = message.generated_images[0];
-        if (img.data) return await fetch(`data:${img.mimeType};base64,${img.data}`).then(res => res.blob());
-    }
-    // parts内のinlineData（base64）
-    const parts = message.parts || (message.content && message.content.parts);
-    if (Array.isArray(parts)) {
-        for (const part of parts) {
-            if (part.inlineData && part.inlineData.mimeType.startsWith('image/') && part.inlineData.data) {
-                return await fetch(`data:${part.inlineData.mimeType};base64,${part.inlineData.data}`).then(res => res.blob());
-            }
+
+    // 新アーキテクチャ: message.imageIds を優先的にチェック
+    if (message.imageIds && message.imageIds.length > 0) {
+        const imageId = message.imageIds[0]; // 最初の画像IDを使用
+        console.log(`[extractImageBlob] 新形式の画像ID (${imageId}) を検出しました。DBからBlobを取得します。`);
+        // app.jsで定義したグローバルなappLogicオブジェクト経由でヘルパー関数を呼び出す
+        if (window.appLogic && typeof window.appLogic.getImageBlobById === 'function') {
+            return await window.appLogic.getImageBlobById(imageId);
+        } else {
+            console.error("[extractImageBlob] appLogic.getImageBlobById が見つかりません。");
+            return null;
         }
     }
+    
+    console.log("[extractImageBlob] メッセージ内に参照可能な画像が見つかりませんでした。");
     return null;
 };
 
 
+
 /**
- * 画像アセットをIndexedDBに保存・管理する関数
+ * 画像アセットをIndexedDBに保存・管理する関数 (新アーキテクチャ対応)
  * @param {object} args - AIによって提供される引数オブジェクト
- * @param {string} args.action - "save", "get", "delete", "list" のいずれか
+ * @param {string} args.action - "save", "get", "delete", "list", "delete_all" のいずれか
  * @param {string} [args.asset_name] - 操作対象のアセット名
  * @param {number} [args.source_image_message_index] - "save"時に使用。保存元画像のメッセージインデックス（0=直近）
  * @param {object} chat - 現在のチャットデータ
@@ -79,29 +76,32 @@
     if (!['list', 'delete_all'].includes(action) && !asset_name) {
         return { error: `アクション '${action}' には 'asset_name' が必須です。` };
     }
-    if (action === 'save' && typeof source_image_message_index !== 'number') {
-        return { error: "アクション 'save' には 'source_image_message_index' が必須です。" };
-    }
 
     try {
         switch (action) {
             case "save": {
-                if (typeof source_image_message_index !== 'number') return { error: "アクション 'save' には 'source_image_message_index' が必須です。" };
+                if (typeof source_image_message_index !== 'number') {
+                    return { error: "アクション 'save' には 'source_image_message_index' が必須です。" };
+                }
                 
                 const messages = chat.messages || [];
-                const dummyPromptCount = chat?.dummy_prompt_count || 0;
-                const effectiveLength = messages.length - dummyPromptCount;
-                const targetIndex = effectiveLength - 1 - source_image_message_index;
+                // ▼▼▼ 修正箇所 ▼▼▼
+                // AIが指定したインデックスをそのまま使用する
+                const targetIndex = source_image_message_index;
+                // ▲▲▲ 修正箇所 ▲▲▲
 
                 if (targetIndex < 0 || targetIndex >= messages.length) {
-                    return { error: `計算後のインデックス(${targetIndex})が無効です。AIが指定したインデックス(${source_image_message_index})が履歴の範囲外です。` };
+                    return { error: `指定されたインデックス(${source_image_message_index})が無効です。履歴の範囲外です。` };
                 }
                 const targetMessage = messages[targetIndex];
-
-                if (!targetMessage) return { error: `指定されたインデックス(${source_image_message_index})にメッセージが見つかりません。` };
+                if (!targetMessage) {
+                    return { error: `指定されたインデックス(${source_image_message_index})にメッセージが見つかりません。` };
+                }
 
                 const imageBlob = await extractImageBlobFromMessage(targetMessage);
-                if (!imageBlob) return { error: `指定されたメッセージから保存可能な画像が見つかりませんでした。` };
+                if (!imageBlob) {
+                    return { error: `指定されたメッセージから保存可能な画像が見つかりませんでした。` };
+                }
 
                 const newAsset = {
                     name: asset_name,
@@ -113,14 +113,18 @@
             }
             case "get": {
                 const asset = await assetDB.get(asset_name);
-                if (!asset) return { success: false, message: `画像アセット「${asset_name}」は見つかりませんでした。` };
+                if (!asset) {
+                    return { success: false, message: `画像アセット「${asset_name}」は見つかりませんでした。` };
+                }
                 
+                const tempImageId = await window.appLogic.saveImageBlob(asset.blob);
+
                 return {
                     success: true,
                     message: `画像アセット「${asset_name}」を取得しました。`,
                     _internal_ui_action: {
                         type: "display_generated_images",
-                        images: [{ mimeType: asset.blob.type, data: await window.appLogic.fileToBase64(asset.blob) }]
+                        imageIds: [tempImageId]
                     }
                 };
             }
@@ -153,6 +157,9 @@
         return { error: `内部エラーが発生しました: ${error.message}` };
     }
 }
+
+
+
 
 /**
  * 現在のチャットセッションに紐づく永続メモリを管理する関数
@@ -1414,7 +1421,7 @@ async function set_background_image({ image_url }) {
  *
  * @returns {Promise<object>} 処理結果
  */
- async function generate_image(args = {}) {
+async function generate_image(args = {}) {
     const ai = (window.ai instanceof GoogleGenAI)
       ? window.ai
       : new GoogleGenAI({ apiKey: (window.state?.settings?.apiKey || window.GEMINI_API_KEY) });
@@ -1450,22 +1457,12 @@ async function set_background_image({ image_url }) {
       let responseMeta = {};
   
       if (modelName === "gemini-2.5-flash-image-preview") {
-        console.log("[generate_image] Nano Bananaモデルを使用します。プロンプト以外のパラメータは無視されます。");
         const resp = await ai.models.generateContent({
           model: "gemini-2.5-flash-image-preview",
           contents: [{ role: "user", parts: [{ text: prompt }] }],
         });
         
-        console.log("[Debug] generate_image (Nano Banana): APIからの完全なレスポンスオブジェクト:", JSON.parse(JSON.stringify(resp)));
-        
-        if (resp?.candidates?.length > 0) {
-            resp.candidates.forEach((candidate, i) => {
-                console.log(`[Debug] generate_image (Nano Banana): レスポンス候補[${i}]の詳細:`, JSON.parse(JSON.stringify(candidate)));
-            });
-        }
-  
         const gen = resp?.candidates?.[0]?.content?.parts || [];
-  
         for (const part of gen) {
           if (part?.inlineData?.mimeType?.startsWith("image/") && part?.inlineData?.data) {
             generatedImagesBase64.push({ mimeType: part.inlineData.mimeType, data: part.inlineData.data });
@@ -1498,12 +1495,20 @@ async function set_background_image({ image_url }) {
           return { success: false, error: { message: "APIからの応答に画像データが含まれていませんでした。" } };
       }
   
+      // 新しい画像保存ロジック
+      const imageIds = [];
+      for (const imgData of generatedImagesBase64) {
+          const imageBlob = await window.appLogic.base64ToBlob(imgData.data, imgData.mimeType);
+          const newImageId = await window.appLogic.saveImageBlob(imageBlob);
+          imageIds.push(newImageId);
+      }
+
       return {
         success: true,
-        message: `${generatedImagesBase64.length}枚の画像の生成に成功しました。`,
+        message: `${imageIds.length}枚の画像の生成と保存に成功しました。`,
         _internal_ui_action: {
             type: "display_generated_images",
-            images: generatedImagesBase64
+            imageIds: imageIds // base64の代わりにimageIdsを返す
         },
         meta: responseMeta
       };
@@ -1511,24 +1516,17 @@ async function set_background_image({ image_url }) {
     } catch (err) {
       console.error("[generate_image] error object:", err);
       let errorMessage = "An unknown error occurred.";
-      if (err.message) {
-          errorMessage = err.message;
-      }
-      if (err.cause && err.cause.error && err.cause.error.message) {
-          errorMessage = err.cause.error.message;
-      } else if (err.errorDetails && err.errorDetails.message) {
-          errorMessage = err.errorDetails.message;
-      }
+      if (err.message) errorMessage = err.message;
+      if (err.cause?.error?.message) errorMessage = err.cause.error.message;
+      else if (err.errorDetails?.message) errorMessage = err.errorDetails.message;
       
       return { 
           success: false, 
-          error: { 
-              message: `画像生成APIでエラーが発生しました: ${errorMessage}`, 
-              code: err?.status || err?.code 
-          } 
+          error: { message: `画像生成APIでエラーが発生しました: ${errorMessage}`, code: err?.status || err?.code } 
       };
     }
-  }
+}
+
 
 /**
  * 既存の画像を、テキストプロンプトに基づいて編集します。
@@ -1538,7 +1536,23 @@ async function set_background_image({ image_url }) {
  * @param {object} chat - 現在のチャットデータ
  * @returns {Promise<object>} 処理結果
  */
-async function edit_image({ prompt, source_images }, chat) {
+ async function edit_image({ prompt, source_images }, chat) {
+    // ▼▼▼ デバッグ用ログ出力コード。また出番があったらつかう。 ▼▼▼
+    /*
+    console.log("--- [DEBUG] edit_image が受け取った chat オブジェクト ---");
+    console.log("受け取ったメッセージの総数:", chat.messages ? chat.messages.length : 0);
+    console.log("ダミープロンプトの数:", chat.dummy_prompt_count || 0);
+    if (chat.messages && chat.messages.length > 0) {
+        console.table(chat.messages.map(m => ({ 
+            role: m.role, 
+            content: (typeof m.content === 'string') ? m.content.substring(0, 50) + '...' : '(コンテンツなし)',
+            attachments: m.attachments?.length || 0,
+            imageIds: m.imageIds?.length || 0
+        })));
+    }
+    console.log("--- [DEBUG] ログここまで ---");
+    */
+
     console.log(`[Function Calling] edit_imageが呼び出されました。`, { prompt, source_images });
 
     const apiKey = window.state?.settings?.apiKey;
@@ -1556,25 +1570,16 @@ async function edit_image({ prompt, source_images }, chat) {
         
         const imageParts = [];
 
-        if (source_images[0] && typeof source_images[0].message_index === 'number') {
-            console.log(`[DEBUG] edit_image: chat.messages を確認`, JSON.parse(JSON.stringify(chat.messages)));
-            const targetIndexForLog = chat.messages.length - 1 - source_images[0].message_index;
-            console.log(`[DEBUG] edit_image: 計算されたインデックス -> ${targetIndexForLog}`);
-            if (chat.messages[targetIndexForLog]) {
-                console.log(`[DEBUG] edit_image: 参照対象のメッセージ ->`, JSON.parse(JSON.stringify(chat.messages[targetIndexForLog])));
-            }
-        }
-
         for (const source of source_images) {
             let imageBlob = null;
             if (typeof source.message_index === 'number') {
                 const messages = chat.messages || [];
-                const dummyPromptCount = chat?.dummy_prompt_count || 0;
-                const effectiveLength = messages.length - dummyPromptCount;
-                const targetIndex = effectiveLength - 1 - source.message_index;
+
+                // AIが指定したインデックスをそのまま使用する
+                const targetIndex = source.message_index;
 
                 if (targetIndex < 0 || targetIndex >= messages.length) {
-                    throw new Error(`指定されたメッセージ(インデックス: ${source.message_index})が見つかりません。計算後のインデックス(${targetIndex})が範囲外です。`);
+                    throw new Error(`指定されたメッセージ(インデックス: ${source.message_index})が無効です。履歴の範囲外です。`);
                 }
                 const targetMessage = messages[targetIndex];
 
@@ -1628,17 +1633,24 @@ async function edit_image({ prompt, source_images }, chat) {
             return { success: false, error: { message: "画像の編集に失敗しました。APIからの応答に画像が含まれていません。" } };
         }
 
+        const imageIds = [];
+        for (const imgData of editedImagesBase64) {
+            const imageBlob = await window.appLogic.base64ToBlob(imgData.data, imgData.mimeType);
+            const newImageId = await window.appLogic.saveImageBlob(imageBlob);
+            imageIds.push(newImageId);
+        }
+
         return {
             success: true,
-            message: "画像の編集に成功しました。",
+            message: "画像の編集と保存に成功しました。",
             _internal_ui_action: {
                 type: "display_generated_images",
-                images: editedImagesBase64
+                imageIds: imageIds
             },
             meta: {
                 modelUsed: "gemini-2.5-flash-image-preview",
                 prompt,
-                numberOfImages: editedImagesBase64.length
+                numberOfImages: imageIds.length
             }
         };
 
@@ -1656,6 +1668,7 @@ async function edit_image({ prompt, source_images }, chat) {
         };
     }
 }
+
 
 
 window.functionCallingTools = {

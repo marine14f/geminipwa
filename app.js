@@ -10,10 +10,11 @@ import("https://esm.run/@google/genai").then(module => {
 
 // --- 定数 ---
 const DB_NAME = 'GeminiPWA_DB';
-const DB_VERSION = 10; 
+const DB_VERSION = 11; 
 const SETTINGS_STORE = 'settings';
 const PROFILES_STORE = 'profiles';
 const CHATS_STORE = 'chats';
+const IMAGE_STORE = 'image_store';
 const CHAT_UPDATEDAT_INDEX = 'updatedAtIndex';
 const CHAT_CREATEDAT_INDEX = 'createdAtIndex';
 const DEFAULT_MODEL = 'gemini-2.5-pro';
@@ -453,13 +454,12 @@ const dbUtils = {
                     db.createObjectStore('image_assets', { keyPath: 'name' });
                 }
 
-                if (event.oldVersion < 10) { // プロファイル機能が導入されたv10への移行
-                    console.log("[DB Migration] v10へのデータ移行処理を開始します。");
-                    
+                // v10への移行処理 (プロファイル機能導入)
+                if (event.oldVersion < 10) {
+                    console.log("[DB Migration] v10へのデータ移行処理を実行します。");
                     const settingsStore = transaction.objectStore(SETTINGS_STORE);
                     const profilesStore = transaction.objectStore(PROFILES_STORE);
                     
-                    // onupgradeneededトランザクションは非同期処理の完了を待ってくれる
                     const getAllSettingsReq = settingsStore.getAll();
                     
                     getAllSettingsReq.onsuccess = () => {
@@ -473,7 +473,6 @@ const dbUtils = {
                                 oldSettingsObject[item.key] = item.value;
                             });
 
-                            // 新しいプロファイルに含めるべき設定項目キーのリスト
                             const profileSettingKeys = [
                                 'apiKey', 'modelName', 'systemPrompt', 'temperature', 'maxTokens', 'topK', 'topP',
                                 'presencePenalty', 'frequencyPenalty', 'thinkingBudget', 'includeThoughts',
@@ -490,7 +489,6 @@ const dbUtils = {
 
                             const newProfileSettings = {};
                             profileSettingKeys.forEach(key => {
-                                // stateのデフォルト値をベースに、古い設定値で上書きする
                                 newProfileSettings[key] = oldSettingsObject[key] !== undefined ? oldSettingsObject[key] : state.settings[key];
                             });
 
@@ -507,26 +505,33 @@ const dbUtils = {
                                 const newProfileId = addEvent.target.result;
                                 console.log(`[DB Migration] デフォルトプロファイルを生成しました (ID: ${newProfileId})`);
 
-                                // 古い設定のうち、プロファイルに移行したものを削除
                                 profileSettingKeys.forEach(key => {
                                     settingsStore.delete(key);
                                 });
 
-                                // activeProfileId を新しいプロファイルIDで保存
                                 settingsStore.put({ key: 'activeProfileId', value: newProfileId });
-                                console.log(`[DB Migration] SETTINGS_STOREを整理し、activeProfileIdを設定しました。移行完了。`);
+                                console.log(`[DB Migration] SETTINGS_STOREを整理し、activeProfileIdを設定しました。`);
                             };
-                            addProfileReq.onerror = () => console.error("[DB Migration] プロファイルの追加に失敗しました。");
-
-                        } else {
-                            console.log("[DB Migration] 移行すべき古い設定はありませんでした。");
                         }
                     };
-                    getAllSettingsReq.onerror = () => console.error("[DB Migration] 古い設定の読み込みに失敗しました。");
+                }
+
+                // v11へのアップグレード処理 (画像ストア追加)
+                if (event.oldVersion < 11) {
+                    console.log("[DB Migration] v11へのアップグレード: image_storeを作成します。");
+                    if (!db.objectStoreNames.contains(IMAGE_STORE)) {
+                        db.createObjectStore(IMAGE_STORE, { keyPath: 'id' });
+                    }
+                    transaction.oncomplete = () => {
+                        console.log("[DB Migration] スキーマ更新完了。データ移行処理を開始します。");
+                        appLogic.migrateImageData(); 
+                    };
                 }
             };
         });
     },
+
+
 
     // 指定されたストアを取得する内部関数
     _getStore(storeName, mode = 'readonly') {
@@ -575,6 +580,7 @@ const dbUtils = {
                 timestamp: msg.timestamp,
                 thoughtSummary: msg.thoughtSummary || null,
                 tool_calls: msg.tool_calls || null,
+                ...(msg.imageIds && { imageIds: msg.imageIds }),
                 ...(msg.finishReason && { finishReason: msg.finishReason }),
                 ...(msg.safetyRatings && { safetyRatings: msg.safetyRatings }),
                 ...(msg.error && { error: msg.error }),
@@ -989,16 +995,13 @@ const uiUtils = {
         if (role === 'model' && messageData && messageData.thoughtSummary) {
             const thoughtDetails = document.createElement('details');
             thoughtDetails.classList.add('thought-summary-details');
-
             const thoughtSummaryElem = document.createElement('summary');
             thoughtSummaryElem.textContent = '思考プロセス';
             thoughtDetails.appendChild(thoughtSummaryElem);
-
             const thoughtContentDiv = document.createElement('div');
             thoughtContentDiv.classList.add('thought-summary-content');
             if (isStreamingPlaceholder) {
                 thoughtContentDiv.id = `streaming-thought-summary-${index}`;
-                thoughtContentDiv.innerHTML = '';
             } else {
                 try {
                     thoughtContentDiv.innerHTML = marked.parse(messageData.thoughtSummary || '');
@@ -1057,6 +1060,40 @@ const uiUtils = {
             }
         }
         messageDiv.appendChild(contentDiv);
+        
+        // [IMAGE_HERE] を遅延読み込み画像に置換する新しいロジック
+        const imagePlaceholderRegex = /<p>\[IMAGE_HERE\]<\/p>|\[IMAGE_HERE\]/g;
+        if (role === 'model' && messageData && messageData.imageIds && messageData.imageIds.length > 0) {
+            let imageIndex = 0;
+            const replacedHtml = contentDiv.innerHTML.replace(imagePlaceholderRegex, () => {
+                if (imageIndex < messageData.imageIds.length) {
+                    const imageId = messageData.imageIds[imageIndex++];
+                    // プレースホルダーのimgタグを生成
+                    return `<img class="lazy-load-image" alt="生成画像（読み込み中...）" data-image-id="${imageId}">`;
+                }
+                return '';
+            });
+            contentDiv.innerHTML = replacedHtml;
+
+            // プレースホルダーが足りなかった画像を末尾に追加
+            if (imageIndex < messageData.imageIds.length) {
+                const fragment = document.createDocumentFragment();
+                for (let i = imageIndex; i < messageData.imageIds.length; i++) {
+                    const imageId = messageData.imageIds[i];
+                    const img = document.createElement('img');
+                    img.className = 'lazy-load-image';
+                    img.alt = '生成画像（読み込み中...）';
+                    img.dataset.imageId = imageId;
+                    fragment.appendChild(img);
+                }
+                contentDiv.appendChild(fragment);
+            }
+            // 遅延読み込みオブザーバーに新しい画像を追加
+            requestAnimationFrame(() => {
+                const newImages = contentDiv.querySelectorAll('.lazy-load-image');
+                newImages.forEach(img => appLogic.imageObserver.observe(img));
+            });
+        }
         
         if (role === 'model' && messageData && messageData.groundingMetadata &&
             ( (messageData.groundingMetadata.groundingChunks && messageData.groundingMetadata.groundingChunks.length > 0) ||
@@ -1214,64 +1251,6 @@ const uiUtils = {
             } else {
                 messageDiv.appendChild(details);
             }
-        }
-
-        // [IMAGE_HERE] を実際の画像に置換する処理
-        const imagePlaceholderRegex = /<p>\[IMAGE_HERE\]<\/p>|\[IMAGE_HERE\]/g; // <p>タグで囲まれている場合と、そうでない場合の両方に対応
-        if (role === 'model' && messageData && messageData.generated_images && messageData.generated_images.length > 0) {
-            
-            const processImages = async () => {
-                const imageElements = [];
-                const imageCacheKeyPrefix = `image-${index}`;
-
-                // 1. まず、全ての画像のimg要素を非同期で準備する
-                for (let i = 0; i < messageData.generated_images.length; i++) {
-                    const imageData = messageData.generated_images[i];
-                    const key = `${imageCacheKeyPrefix}-${i}`;
-                    const img = document.createElement('img');
-                    img.alt = '生成された画像';
-                    img.style.maxWidth = '100%';
-                    img.style.borderRadius = 'var(--border-radius-md)';
-                    img.style.marginTop = '8px';
-
-                    if (state.imageUrlCache.has(key)) {
-                        img.src = state.imageUrlCache.get(key);
-                    } else {
-                        try {
-                            const blob = await base64ToBlob(imageData.data, imageData.mimeType);
-                            const url = URL.createObjectURL(blob);
-                            state.imageUrlCache.set(key, url);
-                            img.src = url;
-                        } catch (e) {
-                            console.error(`[Memory] BlobまたはObjectURLの生成に失敗しました (Key: ${key}):`, e);
-                            img.alt = '画像表示エラー';
-                        }
-                    }
-                    imageElements.push(img.outerHTML);
-                }
-
-                // 2. 準備したimg要素で、同期的に置換処理を行う
-                let imageIndex = 0;
-                const replacedHtml = contentDiv.innerHTML.replace(imagePlaceholderRegex, () => {
-                    if (imageIndex < imageElements.length) {
-                        return imageElements[imageIndex++];
-                    }
-                    return ''; // プレースホルダーが画像の数より多い場合は空文字
-                });
-                contentDiv.innerHTML = replacedHtml;
-
-                // 3. プレースホルダーが足りなかった画像を末尾に追加
-                if (imageIndex < imageElements.length) {
-                    const fragment = document.createDocumentFragment();
-                    for (let i = imageIndex; i < imageElements.length; i++) {
-                        const tempDiv = document.createElement('div');
-                        tempDiv.innerHTML = imageElements[i];
-                        fragment.appendChild(tempDiv.firstChild);
-                    }
-                    contentDiv.appendChild(fragment);
-                }
-            };
-            processImages();
         }
 
         if (role === 'model' && messageData && messageData.generated_videos && messageData.generated_videos.length > 0) {
@@ -2991,6 +2970,139 @@ const appLogic = {
         }).filter(c => c.parts.length > 0);
     },
 
+    /**
+     * 画像Blobを受け取り、WebPに変換してimage_storeに保存し、新しいIDを返す
+     * @param {Blob} blob - 保存対象の画像Blob
+     * @returns {Promise<string>} 保存された画像のユニークID
+     */
+    async saveImageBlob(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = async () => {
+                    const canvas = document.createElement('canvas');
+                    // オリジナルと同じサイズで描画
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0);
+
+                    // WebPに変換 (品質0.9)
+                    canvas.toBlob(async (webpBlob) => {
+                        if (!webpBlob) {
+                            // WebP変換に失敗した場合(Safariの古いバージョンなど)は元のBlobを保存
+                            console.warn("WebPへの変換に失敗しました。元の形式で保存します。");
+                            webpBlob = blob;
+                        }
+                        
+                        const imageId = `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+                        const imageData = {
+                            id: imageId,
+                            blob: webpBlob,
+                            createdAt: new Date()
+                        };
+
+                        try {
+                            await dbUtils.openDB();
+                            const store = dbUtils._getStore(IMAGE_STORE, 'readwrite');
+                            const request = store.put(imageData);
+                            request.onsuccess = () => resolve(imageId);
+                            request.onerror = (event) => reject(event.target.error);
+                        } catch (dbError) {
+                            reject(dbError);
+                        }
+                    }, 'image/webp', 0.9);
+                };
+                img.onerror = () => reject(new Error("画像データの読み込みに失敗しました。"));
+                img.src = e.target.result;
+            };
+            reader.onerror = () => reject(new Error("FileReaderでBlobの読み込みに失敗しました。"));
+            reader.readAsDataURL(blob);
+        });
+    },
+
+    imageObserver: null, // 画像遅延読み込み用のIntersectionObserver
+
+    /**
+     * IDを指定してimage_storeから画像Blobを取得する
+     * @param {string} id - 取得する画像のID
+     * @returns {Promise<Blob|null>} 画像のBlobオブジェクト、またはnull
+     */
+    async getImageBlobById(id) {
+        try {
+            await dbUtils.openDB();
+            const store = dbUtils._getStore(IMAGE_STORE, 'readonly');
+            return new Promise((resolve, reject) => {
+                const request = store.get(id);
+                request.onsuccess = (event) => {
+                    resolve(event.target.result ? event.target.result.blob : null);
+                };
+                request.onerror = (event) => reject(event.target.error);
+            });
+        } catch (error) {
+            console.error(`ID(${id})の画像Blob取得エラー:`, error);
+            return null;
+        }
+    },
+
+
+    /**
+     * 古い形式の画像データ（チャット履歴埋め込み）を新しいimage_storeに移行する
+     * @param {IDBTransaction} transaction - onupgradeneededから渡されるトランザクション
+     */
+    async migrateImageData() {
+        console.log("[DB Migration] v11データ移行処理のチェックを開始します...");
+        try {
+            const migrationFlag = await dbUtils.getSetting('v11_migration_complete');
+            if (migrationFlag && migrationFlag.value) {
+                console.log("[DB Migration] v11データ移行は既に完了しています。");
+                return;
+            }
+
+            console.log("[DB Migration] v11データ移行を開始します...");
+            const allChats = await dbUtils.getAllChats();
+            let migratedImageCount = 0;
+
+            for (const chat of allChats) {
+                let chatModified = false;
+                if (!chat.messages) continue;
+
+                for (const message of chat.messages) {
+                    if (message.generated_images && message.generated_images.length > 0) {
+                        message.imageIds = message.imageIds || [];
+                        for (const imgData of message.generated_images) {
+                            try {
+                                const imageBlob = await this.base64ToBlob(imgData.data, imgData.mimeType);
+                                const newImageId = await this.saveImageBlob(imageBlob);
+                                message.imageIds.push(newImageId);
+                                migratedImageCount++;
+                            } catch (error) {
+                                console.error(`[DB Migration] チャット(id:${chat.id})の画像移行中にエラー:`, error);
+                            }
+                        }
+                        // 移行が完了したら古いキーは削除
+                        delete message.generated_images;
+                        chatModified = true;
+                    }
+                }
+
+                if (chatModified) {
+                    console.log(`[DB Migration] チャット(id:${chat.id})を更新します。`);
+                    await dbUtils.saveChat(chat.title, chat);
+                }
+            }
+
+            console.log(`[DB Migration] v11データ移行が完了しました。合計 ${migratedImageCount} 枚の画像を移行しました。`);
+            await dbUtils.saveSetting('v11_migration_complete', true);
+
+        } catch (error) {
+            console.error("[DB Migration] v11データ移行処理中に致命的なエラーが発生しました:", error);
+        }
+    },
+
+
+
     // アプリ初期化
     async initializeApp() {
         if (typeof marked !== 'undefined') {
@@ -3027,11 +3139,57 @@ const appLogic = {
     
         registerServiceWorker();
     
+        // IntersectionObserverの初期化 (画像遅延読み込み用)
+        this.imageObserver = new IntersectionObserver(async (entries, observer) => {
+            for (const entry of entries) {
+                if (entry.isIntersecting) {
+                    const img = entry.target;
+                    const imageId = img.dataset.imageId;
+                    observer.unobserve(img); // 一度だけ処理
+
+                    const blob = await this.getImageBlobById(imageId);
+                    if (blob) {
+                        const objectURL = URL.createObjectURL(blob);
+
+                        img.src = objectURL;
+                        img.alt = '生成された画像';
+
+                    } else {
+                        img.alt = '画像の読み込みに失敗しました';
+                        img.classList.add('load-error');
+                    }
+                }
+            }
+        }, { rootMargin: '200px' });
+
+        // MutationObserverの初期化 (オブジェクトURLのメモリ解放用)
+        const mutationObserver = new MutationObserver((mutationsList) => {
+            for (const mutation of mutationsList) {
+                if (mutation.type === 'childList') {
+                    mutation.removedNodes.forEach(node => {
+                        // ノード自体が画像か、子孫に画像が含まれているかチェック
+                        const imagesToRevoke = [];
+                        if (node.tagName === 'IMG' && node.src.startsWith('blob:')) {
+                            imagesToRevoke.push(node);
+                        } else if (node.querySelectorAll) {
+                            node.querySelectorAll('img[src^="blob:"]').forEach(img => imagesToRevoke.push(img));
+                        }
+                        
+                        imagesToRevoke.forEach(img => {
+                            console.log(`[Memory] DOMから削除された画像のURLを解放します: ${img.src}`);
+                            URL.revokeObjectURL(img.src);
+                        });
+                    });
+                }
+            }
+        });
+        mutationObserver.observe(elements.messageContainer, { childList: true, subtree: true });
+
         try {
             await dbUtils.openDB();
     
-            await this.loadGlobalSettings(); // 最初に共通設定を読み込む
-            await this.loadProfiles();       // 次にプロファイル設定を読み込む
+            await this.loadGlobalSettings();
+            await this.loadProfiles();
     
             let profiles = await dbUtils.getAllProfiles();
             if (profiles.length === 0) {
@@ -3092,12 +3250,11 @@ const appLogic = {
             await uiUtils.showCustomAlert(`アプリの初期化に失敗しました: ${error}`);
             elements.appContainer.innerHTML = `<p style="padding: 20px; text-align: center; color: red;">アプリの起動に失敗しました。</p>`;
         } finally {
-            // アプリ起動時に各画面の初期位置をJavaScriptで設定する
             elements.chatScreen.style.transform = 'translateX(0)';
             elements.historyScreen.style.transform = 'translateX(-100%)';
             elements.settingsScreen.style.transform = 'translateX(100%)';
             
-            uiUtils.showScreen('chat', true); // fromPopStateをtrueにして履歴操作を防ぐ
+            uiUtils.showScreen('chat', true);
     
             updateMessageMaxWidthVar();
             this.setupEventListeners();
@@ -3108,15 +3265,14 @@ const appLogic = {
         }
     },
 
+
     // イベントリスナーを設定
     setupEventListeners() {
-        // ▼▼▼【重要】popstateリスナーの重複登録を防止するガード節を追加 ▼▼▼
         if (!this._popstateBound) {
             window.addEventListener('popstate', this.handlePopState.bind(this));
             this._popstateBound = true; // 一度だけ登録するためのフラグ
             console.log("popstate listener added (once).");
         }
-        // ▲▲▲ 修正箇所ここまで ▲▲▲
     
         this._setupEventListenersCallCount++; // カウンターを増やす
         console.log(`[Debug Event] setupEventListeners が呼び出されました。(${this._setupEventListenersCallCount}回目)`);
@@ -3945,21 +4101,17 @@ const appLogic = {
     
         try {
             let chatToExport;
-
-            // 現在表示中のチャットをエクスポートする場合、DBからではなく最新のstateからデータを取得する
             if (state.currentChatId === chatId) {
-                console.log("エクスポート: 現在のチャットをstateから直接エクスポートします。");
                 chatToExport = {
                     id: state.currentChatId,
-                    title: chatTitle, // UIから渡された最新のタイトルを使用
+                    title: chatTitle,
                     messages: state.currentMessages,
                     systemPrompt: state.currentSystemPrompt,
-                    persistentMemory: state.currentPersistentMemory, // 最新のメモリを使用
-                    createdAt: null, // createdAtはDBから読み込まないと不明だが、エクスポートには必須ではない
+                    persistentMemory: state.currentPersistentMemory,
+                    createdAt: null,
                     updatedAt: Date.now(),
                 };
             } else {
-                console.log(`エクスポート: チャットID ${chatId} をDBから読み込みます。`);
                 chatToExport = await dbUtils.getChat(chatId);
             }
     
@@ -3969,8 +4121,40 @@ const appLogic = {
             }
     
             let exportText = '';
+            const imageDataBlock = {};
+            const allImageIds = new Set();
+
+            // 1. 全メッセージから必要な画像IDを収集
+            if (chatToExport.messages) {
+                chatToExport.messages.forEach(msg => {
+                    if (msg.imageIds && msg.imageIds.length > 0) {
+                        msg.imageIds.forEach(id => allImageIds.add(id));
+                    }
+                });
+            }
+
+            // 2. 画像IDを元にDBから画像データを取得し、Base64に変換
+            if (allImageIds.size > 0) {
+                uiUtils.setLoadingIndicatorText('画像データを収集中...');
+                elements.loadingIndicator.classList.remove('hidden');
+                for (const imageId of allImageIds) {
+                    try {
+                        const blob = await this.getImageBlobById(imageId);
+                        if (blob) {
+                            const base64Data = await this.fileToBase64(blob);
+                            imageDataBlock[imageId] = {
+                                mimeType: blob.type,
+                                data: base64Data
+                            };
+                        }
+                    } catch (e) {
+                        console.error(`エクスポート中に画像(ID: ${imageId})の処理に失敗しました:`, e);
+                    }
+                }
+                elements.loadingIndicator.classList.add('hidden');
+            }
     
-            // persistentMemory をメタデータとして出力
+            // 3. テキストコンテンツを生成
             if (chatToExport.persistentMemory && Object.keys(chatToExport.persistentMemory).length > 0) {
                 try {
                     const metadataJson = JSON.stringify(chatToExport.persistentMemory, null, 2);
@@ -3980,12 +4164,10 @@ const appLogic = {
                 }
             }
     
-            // システムプロンプトを出力
             if (chatToExport.systemPrompt) {
                 exportText += `<|#|system|#|>\n${chatToExport.systemPrompt}\n<|#|/system|#|>\n\n`;
             }
     
-            // メッセージを出力
             if (chatToExport.messages) {
                 chatToExport.messages.forEach(msg => {
                     if (msg.role === 'user' || msg.role === 'model') {
@@ -3993,14 +4175,22 @@ const appLogic = {
                         if (msg.role === 'model') {
                             if (msg.isCascaded) attributes += ' isCascaded';
                             if (msg.isSelected) attributes += ' isSelected';
+                            if (msg.imageIds && msg.imageIds.length > 0) {
+                                attributes += ` imageIds="${msg.imageIds.join(',')}"`;
+                            }
                         }
                         if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
                             const fileNames = msg.attachments.map(a => a.name).join(';');
                             attributes += ` attachments="${fileNames.replace(/"/g, '&quot;')}"`;
                         }
-                        exportText += `<|#|${msg.role}|#|${attributes}>\n${msg.content}\n<|#|/${msg.role}|#|>\n\n`;
+                        exportText += `<|#|${msg.role}|#|${attributes.trim()}>\n${msg.content}\n<|#|/${msg.role}|#|>\n\n`;
                     }
                 });
+            }
+
+            // 4. 画像データブロックを追記
+            if (Object.keys(imageDataBlock).length > 0) {
+                exportText += `<|#|imagedata|#|>\n${JSON.stringify(imageDataBlock, null, 2)}\n<|#|/imagedata|#|>\n`;
             }
     
             const blob = new Blob([exportText.trim()], { type: 'text/plain;charset=utf-8' });
@@ -4016,8 +4206,11 @@ const appLogic = {
             console.log("チャットエクスポート完了:", chatId);
         } catch (error) {
             await uiUtils.showCustomAlert(`エクスポートエラー: ${error}`);
+        } finally {
+            elements.loadingIndicator.classList.add('hidden');
         }
     },
+
 
 
     // チャット削除の確認と実行 (メッセージペア全体)
@@ -4286,7 +4479,9 @@ const appLogic = {
             
             uiUtils.setLoadingIndicatorText('関数実行中...');
 
-            const { toolResults, containsTerminalAction, search_results, internalUiActions } = await this.executeToolCalls(result.toolCalls, currentTurnHistory);
+            // ★★★★★ 修正点 ★★★★★
+            // フィルタリングされていない完全な履歴を渡すように変更
+            const { toolResults, containsTerminalAction, search_results, internalUiActions } = await this.executeToolCalls(result.toolCalls, state.currentMessages);
             
             if (search_results && search_results.length > 0) {
                 aggregatedSearchResults.push(...search_results);
@@ -4363,6 +4558,7 @@ const appLogic = {
         return turnResults;
     },
 
+
     /**
      * @private _internalHandleSendから返されたメッセージ配列を単一のオブジェクトに集約する。
      */
@@ -4372,7 +4568,7 @@ const appLogic = {
             content: '',
             thoughtSummary: '',
             executedFunctions: [],
-            generated_images: [], 
+            imageIds: [], // generated_images の代わりに imageIds を使用
             generated_videos: [], 
             timestamp: Date.now(),
         };
@@ -4399,27 +4595,20 @@ const appLogic = {
                 });
             }
 
-            // toolロールのメッセージもチェックし、UIアクションがあれば集約する
             if (msg._internal_ui_action) {
-                console.log(`[Debug] _aggregateMessages: _internal_ui_actionを検出`, msg._internal_ui_action);
-                const actions = msg._internal_ui_action; // actions は配列
-                if (Array.isArray(actions)) {
-                    actions.forEach(action => { // 配列の各要素をループで処理
-                        if (action.type === 'display_generated_images' && action.images) {
-                            finalAggregatedMessage.generated_images.push(...action.images);
-                        }
-                        if (action.type === 'display_generated_videos' && action.videos) {
-                            finalAggregatedMessage.generated_videos.push(...action.videos);
-                        }
-                    });
-                }
+                const actions = Array.isArray(msg._internal_ui_action) ? msg._internal_ui_action : [msg._internal_ui_action];
+                actions.forEach(action => {
+                    if (action.type === 'display_generated_images' && action.imageIds) {
+                        finalAggregatedMessage.imageIds.push(...action.imageIds);
+                    }
+                    if (action.type === 'display_generated_videos' && action.videos) {
+                        finalAggregatedMessage.generated_videos.push(...action.videos);
+                    }
+                });
             }
         });
         
-        console.log("[Debug] 集約後の最終メッセージオブジェクト:", JSON.stringify(finalAggregatedMessage, (key, value) => {
-            if ((key === 'data' || key === 'base64Data') && typeof value === 'string' && value.length > 50) return value.substring(0, 50) + '...';
-            return value;
-        }, 2));
+        console.log("[Debug] 集約後の最終メッセージオブジェクト:", JSON.stringify(finalAggregatedMessage, null, 2));
 
         return finalAggregatedMessage;
     },
@@ -4526,12 +4715,37 @@ const appLogic = {
                 return;
             }
             try {
-                const { messages: importedMessages, systemPrompt: importedSystemPrompt, persistentMemory: importedMemory } = this.parseImportedHistory(textContent);
+                const { messages: importedMessages, systemPrompt: importedSystemPrompt, persistentMemory: importedMemory, imageData: importedImageData } = this.parseImportedHistory(textContent);
+                
                 if (importedMessages.length === 0 && !importedSystemPrompt && (!importedMemory || Object.keys(importedMemory).length === 0)) {
                     await uiUtils.showCustomAlert("ファイルから有効なメッセージ、システムプロンプト、またはメタデータを読み込めませんでした。形式を確認してください。");
                     return;
                 }
 
+                // 画像データをDBに保存し、IDの対応表を作成
+                const imageIdMap = new Map();
+                if (importedImageData && Object.keys(importedImageData).length > 0) {
+                    uiUtils.setLoadingIndicatorText('画像データを復元中...');
+                    elements.loadingIndicator.classList.remove('hidden');
+                    for (const oldId in importedImageData) {
+                        try {
+                            const { mimeType, data } = importedImageData[oldId];
+                            const blob = await this.base64ToBlob(data, mimeType);
+                            const newId = await this.saveImageBlob(blob);
+                            imageIdMap.set(oldId, newId);
+                        } catch (e) {
+                            console.error(`インポート中に画像(旧ID: ${oldId})の復元に失敗:`, e);
+                        }
+                    }
+                    elements.loadingIndicator.classList.add('hidden');
+                }
+
+                // メッセージ内の古い画像IDを新しいIDに置換
+                importedMessages.forEach(msg => {
+                    if (msg.imageIds && msg.imageIds.length > 0) {
+                        msg.imageIds = msg.imageIds.map(oldId => imageIdMap.get(oldId) || oldId).filter(Boolean);
+                    }
+                });
 
                 // --- インポート後の siblingGroupId 割り当て ---
                 let currentGroupId = null;
@@ -4596,6 +4810,8 @@ const appLogic = {
             } catch (error) {
                 console.error("履歴インポート処理エラー:", error);
                 await uiUtils.showCustomAlert(`履歴のインポート中にエラーが発生しました: ${error.message}`);
+            } finally {
+                elements.loadingIndicator.classList.add('hidden');
             }
         };
 
@@ -4611,82 +4827,80 @@ const appLogic = {
     parseImportedHistory(text) {
         const messages = [];
         let systemPrompt = '';
-        let persistentMemory = {}; // persistentMemoryを初期化
-    
-        // メタデータブロックを先に抽出して、元のテキストから削除する
+        let persistentMemory = {};
+        const imageData = {}; // 画像データブロックを格納するオブジェクト
+
+        // メタデータブロック
         const metadataRegex = /<\|#\|metadata\|#\|>([\s\S]*?)<\|#\|\/metadata\|#\|>\s*/;
         const metadataMatch = text.match(metadataRegex);
         let remainingText = text;
-    
         if (metadataMatch) {
-            const metadataJson = metadataMatch[1].trim();
             try {
-                persistentMemory = JSON.parse(metadataJson);
-                console.log("インポートファイルからpersistentMemoryをパースしました:", persistentMemory);
+                persistentMemory = JSON.parse(metadataMatch[1].trim());
             } catch (e) {
-                console.error("インポートされたmetadataのJSONパースに失敗しました。空のオブジェクトとして扱います。", e);
-                persistentMemory = {}; // パース失敗時は空に
+                console.error("インポートされたmetadataのJSONパースに失敗:", e);
+                persistentMemory = {};
             }
-            // メタデータブロックをテキストから削除して、残りのパースに影響しないようにする
-            remainingText = text.replace(metadataRegex, '');
+            remainingText = remainingText.replace(metadataRegex, '');
+        }
+
+        // 画像データブロックを先に抽出・削除
+        const imageDataRegex = /<\|#\|imagedata\|#\|>([\s\S]*?)<\|#\|\/imagedata\|#\|>\s*/;
+        const imageDataMatch = remainingText.match(imageDataRegex);
+        if (imageDataMatch) {
+            try {
+                const imageDataJson = imageDataMatch[1].trim();
+                Object.assign(imageData, JSON.parse(imageDataJson));
+            } catch (e) {
+                console.error("インポートされたimagedataのJSONパースに失敗:", e);
+            }
+            remainingText = remainingText.replace(imageDataRegex, '');
         }
     
         const blockRegex = /<\|#\|(system|user|model)\|#\|([^>]*)>([\s\S]*?)<\|#\|\/\1\|#\|>/g;
         let match;
     
-        // メタデータ削除後のテキストに対してループ処理
         while ((match = blockRegex.exec(remainingText)) !== null) {
             const role = match[1];
-            const attributesString = match[2].trim(); // 属性文字列 (例: "isCascaded isSelected")
-            const content = match[3].trim(); // コンテンツ
+            const attributesString = match[2].trim();
+            const content = match[3].trim();
     
             if (role === 'system' && content) {
-                systemPrompt = content; // システムプロンプトを抽出
-            } else if ((role === 'user' || role === 'model') && (content || attributesString.includes('attachments'))) { // コンテンツが空でも attachments があれば処理
+                systemPrompt = content;
+            } else if ((role === 'user' || role === 'model')) {
                 const messageData = {
                     role: role,
                     content: content,
                     timestamp: Date.now(),
-                    attachments: [] // 初期化
+                    attachments: []
                 };
-                // 属性をパース
-                const attributes = {};
-                attributesString.split(/\s+/).forEach(attr => {
-                    const eqIndex = attr.indexOf('=');
-                    if (eqIndex > 0) {
-                        const key = attr.substring(0, eqIndex);
-                        let value = attr.substring(eqIndex + 1);
-                        // クォートを除去
-                        if (value.startsWith('"') && value.endsWith('"')) {
-                            value = value.substring(1, value.length - 1);
+
+                const attributeRegex = /(\w+)="([^"]*)"|(\w+)/g;
+                let attrMatch;
+                while ((attrMatch = attributeRegex.exec(attributesString)) !== null) {
+                    if (attrMatch[1]) { // key="value" 形式
+                        const key = attrMatch[1];
+                        const value = attrMatch[2].replace(/&quot;/g, '"');
+                        if (key === 'attachments') {
+                            messageData.attachments = value.split(';').map(name => ({
+                                name: name, mimeType: 'unknown/unknown', base64Data: ''
+                            }));
+                        } else if (key === 'imageIds') {
+                            messageData.imageIds = value.split(',');
                         }
-                        attributes[key] = value.replace(/&quot;/g, '"'); // デコード
-                    } else if (attr) {
-                        attributes[attr] = true; // isCascaded, isSelected
+                    } else if (attrMatch[3]) { // boolean 形式
+                        messageData[attrMatch[3]] = true;
                     }
-                });
-    
-                if (role === 'model') {
-                    messageData.isCascaded = attributes['isCascaded'] === true;
-                    messageData.isSelected = attributes['isSelected'] === true;
                 }
-                // attachments 属性をパース
-                if (role === 'user' && attributes['attachments']) {
-                    const fileNames = attributes['attachments'].split(';');
-                    messageData.attachments = fileNames.map(name => ({
-                        name: name,
-                        mimeType: 'unknown/unknown', // インポート時は不明
-                        base64Data: '' // Base64データはインポートしない
-                    }));
-                }
-                
                 messages.push(messageData);
             }
         }
         console.log(`インポートテキストから ${messages.length} 件のメッセージとシステムプロンプト(${systemPrompt ? 'あり' : 'なし'})をパースしました。`);
-        // 戻り値に persistentMemory を追加
-        return { messages, systemPrompt, persistentMemory };
+        
+        // 戻り値にimageDataを追加
+        return { messages, systemPrompt, persistentMemory, imageData };
     },
+
     // -------------------------------
 
     // --- 背景画像ハンドラ ---
