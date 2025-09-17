@@ -5966,7 +5966,7 @@ const appLogic = {
 
         console.log("--- [DEBUG ②] 添付が確定されました ---");
         state.selectedFilesForUpload.forEach(item => {
-            console.log(`確定されたファイル: ${item.file.name}, サイズ: ${item.file.size}`);
+            console.log(`[DEBUG ②-A] 確定されたファイル: ${item.file.name}, サイズ: ${item.file.size}, 種類: ${item.file.type}`);
         });
 
         elements.confirmAttachBtn.disabled = true;
@@ -5977,11 +5977,17 @@ const appLogic = {
 
         for (const item of state.selectedFilesForUpload) {
             try {
-                // ▼▼▼ 修正箇所 ▼▼▼
-                // Fileオブジェクトから新しいBlobを強制的に複製し、ブラウザの内部キャッシュ参照を断ち切る
-                const fileBlob = item.file.slice(0, item.file.size, item.file.type);
-                const base64Data = await this.fileToBase64(fileBlob);
-                // ▲▲▲ 修正箇所 ▲▲▲
+                // ★★★ 修正点 ★★★
+                // 確実なキャッシュ回避のため、一度Base64に変換し、そこから新しいBlobを再生成する
+                const base64Data = await this.fileToBase64(item.file);
+                const rehydratedBlob = await this.base64ToBlob(base64Data, item.file.type);
+                
+                console.log(`[DEBUG ②-B] ファイル「${item.file.name}」をBase64経由で再生成しました。`, {
+                    originalSize: item.file.size,
+                    newBlobSize: rehydratedBlob.size,
+                    originalType: item.file.type,
+                    newBlobType: rehydratedBlob.type
+                });
 
                 let browserMimeType = item.file.type || '';
                 const fileName = item.file.name;
@@ -6007,10 +6013,7 @@ const appLogic = {
                 }
 
                 attachmentsToAdd.push({
-                    // ▼▼▼ 修正箇所 ▼▼▼
-                    // 元のFileオブジェクトではなく、複製したBlobを格納する
-                    file: fileBlob,
-                    // ▲▲▲ 修正箇所 ▲▲▲
+                    file: rehydratedBlob, // ★★★ 修正点: 再生成したBlobを格納する
                     name: fileName,
                     mimeType: finalMimeType,
                     base64Data: base64Data
@@ -6034,6 +6037,8 @@ const appLogic = {
             uiUtils.updateAttachmentBadgeVisibility();
         }
     },
+
+
 
 
     cancelAttachment() {
