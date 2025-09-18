@@ -1583,16 +1583,37 @@ const uiUtils = {
         if (blob instanceof Blob) {
             try {
                 state.backgroundImageUrl = URL.createObjectURL(blob);
-                document.documentElement.style.setProperty('--chat-background-image-main', `url("${state.backgroundImageUrl}")`);
+                const newUrl = `url("${state.backgroundImageUrl}")`;
+                
+                const chatScreen = elements.chatScreen;
+                const isAlreadyVisible = chatScreen.classList.contains('background-visible');
+    
+                const switchImageAndFadeIn = () => {
+                    document.documentElement.style.setProperty('--chat-background-image', newUrl);
+                    chatScreen.classList.add('background-visible');
+                };
+    
+                if (isAlreadyVisible) {
+                    chatScreen.addEventListener('transitionend', switchImageAndFadeIn, { once: true });
+                    chatScreen.classList.remove('background-visible');
+                } else {
+                    switchImageAndFadeIn();
+                }
+    
                 console.log("背景画像をBlobから適用しました。");
             } catch (e) {
+    
                 console.error("背景画像のオブジェクトURL生成に失敗:", e);
-                document.documentElement.style.setProperty('--chat-background-image-main', 'none');
+                elements.chatScreen.classList.remove('background-visible');
+                document.documentElement.style.removeProperty('--chat-background-image');
             }
         } else {
-            document.documentElement.style.setProperty('--chat-background-image-main', 'none');
+            elements.chatScreen.classList.remove('background-visible');
+            document.documentElement.style.removeProperty('--chat-background-image');
         }
         this.updateBackgroundSettingsUI(); // 設定画面のUIも更新
+    
+    
     },
 
     // ------------------------------------
@@ -5017,9 +5038,12 @@ const appLogic = {
             state.settings.backgroundImageBlob = null;
 
             state.isTemporaryBackgroundActive = false;
-            document.documentElement.style.setProperty('--chat-background-image-main', 'none');
+            elements.chatScreen.classList.remove('background-visible');
+            document.documentElement.style.removeProperty('--chat-background-image');
             uiUtils.updateBackgroundSettingsUI();
         } catch (error) {
+    
+    
            console.error("背景画像削除エラー:", error);
            await uiUtils.showCustomAlert(`背景画像の削除中にエラーが発生しました: ${error}`);
         }
@@ -6233,21 +6257,42 @@ const appLogic = {
         }
         console.log(`一時的な背景画像をURLから適用: ${url}`);
         
-        // 永続化されている背景設定をメモリ上でのみクリア
+        // 既存のオブジェクトURLがあれば解放する
         uiUtils.revokeExistingObjectUrl();
         
-        // 新しいURLをCSS変数に設定
-        document.documentElement.style.setProperty('--chat-background-image-main', `url("${url}")`);
+        // 新しいURLをstateに保存
+        state.backgroundImageUrl = url;
+        
+        const chatScreen = elements.chatScreen;
+        const isAlreadyVisible = chatScreen.classList.contains('background-visible');
+    
+        // フェードアウト完了後に画像を設定してフェードインさせる処理
+        const switchImageAndFadeIn = () => {
+            document.documentElement.style.setProperty('--chat-background-image', `url("${url}")`);
+            chatScreen.classList.add('background-visible');
+        };
+    
+        if (isAlreadyVisible) {
+            // 画像が表示されている場合：一度フェードアウトさせてから切り替える
+            chatScreen.addEventListener('transitionend', switchImageAndFadeIn, { once: true });
+            chatScreen.classList.remove('background-visible');
+        } else {
+            // 画像がない場合：即座に切り替えてフェードイン
+            switchImageAndFadeIn();
+        }
         
         // 一時的な背景が適用されたことを示すフラグを立てる
+    
+
         state.isTemporaryBackgroundActive = true;
         
-        // サムネイルは非表示にする
+        // サムネイルUIを更新（新しいURLでサムネイルが表示される）
         uiUtils.updateBackgroundSettingsUI();
         
         const message = `背景画像を一時的に変更しました。この変更はリロードするか、設定から背景を再設定すると元に戻ります。`;
         return { success: true, message: message };
     },
+
 
     async handleBackgroundImageUrl(url) {
         if (!url || typeof url !== 'string') {

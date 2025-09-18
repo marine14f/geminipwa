@@ -31,6 +31,53 @@
 };
 
 /**
+ * 画像Blobを受け取り、WebPに変換するヘルパー関数
+ * @param {Blob} originalBlob - 変換元の画像Blob
+ * @returns {Promise<Blob>} 変換後のWebP Blob、または変換に失敗した場合は元のBlob
+ */
+ function convertBlobToWebP(originalBlob) {
+    return new Promise((resolve, reject) => {
+        // FileReaderでBlobをData URLに変換
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+
+                // CanvasをWebP Blobに変換 (品質0.9)
+                canvas.toBlob((webpBlob) => {
+                    if (webpBlob) {
+                        console.log(`[WebP Converter] 変換成功: ${originalBlob.size} bytes -> ${webpBlob.size} bytes`);
+                        resolve(webpBlob);
+                    } else {
+                        // 変換に失敗した場合は元のBlobをそのまま返す
+                        console.warn("[WebP Converter] WebPへの変換に失敗しました。元の形式を使用します。");
+                        resolve(originalBlob);
+                    }
+                }, 'image/webp', 0.9);
+            };
+            img.onerror = () => {
+                console.error("[WebP Converter] 画像データの読み込みに失敗しました。");
+                // エラー時も元のBlobを返すことで処理を続行させる
+                resolve(originalBlob);
+            };
+            img.src = e.target.result;
+        };
+        reader.onerror = () => {
+            console.error("[WebP Converter] FileReaderでBlobの読み込みに失敗しました。");
+            // エラー時も元のBlobを返す
+            resolve(originalBlob);
+        };
+        reader.readAsDataURL(originalBlob);
+    });
+}
+
+
+/**
  * メッセージオブジェクトから画像データをBlob形式で抽出するヘルパー
  * 添付画像(attachments)と生成画像(imageIds)の両方に対応
  * @param {object} message - 抽出元のメッセージオブジェクト
@@ -106,7 +153,6 @@
                 }
                 
                 const messages = chat.messages || [];
-                // AIが渡すインデックス(0=最新)を、配列の末尾から数える正しいインデックスに変換
                 const targetIndex = messages.length - 1 - source_image_message_index;
 
                 if (targetIndex < 0 || targetIndex >= messages.length) {
@@ -122,16 +168,16 @@
                     return { error: `指定されたメッセージから保存可能な画像が見つかりませんでした。` };
                 }
 
-                console.log("--- [DEBUG ③] DBに保存する直前のBlob情報 ---");
-                console.log(`Blobサイズ: ${imageBlob.size}, 種類: ${imageBlob.type}`);
+                // 取得したBlobをWebPに変換
+                const webpBlob = await convertBlobToWebP(imageBlob);
 
                 const newAsset = {
                     name: asset_name,
-                    blob: imageBlob,
+                    blob: webpBlob, // 変換後のBlobを保存
                     createdAt: new Date()
                 };
                 await assetDB.save(newAsset);
-                return { success: true, message: `画像アセット「${asset_name}」を保存しました。` };
+                return { success: true, message: `画像アセット「${asset_name}」をWebP形式で保存しました。` };
             }
             case "get": {
                 const asset = await assetDB.get(asset_name);
@@ -179,6 +225,7 @@
         return { error: `内部エラーが発生しました: ${error.message}` };
     }
 }
+
 
 
 
@@ -1103,24 +1150,43 @@ async function set_ui_opacity({ overlay, message_bubble }) {
  * @param {string} args.image_url - 表示したい画像のURL
  * @returns {Promise<object>} 操作結果を含むオブジェクトを返すPromise
  */
-async function set_background_image({ image_url }) {
-    console.log(`[Function Calling] set_background_imageが呼び出されました。`, { image_url });
+ async function set_background_image({ image_url, asset_name }) {
+    console.log(`[Function Calling] set_background_imageが呼び出されました。`, { image_url, asset_name });
 
     if (window.state && window.state.settings.allowPromptUiChanges === false) {
         return { error: "ユーザー設定により、プロンプトによるUIの変更は許可されていません。" };
     }
 
-    if (!image_url || typeof image_url !== 'string') {
-        return { error: "引数 'image_url' は必須であり、文字列である必要があります。" };
-    }
+    let final_image_url = null;
 
-    if (window.appLogic && typeof window.appLogic.applyBackgroundImageFromUrl === 'function') {
-        // 戻り値はオブジェクトなので、そのまま返す
-        return await window.appLogic.applyBackgroundImageFromUrl(image_url);
-    } else {
-        return { error: "UI更新機能の呼び出しに失敗しました。" };
+    try {
+        if (asset_name) {
+            const asset = await assetDB.get(asset_name);
+            if (!asset || !asset.blob) {
+                return { error: `画像アセット「${asset_name}」が見つかりませんでした。` };
+            }
+            // Blobから一時的なオブジェクトURLを生成
+            final_image_url = URL.createObjectURL(asset.blob);
+        } else if (image_url) {
+            final_image_url = image_url;
+        } else {
+            return { error: "引数 'image_url' または 'asset_name' のどちらか一方は必須です。" };
+        }
+
+        if (window.appLogic && typeof window.appLogic.applyBackgroundImageFromUrl === 'function') {
+            const result = await window.appLogic.applyBackgroundImageFromUrl(final_image_url);
+            // URLの解放処理は呼び出し先のapp.jsに一任するため、ここでは何もしない
+            return result;
+        } else {
+
+            return { error: "UI更新機能の呼び出しに失敗しました。" };
+        }
+    } catch (error) {
+        console.error(`[Function Calling] set_background_imageでエラーが発生しました:`, error);
+        return { error: `背景画像の設定中に内部エラーが発生しました: ${error.message}` };
     }
 }
+
 
 /**
  * 背景画像の上にキャラクター画像を重ねて、一つの画像としてメッセージに表示します。
@@ -1187,10 +1253,6 @@ async function set_background_image({ image_url }) {
       window.elements.loadingIndicator.classList.remove('hidden');
     }
   
-    // ▼▼▼ 修正箇所 ▼▼▼
-    // 関数内の古いヘルパー関数を削除
-    // ▲▲▲ 修正箇所 ▲▲▲
-  
     try {
       const genAI = new window.GoogleGenAI({ apiKey });
   
@@ -1202,7 +1264,6 @@ async function set_background_image({ image_url }) {
   
       // 1) inline 指定があれば優先
       if (source_inline_image && source_inline_image.data) {
-        // ▼▼▼ 修正箇所 ▼▼▼
         // 内部ヘルパーの代わりに appLogic を使用
         const base64Data = source_inline_image.data.replace(/\s+/g, "");
         if (base64Data) {
@@ -1212,7 +1273,6 @@ async function set_background_image({ image_url }) {
             };
             console.log(`画像をリクエストに追加 (direct inlineData).`);
         }
-        // ▲▲▲ 修正箇所 ▲▲▲
       }
   
       // 2) まだ無ければ履歴から抽出 (chat.messages を直接使用)
@@ -1228,7 +1288,6 @@ async function set_background_image({ image_url }) {
             throw new Error(`指定されたインデックス(${source_image_message_index})にメッセージが見つかりません。`);
         }
 
-        // ▼▼▼ 修正箇所 ▼▼▼
         // グローバルで修正済みの extractImageBlobFromMessage を使用
         const imageBlob = await extractImageBlobFromMessage(targetMessage);
 
@@ -1242,7 +1301,6 @@ async function set_background_image({ image_url }) {
         } else {
             throw new Error(`指定されたメッセージ(インデックス: ${source_image_message_index})から有効な画像が見つかりませんでした。`);
         }
-        // ▲▲▲ 修正箇所 ▲▲▲
     }
   
       if (request.image) {
@@ -1334,10 +1392,9 @@ async function set_background_image({ image_url }) {
   
       const videoBlob = await res.blob();
       const videoUrl = URL.createObjectURL(videoBlob);
-      // ▼▼▼ 修正箇所 ▼▼▼
+
       // BlobをBase64に変換するヘルパーを appLogic から呼び出す
       const videoBase64 = await window.appLogic.fileToBase64(videoBlob);
-      // ▲▲▲ 修正箇所 ▲▲▲
       console.log("動画のBlob URLとBase64データを生成しました。");
   
       return {
@@ -2113,16 +2170,19 @@ window.functionDeclarations = [
           },
           {
             "name": "set_background_image",
-            "description": "チャット画面の背景画像を、指定されたURLの画像に変更します。物語のシーンに合わせた背景を表示することで、没入感を高めます。画像URLに指定出来るのはユーザーがプロンプトで指定したURLのみです。",
+            "description": "チャット画面の背景画像を、指定されたURLまたは保存済みのアセット名から変更します。どちらか一方の引数を指定してください。画像URLに指定出来るのはユーザーがプロンプトで指定したURLのみです。",
             "parameters": {
                 "type": "OBJECT",
                 "properties": {
                     "image_url": {
                         "type": "STRING",
                         "description": "表示したい画像の完全なURL。例: 'https://example.com/images/scene1.png'"
+                    },
+                    "asset_name": {
+                        "type": "STRING",
+                        "description": "表示したい保存済み画像アセットの名前。例: '森の背景'"
                     }
-                },
-                "required": ["image_url"]
+                }
             }
           },
           {
