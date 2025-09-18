@@ -370,44 +370,84 @@ function base64ToBlob(base64, mimeType) {
 
 // --- Service Worker関連 ---
 function registerServiceWorker() {
-    if ('serviceWorker' in navigator) {
-        // リロード処理が重複しないように制御するフラグ
-        let isReloading = false;
+    if (!('serviceWorker' in navigator)) {
+        console.warn('このブラウザはService Workerをサポートしていません。');
+        return;
+    }
 
-        const reloadPage = () => {
+    // --- 自動更新用の通知UI表示 ---
+    const showUpdateNotification = (worker) => {
+        const notification = document.getElementById('update-notification');
+        const reloadButton = document.getElementById('reload-for-update-btn');
+        if (!notification || !reloadButton) return;
+
+        reloadButton.onclick = () => {
+            worker.postMessage({ action: 'skipWaiting' });
+        };
+        notification.classList.remove('hidden');
+    };
+
+    let isReloading = false;
+
+    // --- 新しいWorkerが有効化されたら、ページをリロード（自動/手動共通）---
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (isReloading) return;
+        isReloading = true;
+        window.location.reload();
+    });
+
+    // ---  手動更新ボタンからのメッセージを監視 ---
+    navigator.serviceWorker.addEventListener('message', event => {
+        // sw.jsからキャッシュクリア完了のメッセージを受け取ったらリロード
+        if (event.data && event.data.status === 'cacheCleared') {
+            console.log('Service Workerから手動キャッシュクリア完了のメッセージを受信。リロードを実行します。');
             if (isReloading) return;
             isReloading = true;
             uiUtils.showCustomAlert('アプリが更新されました。ページをリロードします。')
                 .then(() => {
                     window.location.reload();
                 });
-        };
+        }
+    });
 
-        // 1. Service Workerの自動更新を監視
-        navigator.serviceWorker.addEventListener('controllerchange', reloadPage);
+    window.addEventListener('load', async () => {
+        try {
+            const registration = await navigator.serviceWorker.register('./sw.js');
+            console.log('ServiceWorker登録成功 スコープ: ', registration.scope);
 
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('./sw.js')
-                .then(registration => {
-                    console.log('ServiceWorker登録成功 スコープ: ', registration.scope);
-                    
-                    // 2. 手動更新完了のメッセージを監視
-                    navigator.serviceWorker.addEventListener('message', event => {
-                        // sw.jsからキャッシュクリア完了のメッセージを受け取ったらリロード
-                        if (event.data && event.data.status === 'cacheCleared') {
-                            console.log('Service Workerからキャッシュクリア完了のメッセージを受信。リロードを実行します。');
-                            reloadPage();
+            // 定期的に更新をチェックする (例: 1時間ごと)
+            setInterval(() => {
+                registration.update();
+                console.log('Service Workerの更新をチェックしました。');
+            }, 60 * 60 * 1000);
+
+            // --- 自動更新の検知ロジック ---
+            if (registration.waiting) {
+                console.log('待機中の新しいService Workerが見つかりました。');
+                showUpdateNotification(registration.waiting);
+                return;
+            }
+
+            registration.addEventListener('updatefound', () => {
+                const newWorker = registration.installing;
+                if (newWorker) {
+                    console.log('新しいService Workerのインストールを検知しました。');
+                    newWorker.addEventListener('statechange', () => {
+                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                            console.log('新しいService Workerがインストールされ、待機状態に入りました。');
+                            showUpdateNotification(newWorker);
                         }
                     });
-                })
-                .catch(err => {
-                    console.error('ServiceWorker登録失敗: ', err);
-                });
-        });
-    } else {
-        console.warn('このブラウザはService Workerをサポートしていません。');
-    }
+                }
+            });
+
+        } catch (error) {
+            console.error('ServiceWorker処理中にエラー: ', error);
+        }
+    });
 }
+
+
 
 // --- IndexedDBユーティリティ (dbUtils) ---
 const dbUtils = {

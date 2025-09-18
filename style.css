@@ -319,10 +319,30 @@ body.dark-mode .new-chat-button {
     z-index: 0;
     background-size: cover;
     background-position: center;
-    background-image: var(--chat-background-image-main);
+    /* background-imageプロパティを削除 */
     /* フェードインは一旦廃止し、シンプルな切り替えにする */
     transition: background-image 0.3s ease-in-out; 
 }
+
+/* 背景画像用の擬似要素を追加 */
+#chat-screen::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: var(--chat-background-image, none); /* CSS変数から画像を設定 */
+    background-size: cover;
+    background-position: center;
+    opacity: 0; /* 初期状態は透明 */
+    transition: opacity 0.8s ease-in-out; /* フェード効果を0.8秒に設定 */
+    z-index: 0; /* オーバーレイより後ろ */
+}
+
+/* このクラスが付与されたら、擬似要素をフェードインさせる */
+#chat-screen.background-visible::before {
+    opacity: 1;
+}
+
+
 
 #chat-overlay {
     content: '';
@@ -1476,4 +1496,47 @@ body.dark-mode #profile-management-group .profile-actions button:hover {
     font-size: 0.8rem;
     color: var(--text-error);
     border: 1px dashed var(--border-danger);
+}
+/* --- App Update Notification --- */
+.update-notification {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+    padding: 12px 20px;
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-3);
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    z-index: 1000;
+    animation: slide-up 0.5s ease-out forwards;
+}
+
+.update-notification.hidden {
+    display: none;
+}
+
+@keyframes slide-up {
+    from {
+        transform: translate(-50%, 100px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(-50%);
+        opacity: 1;
+    }
+}
+
+#reload-for-update-btn {
+    padding: 6px 16px;
+    font-size: 0.8rem;
+    background-color: var(--bg-button-update);
+    color: var(--text-light);
+    box-shadow: none;
+}
+body.dark-mode #reload-for-update-btn {
+    color: var(--text-primary);
 }
