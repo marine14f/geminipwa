@@ -96,7 +96,7 @@ AIに保存するアセット名と「保存して」という指示があれば
 ### 使用例
 | 🙎『添付画像を「主人公の立ち絵」で保存して』<br>🤖『OK。「主人公の立ち絵」で保存したよ』 | 🙎『添付画像を「ヒロインの立ち絵」で保存して』<br>🤖『OK。「ヒロインの立ち絵」で保存したよ』 | 🙎『「主人公の立ち絵」と「ヒロインの立ち絵」のアセットを使用して、星空が輝く夜の草原で、2人がロマンチックにキスをしている画像を生成して』<br>🤖『画像編集ね。保存してある2つの画像を使って作るよ』 |
 | :---: | :---: | :---: |
-| <img src="./images/image06.png" width="300"> | <img src="./images/image05.png" width="300">  | <img src="./images/image02.webp" width="300">  |
+| <img src="./images/image06.png" width="300"> | <img src="./images/image05.png" width="300"> | <img src="./images/image02.webp" width="300"> |
 
 *   **画像保存機能の注意点**:
     *   画像がDBに保存される際に、データベースのスリム化のためWEBPに変換後に保存されます。
@@ -109,7 +109,7 @@ DBに保存した画像や画像URLを元に、チャット画面の背景画像
 本機能を利用する場合、設定画面の「プロンプトによるUI変更を許可する」が有効になっている必要があります。<br>
 オーバーレイの濃さやメッセージバブルの濃さもプロンプトで指定が可能です。
 
-| <img src="./images/image07.png" width="300"> | <img src="./images/image08.png" width="300">  | <img src="./images/image09.png" width="300">  |
+<img src="./images/image07.png" width="300"><img src="./images/image08.png" width="300"><img src="./images/image09.png" width="300">
 
 *   **背景画像変更機能の注意点**:
     *   設定した背景画像は、ブラウザをリロードすると元に戻ります。
