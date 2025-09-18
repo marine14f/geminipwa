@@ -1275,13 +1275,15 @@ async function set_ui_opacity({ overlay, message_bubble }) {
         }
       }
   
-      // 2) まだ無ければ履歴から抽出 (chat.messages を直接使用)
-      if (!request.image && typeof source_image_message_index === 'number') {
-        const messages = chat.messages || [];
-        const targetIndex = source_image_message_index;
-
-        if (targetIndex < 0 || targetIndex >= messages.length) {
-            throw new Error(`指定されたメッセージ(インデックス: ${source_image_message_index})が見つかりません。インデックスが範囲外です。`);
+        // 2) まだ無ければ履歴から抽出 (chat.messages を直接使用)
+        if (!request.image && typeof source_image_message_index === 'number') {
+            const messages = chat.messages || [];
+            // AIが渡すインデックス(0=最新)を、配列の末尾から数える正しいインデックスに変換
+            const targetIndex = messages.length - 1 - source_image_message_index;
+    
+            if (targetIndex < 0 || targetIndex >= messages.length) {
+                throw new Error(`指定されたメッセージ(インデックス: ${source_image_message_index})が見つかりません。インデックスが範囲外です。`);
+    
         }
         const targetMessage = messages[targetIndex];
         if (!targetMessage) {
