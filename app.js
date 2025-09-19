@@ -214,7 +214,8 @@ const elements = {
     profileExportBtn: document.getElementById('profile-export-btn'),
     profileImportBtn: document.getElementById('profile-import-btn'),
     profileImportInput: document.getElementById('profile-import-input'),
-    autoScrollToggle: document.getElementById('auto-scroll-toggle')
+    autoScrollToggle: document.getElementById('auto-scroll-toggle'),
+    enableWideModeToggle: document.getElementById('enable-wide-mode-toggle') 
 };
 
 // --- アプリ状態 ---
@@ -275,6 +276,7 @@ const state = {
         allowPromptUiChanges: true,
         forceFunctionCalling: false,
         autoScroll: true,
+        enableWideMode: false
     },
     backgroundImageUrl: null,
     isSending: false,
@@ -296,16 +298,17 @@ const state = {
 };
 
 function updateMessageMaxWidthVar() {
-    const container = elements.messageContainer; // messageContainer要素を取得
+    const container = elements.messageContainer;
     if (!container) return;
 
-    // コンテナ幅に基づいて最大幅を計算
-    let maxWidthPx = container.clientWidth * 0.8;
+    const isWideMode = state.settings.enableWideMode && window.innerWidth > 800;
+    // ワイドモード時はコンテナ幅の70%、通常時は80%をメッセージの最大幅とする
+    const percentage = isWideMode ? 0.7 : 0.8;
+    let maxWidthPx = container.clientWidth * percentage;
 
-    // 計算したピクセル値をCSS変数に設定
     document.documentElement.style.setProperty('--message-max-width', `${maxWidthPx}px`);
-    // console.log(`CSS Variable --message-max-width updated to: ${maxWidthPx}px`); // ログ削減
 }
+
 
 let resizeTimer;
 window.addEventListener('DOMContentLoaded', (event) => {
@@ -1715,6 +1718,7 @@ const uiUtils = {
         document.getElementById('allow-prompt-ui-changes').checked = state.settings.allowPromptUiChanges;
         elements.forceFunctionCallingToggle.checked = state.settings.forceFunctionCalling;
         elements.autoScrollToggle.checked = state.settings.autoScroll;
+        elements.enableWideModeToggle.checked = state.settings.enableWideMode; 
 
         const defaultHeaderColor = state.settings.darkMode ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
         elements.headerColorInput.value = state.settings.headerColor || defaultHeaderColor;
@@ -1728,6 +1732,7 @@ const uiUtils = {
         this.applyHeaderColor();
         this.updateModelWarningMessage();
         this.applyBackgroundImage();
+        appLogic.applyWideMode();
     },
 
     // ユーザー指定モデルをコンボボックスに反映
@@ -2945,7 +2950,7 @@ const appLogic = {
         const settings = {};
         const stringKeys = ['apiKey', 'modelName', 'systemPrompt', 'dummyUser', 'dummyModel', 'additionalModels', 'historySortOrder', 'fontFamily', 'proofreadingModelName', 'proofreadingSystemInstruction', 'googleSearchApiKey', 'googleSearchEngineId', 'headerColor', 'thoughtTranslationModel'];
         const numberKeys = ['temperature', 'maxTokens', 'topK', 'topP', 'presencePenalty', 'frequencyPenalty', 'thinkingBudget', 'maxRetries', 'fixedRetryDelaySeconds', 'maxBackoffDelaySeconds', 'overlayOpacity', 'messageOpacity'];
-        const booleanKeys = ['enterToSend', 'darkMode', 'hideSystemPromptInChat', 'geminiEnableGrounding', 'geminiEnableFunctionCalling', 'enableSwipeNavigation', 'enableProofreading', 'enableAutoRetry', 'useFixedRetryDelay', 'concatDummyModel', 'includeThoughts', 'enableThoughtTranslation', 'applyDummyToProofread', 'applyDummyToTranslate', 'allowPromptUiChanges', 'forceFunctionCalling'];
+        const booleanKeys = ['enterToSend', 'darkMode', 'hideSystemPromptInChat', 'geminiEnableGrounding', 'geminiEnableFunctionCalling', 'enableSwipeNavigation', 'enableProofreading', 'enableAutoRetry', 'useFixedRetryDelay', 'concatDummyModel', 'includeThoughts', 'enableThoughtTranslation', 'applyDummyToProofread', 'applyDummyToTranslate', 'allowPromptUiChanges', 'forceFunctionCalling', 'autoScroll', 'enableWideMode'];
         
         stringKeys.forEach(key => {
             const element = elements[key + 'Input'] || elements[key + 'Select'] || elements[key + 'Textarea'];
@@ -2974,6 +2979,7 @@ const appLogic = {
         console.log("[Profile] 現在のUIから設定を取得しました:", settings);
         return settings;
     },
+
 
     fileToBase64(file) {
         return new Promise((resolve, reject) => {
@@ -3156,7 +3162,11 @@ const appLogic = {
         }
     },
 
-
+    applyWideMode() {
+        document.body.classList.toggle('wide-mode-enabled', state.settings.enableWideMode);
+        // ワイドモードの有効/無効が切り替わった際に、メッセージ幅を再計算する
+        updateMessageMaxWidthVar();
+    },
 
     // アプリ初期化
     async initializeApp() {
@@ -3320,8 +3330,6 @@ const appLogic = {
         }
     },
 
-
-    // イベントリスナーを設定
     // イベントリスナーを設定
     setupEventListeners() {
         if (!this._popstateBound) {
@@ -3452,6 +3460,7 @@ const appLogic = {
                     if (key === 'headerColor') uiUtils.applyHeaderColor();
                     if (key === 'messageOpacity') document.documentElement.style.setProperty('--message-bubble-opacity', String(value));
                     if (key === 'modelName') uiUtils.updateModelWarningMessage();
+                    if (key === 'enableWideMode') this.applyWideMode();
     
                 });
             } else {
@@ -3502,7 +3511,8 @@ const appLogic = {
             headerColor: { element: elements.headerColorInput, event: 'input' },
             allowPromptUiChanges: { element: document.getElementById('allow-prompt-ui-changes'), event: 'change' },
             forceFunctionCalling: { element: elements.forceFunctionCallingToggle, event: 'change' },
-            autoScroll: { element: elements.autoScrollToggle, event: 'change' }
+            autoScroll: { element: elements.autoScrollToggle, event: 'change' },
+            enableWideMode: { element: elements.enableWideModeToggle, event: 'change' }
         };
     
         for (const key in settingsMap) {

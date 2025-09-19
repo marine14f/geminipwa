@@ -1540,3 +1540,10 @@ body.dark-mode #profile-management-group .profile-actions button:hover {
 body.dark-mode #reload-for-update-btn {
     color: var(--text-primary);
 }
+
+/* --- Wide Mode Styles (for PC) --- */
+@media screen and (min-width: 801px) {
+    body.wide-mode-enabled .app-container {
+        max-width: 1600px;
+    }
+}
