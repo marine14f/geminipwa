@@ -5953,36 +5953,43 @@ const appLogic = {
     async handleFileSelection(fileList) {
         if (!fileList || fileList.length === 0) return;
 
-        // 新しいファイル選択が開始されるたびに、必ずリストをクリアする
-        state.selectedFilesForUpload = [];
-
-        console.log("--- [DEBUG ①] ファイルが選択されました ---");
-        Array.from(fileList).forEach(file => {
-            console.log(`ファイル名: ${file.name}, サイズ: ${file.size}, 種類: ${file.type}`);
-        });
-
         const newFiles = Array.from(fileList);
-        let currentTotalSize = 0; // クリアしたので0からスタート
         let addedCount = 0;
-        let skippedCount = 0;
-        let sizeError = false;
+        const skippedFiles = {
+            duplicate: [],
+            size: [],
+            totalSize: []
+        };
+
+        // 既存ファイルの合計サイズを計算
+        let currentTotalSize = state.selectedFilesForUpload.reduce((sum, item) => sum + item.file.size, 0);
 
         elements.selectFilesBtn.disabled = true;
         elements.selectFilesBtn.textContent = '処理中...';
 
         for (const file of newFiles) {
+            // 個別ファイルサイズチェック
             if (file.size > MAX_FILE_SIZE) {
-                await uiUtils.showCustomAlert(`ファイル "${file.name}" はサイズが大きすぎます (${formatFileSize(MAX_FILE_SIZE)}以下)。`);
-                skippedCount++;
-                continue;
-            }
-            if (currentTotalSize + file.size > MAX_TOTAL_ATTACHMENT_SIZE) {
-                sizeError = true;
-                skippedCount++;
+                skippedFiles.size.push(file.name);
                 continue;
             }
 
-            // 配列はクリアされているので、重複チェックは不要
+            // 合計ファイルサイズチェック
+            if (currentTotalSize + file.size > MAX_TOTAL_ATTACHMENT_SIZE) {
+                skippedFiles.totalSize.push(file.name);
+                continue;
+            }
+
+            // 重複ファイルチェック (ファイル名とサイズが両方同じ)
+            const isDuplicate = state.selectedFilesForUpload.some(
+                existingItem => existingItem.file.name === file.name && existingItem.file.size === file.size
+            );
+            if (isDuplicate) {
+                skippedFiles.duplicate.push(file.name);
+                continue;
+            }
+
+            // 全てのチェックをパスしたら追加
             state.selectedFilesForUpload.push({ file: file });
             currentTotalSize += file.size;
             addedCount++;
@@ -5991,16 +5998,26 @@ const appLogic = {
         elements.selectFilesBtn.disabled = false;
         elements.selectFilesBtn.textContent = 'ファイルを選択';
 
-        if (sizeError) {
-            await uiUtils.showCustomAlert(`合計ファイルサイズの上限 (${formatFileSize(MAX_TOTAL_ATTACHMENT_SIZE)}) を超えるため、一部のファイルは追加されませんでした。`);
+        // スキップされたファイルがあればまとめて通知
+        let alertMessage = '';
+        if (skippedFiles.duplicate.length > 0) {
+            alertMessage += `以下のファイルは既に追加されているためスキップしました:\n- ${skippedFiles.duplicate.join('\n- ')}\n\n`;
         }
-        if (skippedCount > 0) {
-            console.log(`${skippedCount}個のファイルがスキップされました（サイズ超過）。`);
+        if (skippedFiles.size.length > 0) {
+            alertMessage += `以下のファイルはサイズが大きすぎるため(${formatFileSize(MAX_FILE_SIZE)}以下)スキップしました:\n- ${skippedFiles.size.join('\n- ')}\n\n`;
+        }
+        if (skippedFiles.totalSize.length > 0) {
+            alertMessage += `合計サイズ上限(${formatFileSize(MAX_TOTAL_ATTACHMENT_SIZE)})を超えるため、以下のファイルはスキップしました:\n- ${skippedFiles.totalSize.join('\n- ')}\n\n`;
+        }
+
+        if (alertMessage) {
+            await uiUtils.showCustomAlert(alertMessage.trim());
         }
 
         uiUtils.updateSelectedFilesUI();
-        console.log(`${addedCount}個のファイルが選択リストに追加されました。`);
+        console.log(`${addedCount}個のファイルが選択リストに新しく追加されました。`);
     },
+
     
 
     removeSelectedFile(indexToRemove) {
