@@ -1957,27 +1957,15 @@ const uiUtils = {
 
     // テキストエリアの高さを自動調整
     adjustTextareaHeight(textarea = elements.userInput, maxHeight = TEXTAREA_MAX_HEIGHT) {
-        // カーソル位置を記憶
-        const originalSelectionStart = textarea.selectionStart;
-        const originalSelectionEnd = textarea.selectionEnd;
-
-        const oldHeight = textarea.style.height;
         textarea.style.height = 'auto';
-        const newScrollHeight = textarea.scrollHeight;
-        const newHeight = Math.min(newScrollHeight, maxHeight) + 'px';
-        
-        if (oldHeight !== newHeight) {
-            console.log(`[DEBUG_SCROLL] adjustTextareaHeight: 高さを ${oldHeight} から ${newHeight} に変更 (scrollHeight: ${newScrollHeight})`);
-            textarea.style.height = newHeight;
-        }
-
-        // カーソル位置を復元
-        textarea.setSelectionRange(originalSelectionStart, originalSelectionEnd);
+        const scrollHeight = textarea.scrollHeight;
+        textarea.style.height = Math.min(scrollHeight, maxHeight) + 'px';
         
         if (textarea === elements.userInput && !state.isSending) {
             elements.sendButton.disabled = textarea.value.trim() === '' && state.pendingAttachments.length === 0;
         }
     },
+
 
 
     // --- カスタムダイアログ関数 ---
@@ -5403,7 +5391,7 @@ const appLogic = {
         textarea.value = rawContent;
         textarea.classList.add('edit-textarea');
         textarea.rows = 3;
-        textarea.oninput = () => uiUtils.adjustTextareaHeight(textarea, 400);
+        // textarea.oninput の行を削除
 
         const actionsDiv = document.createElement('div');
         actionsDiv.classList.add('message-edit-actions');
@@ -5428,12 +5416,13 @@ const appLogic = {
         if(cascadeControls) cascadeControls.classList.add('hidden');
         editArea.classList.remove('hidden');
 
-        uiUtils.adjustTextareaHeight(textarea, 400);
+        uiUtils.adjustTextareaHeight(textarea, 400); // 編集開始時に一度だけ高さを調整
         textarea.focus();
         textarea.select();
         const endTime = performance.now();
         console.log(`[PERF_DEBUG] startEditMessage 完了 (所要時間: ${endTime - startTime}ms)`);
     },
+
 
 
 
