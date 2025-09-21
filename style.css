@@ -362,12 +362,14 @@ body.dark-mode #chat-overlay {
 .main-content {
     flex-grow: 1;
     overflow-y: auto;
+    overflow-x: hidden; /* 横方向のスクロールを常に禁止する */
     padding: calc(var(--spacing-unit) * 2);
     position: relative;
     z-index: 1;
     touch-action: pan-y;
     padding-bottom: 40px;
 }
+
 
 #chat-screen .main-content {
     background-color: transparent;
@@ -409,6 +411,7 @@ body.dark-mode #chat-overlay {
     padding: var(--spacing-unit) calc(var(--spacing-unit) * 1.5);
     border-radius: var(--border-radius-lg);
     max-width: var(--message-max-width, 85%);
+    min-width: 220px;
     position: relative;
     word-wrap: break-word;
     color: var(--text-primary);
@@ -416,9 +419,7 @@ body.dark-mode #chat-overlay {
     box-shadow: var(--shadow-1);
     margin-top: calc(var(--spacing-unit) * 3);
     margin-bottom: calc(var(--spacing-unit) * 3);
-    overflow: hidden; /* はみ出したコンテンツを隠し、レイアウトへの影響を防ぐ */
 }
-
 .message:first-child { margin-top: 0; }
 .message.user {
     background-color: color-mix(in srgb, var(--bg-user-message) calc(var(--message-bubble-opacity, 1) * 100%), transparent);
