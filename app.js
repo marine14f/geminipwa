@@ -1468,9 +1468,8 @@ const uiUtils = {
         const mainContent = elements.chatScreen.querySelector('.main-content');
         if (!mainContent) return;
 
-        // 現在のスクロール位置が下端から100px以内の場合のみ自動スクロールする
-        const scrollThreshold = 100;
-        const isNearBottom = mainContent.scrollHeight - mainContent.scrollTop - mainContent.clientHeight < scrollThreshold;
+        // 現在のスクロール位置が下端から300px以内にあるか、またはスクロールできない状態かを確認
+        const isNearBottom = mainContent.scrollHeight - mainContent.scrollTop - mainContent.clientHeight < 300;
 
         if (isNearBottom) {
             const anchor = document.getElementById('chat-anchor');
@@ -1482,10 +1481,9 @@ const uiUtils = {
                 mainContent.scrollTop = mainContent.scrollHeight;
             }
         } else {
-            console.log(`[Debug Scroll] scrollToBottom: ユーザーが上部を閲覧中のため、自動スクロールを抑制しました。`);
+            console.log(`[Debug Scroll] scrollToBottom: ユーザーが履歴を閲覧中のため、自動スクロールを抑制しました。`);
         }
     },
-
 
 
     // チャットタイトルを更新
