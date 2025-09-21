@@ -724,7 +724,7 @@ body.dark-mode .ripple {
     white-space: nowrap;
     pointer-events: none; /* 非表示時はクリックできないように */
 }
-.message-actions { bottom: calc(-1 * var(--spacing-unit) * 5.5); }
+.message-actions { bottom: var(--spacing-unit); }
 .message-cascade-controls {
     top: calc(-1 * var(--spacing-unit) * 5.5);
     left: 0;
