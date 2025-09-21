@@ -417,7 +417,9 @@ body.dark-mode #chat-overlay {
     box-shadow: var(--shadow-1);
     margin-top: calc(var(--spacing-unit) * 3);
     margin-bottom: calc(var(--spacing-unit) * 3);
+    overflow: hidden; /* はみ出したコンテンツを隠し、レイアウトへの影響を防ぐ */
 }
+
 .message:first-child { margin-top: 0; }
 .message.user {
     background-color: color-mix(in srgb, var(--bg-user-message) calc(var(--message-bubble-opacity, 1) * 100%), transparent);
