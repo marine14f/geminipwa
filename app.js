@@ -1468,18 +1468,25 @@ const uiUtils = {
         const mainContent = elements.chatScreen.querySelector('.main-content');
         if (!mainContent) return;
 
-        // アンカー要素を取得
-        const anchor = document.getElementById('chat-anchor');
-        if (anchor) {
-            // scrollIntoViewを使用してアンカー要素を画面内に表示
-            anchor.scrollIntoView({ behavior: 'auto', block: 'end' });
-            console.log(`[Debug Scroll] scrollToBottom: アンカーへスクロールしました。`);
+        // 現在のスクロール位置が下端から100px以内の場合のみ自動スクロールする
+        const scrollThreshold = 100;
+        const isNearBottom = mainContent.scrollHeight - mainContent.scrollTop - mainContent.clientHeight < scrollThreshold;
+
+        if (isNearBottom) {
+            const anchor = document.getElementById('chat-anchor');
+            if (anchor) {
+                anchor.scrollIntoView({ behavior: 'auto', block: 'end' });
+                console.log(`[Debug Scroll] scrollToBottom: 下端近接のためアンカーへスクロールしました。`);
+            } else {
+                console.warn(`[Debug Scroll] scrollToBottom: アンカーが見つかりません。scrollHeightでスクロールします。`);
+                mainContent.scrollTop = mainContent.scrollHeight;
+            }
         } else {
-            // フォールバックとして従来の処理を残す
-            console.warn(`[Debug Scroll] scrollToBottom: アンカーが見つかりません。scrollHeightでスクロールします。`);
-            mainContent.scrollTop = mainContent.scrollHeight;
+            console.log(`[Debug Scroll] scrollToBottom: ユーザーが上部を閲覧中のため、自動スクロールを抑制しました。`);
         }
     },
+
+
 
     // チャットタイトルを更新
     updateChatTitle(definitiveTitle = null) {

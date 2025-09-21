@@ -709,9 +709,8 @@ body.dark-mode .ripple {
 /* --- Message Actions --- */
 .message-actions, .message-cascade-controls {
     position: absolute;
-    display: flex; /* 常にflexでレイアウトを確保 */
-    visibility: hidden; /* 初期状態では非表示 */
-    opacity: 0; /* 初期状態では透明 */
+    display: flex;
+    opacity: 0;
     flex-wrap: nowrap;
     gap: var(--spacing-unit);
     background: var(--bg-message-actions);
@@ -719,30 +718,34 @@ body.dark-mode .ripple {
     border-radius: var(--border-radius-md);
     box-shadow: var(--shadow-2);
     z-index: 2;
-    transition: opacity var(--transition-duration) var(--transition-timing), visibility var(--transition-duration) var(--transition-timing);
+    transition: opacity 0.15s ease-in-out, transform 0.15s ease-in-out;
     width: max-content;
     white-space: nowrap;
-    pointer-events: none; /* 非表示時はクリックできないように */
-}
-.message-actions { bottom: var(--spacing-unit); }
-.message-cascade-controls {
-    top: calc(-1 * var(--spacing-unit) * 5.5);
-    left: 0;
-    align-items: center;
+    pointer-events: none;
 }
 
-/* マウスホバー時、またはJSでクラスが付与された時に表示 */
+.message-actions {
+    bottom: 8px;
+    transform: translateY(5px);
+}
+.message-cascade-controls {
+    top: 8px;
+    transform: translateY(-5px);
+}
+
 .message:hover .message-actions,
 .message.show-actions .message-actions,
 .message.model:hover .message-cascade-controls,
 .message.model.show-actions .message-cascade-controls {
-    visibility: visible;
     opacity: 1;
-    pointer-events: auto; /* 表示されたらクリックできるように */
+    transform: translateY(0);
+    pointer-events: auto;
 }
 
-.message.user .message-actions { right: 0; }
+.message.user .message-actions { right: var(--spacing-unit); }
 .message.model .message-actions { left: var(--spacing-unit); }
+.message.model .message-cascade-controls { left: var(--spacing-unit); }
+
 
 .message-actions button, .message-cascade-controls button {
     padding: calc(var(--spacing-unit) * 0.5) var(--spacing-unit);
@@ -776,6 +779,7 @@ body.dark-mode .message-cascade-controls .cascade-delete-btn {
 .message.retrying-hidden {
     display: none !important;
 }
+
 
 /* --- Layered Image Display --- */
 .layered-image-container {
