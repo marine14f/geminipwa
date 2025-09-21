@@ -26,7 +26,8 @@
             <div id="chat-overlay"></div> 
             <header class="app-header">
                 <button id="goto-history-btn" class="header-button" title="履歴一覧へ"><span class="material-symbols-outlined">menu</span></button>
-                <h1 id="chat-title">新規チャット</h1>                
+                <h1 id="chat-title">新規チャット</h1>   
+                <button id="memory-toggle-btn" class="header-button hidden" title="このチャットの長期記憶を切り替え"><span class="material-symbols-outlined">auto_stories</span></button>             
                 <button id="new-chat-btn" class="new-chat-button" title="新規チャットを開始"><span class="material-symbols-outlined">add</span></button>
                 <button id="goto-settings-btn" class="header-button" title="設定へ"><span class="material-symbols-outlined">settings</span></button>
             </header>
@@ -158,6 +159,7 @@
                         ※新機能の詳細は<a href="https://github.com/kinkan04/Gemini-PWA-Mk-II" target="_blank" rel="noopener noreferrer">リポジトリ</a>を参照。
                     </p>
                 </div>
+                
                 <div class="settings-group">
                     <h3>基本設定</h3>
                     <label for="api-key">Gemini APIキー:</label>
