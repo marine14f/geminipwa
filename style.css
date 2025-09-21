@@ -460,7 +460,7 @@ body.dark-mode #chat-overlay {
 .message.model.show-actions .message-cascade-controls { display: flex; }
 
 .message.user .message-actions { right: 0; }
-.message.model .message-actions { left: 0; }
+.message.model .message-actions { left: var(--spacing-unit); }
 
 .message-actions button, .message-cascade-controls button {
     padding: calc(var(--spacing-unit) * 0.5) var(--spacing-unit);
