@@ -215,7 +215,14 @@ const elements = {
     profileImportBtn: document.getElementById('profile-import-btn'),
     profileImportInput: document.getElementById('profile-import-input'),
     autoScrollToggle: document.getElementById('auto-scroll-toggle'),
-    enableWideModeToggle: document.getElementById('enable-wide-mode-toggle') 
+    enableWideModeToggle: document.getElementById('enable-wide-mode-toggle'),
+    assetCountDisplay: document.getElementById('asset-count-display'),
+    assetExportBtn: document.getElementById('asset-export-btn'),
+    assetImportBtn: document.getElementById('asset-import-btn'),
+    assetImportInput: document.getElementById('asset-import-input'),
+    assetConflictDialog: document.getElementById('assetConflictDialog'),
+    assetConflictMessage: document.getElementById('assetConflictDialog').querySelector('.dialog-message'),
+    assetConflictApplyAll: document.getElementById('apply-to-all-checkbox')
 };
 
 // --- アプリ状態 ---
@@ -898,7 +905,29 @@ const dbUtils = {
             };
             request.onerror = (event) => reject(`プロファイル(ID: ${id})削除エラー: ${event.target.error}`);
         });
-    }
+    },
+
+    async getAsset(name) {
+        await this.openDB();
+        return new Promise((resolve, reject) => {
+            const store = this._getStore('image_assets');
+            const request = store.get(name);
+            request.onsuccess = (event) => resolve(event.target.result);
+            request.onerror = (event) => reject(`アセット ${name} 取得エラー: ${event.target.error}`);
+        });
+    },
+
+
+    async getAllAssets() {
+        await this.openDB();
+        return new Promise((resolve, reject) => {
+            const store = this._getStore('image_assets');
+            const request = store.getAll();
+            request.onsuccess = (event) => resolve(event.target.result);
+            request.onerror = (event) => reject(`全アセット取得エラー: ${event.target.error}`);
+        });
+    },
+
 };
 
 // --- UIユーティリティ (uiUtils) ---
@@ -942,15 +971,13 @@ const uiUtils = {
     },
 
     renderChatMessages() {
-        const startTime = performance.now();
-        console.log(`%c[PERF_DEBUG] renderChatMessages 開始`, 'color: red; font-weight: bold;', { startTime });
+        const renderStartTime = performance.now();
+        console.log(`[PERF_DEBUG] renderChatMessages 開始`);
 
         const container = elements.messageContainer;
         
-        // ちらつき防止策は維持
         container.style.minHeight = `${container.scrollHeight}px`;
 
-        // キャッシュクリアと編集中状態のキャンセル
         if (state.imageUrlCache.size > 0) {
             for (const url of state.imageUrlCache.values()) {
                 URL.revokeObjectURL(url);
@@ -963,7 +990,6 @@ const uiUtils = {
             else state.editingMessageIndex = null;
         }
 
-        // DOMの再構築
         container.innerHTML = '';
         const fragment = document.createDocumentFragment();
         const visibleMessages = [];
@@ -1008,18 +1034,21 @@ const uiUtils = {
         
         container.appendChild(fragment);
         
-        // Prism.jsのハイライト
         if (window.Prism) {
+            const highlightStartTime = performance.now();
+            console.log(`[PERF_DEBUG] Prism.highlightAll 開始`);
             Prism.highlightAll();
+            const highlightEndTime = performance.now();
+            console.log(`[PERF_DEBUG] Prism.highlightAll 完了 (所要時間: ${highlightEndTime - highlightStartTime}ms)`);
         }
         
-        // ちらつき防止策の解除
         requestAnimationFrame(() => {
             container.style.minHeight = '';
         });
-        const endTime = performance.now();
-        console.log(`%c[PERF_DEBUG] renderChatMessages 完了`, 'color: red; font-weight: bold;', { endTime, duration: endTime - startTime });
+        const renderEndTime = performance.now();
+        console.log(`[PERF_DEBUG] renderChatMessages 完了 (合計所要時間: ${renderEndTime - renderStartTime}ms)`);
     },
+
 
 
 
@@ -1928,14 +1957,28 @@ const uiUtils = {
 
     // テキストエリアの高さを自動調整
     adjustTextareaHeight(textarea = elements.userInput, maxHeight = TEXTAREA_MAX_HEIGHT) {
+        // カーソル位置を記憶
+        const originalSelectionStart = textarea.selectionStart;
+        const originalSelectionEnd = textarea.selectionEnd;
+
+        const oldHeight = textarea.style.height;
         textarea.style.height = 'auto';
-        const scrollHeight = textarea.scrollHeight;
-        textarea.style.height = Math.min(scrollHeight, maxHeight) + 'px';
+        const newScrollHeight = textarea.scrollHeight;
+        const newHeight = Math.min(newScrollHeight, maxHeight) + 'px';
+        
+        if (oldHeight !== newHeight) {
+            console.log(`[DEBUG_SCROLL] adjustTextareaHeight: 高さを ${oldHeight} から ${newHeight} に変更 (scrollHeight: ${newScrollHeight})`);
+            textarea.style.height = newHeight;
+        }
+
+        // カーソル位置を復元
+        textarea.setSelectionRange(originalSelectionStart, originalSelectionEnd);
         
         if (textarea === elements.userInput && !state.isSending) {
             elements.sendButton.disabled = textarea.value.trim() === '' && state.pendingAttachments.length === 0;
         }
     },
+
 
     // --- カスタムダイアログ関数 ---
     // ダイアログを表示し、閉じられるまで待機
@@ -3326,6 +3369,7 @@ const appLogic = {
             this.updateZoomState();
             uiUtils.adjustTextareaHeight();
             uiUtils.setSendingState(false);
+            this.updateAssetCount();
             uiUtils.scrollToBottom();
         }
     },
@@ -3779,6 +3823,16 @@ const appLogic = {
             revokeUrls(state.videoUrlCache, '動画');
             revokeUrls(state.imageUrlCache, 'チャット画像');
         });
+
+        // --- Asset Management ---
+        elements.assetExportBtn.addEventListener('click', () => this.handleAssetExport());
+        elements.assetImportBtn.addEventListener('click', () => elements.assetImportInput.click());
+        elements.assetImportInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) this.handleAssetImport(file);
+            event.target.value = null; // 同じファイルを選択できるようにリセット
+        });
+
     },
     
 
@@ -5303,78 +5357,85 @@ const appLogic = {
     // --- メッセージアクション ---
     // メッセージ編集開始
     async startEditMessage(index, messageElement) {
-         if (state.isSending) {
-             await uiUtils.showCustomAlert("送信中は編集できません。");
-             return;
-         }
-         if (state.editingMessageIndex !== null && state.editingMessageIndex !== index) {
-             await uiUtils.showCustomAlert("他のメッセージを編集中です。");
-             return;
-         }
-         if (state.isEditingSystemPrompt) {
-             await uiUtils.showCustomAlert("システムプロンプトを編集中です。");
-             return;
-         }
-         if (state.editingMessageIndex === index) {
-             messageElement.querySelector('.edit-textarea')?.focus();
-             return;
-         }
+        const startTime = performance.now();
+        console.log(`[PERF_DEBUG] startEditMessage 開始 (index: ${index})`);
 
-         const message = state.currentMessages[index];
-         if (!message) return;
+        if (state.isSending) {
+            await uiUtils.showCustomAlert("送信中は編集できません。");
+            return;
+        }
+        if (state.editingMessageIndex !== null && state.editingMessageIndex !== index) {
+            await uiUtils.showCustomAlert("他のメッセージを編集中です。");
+            return;
+        }
+        if (state.isEditingSystemPrompt) {
+            await uiUtils.showCustomAlert("システムプロンプトを編集中です。");
+            return;
+        }
+        if (state.editingMessageIndex === index) {
+            messageElement.querySelector('.edit-textarea')?.focus();
+            return;
+        }
 
-         const rawContent = message.content;
-         state.editingMessageIndex = index;
+        const message = state.currentMessages[index];
+        if (!message) return;
 
-         const contentDiv = messageElement.querySelector('.message-content');
-         const editArea = messageElement.querySelector('.message-edit-area');
-         const cascadeControls = messageElement.querySelector('.message-cascade-controls');
-         editArea.innerHTML = '';
+        const rawContent = message.content;
+        state.editingMessageIndex = index;
 
-         let horizontalPadding = 0;
-         try {
-             const computedStyle = window.getComputedStyle(messageElement);
-             const paddingLeft = parseFloat(computedStyle.paddingLeft) || 0;
-             const paddingRight = parseFloat(computedStyle.paddingRight) || 0;
-             horizontalPadding = paddingLeft + paddingRight;
-         } catch (e) {
-             console.error("幅の動的計算中にエラー:", e);
-         }
-         messageElement.style.width = `calc(var(--message-max-width) + ${horizontalPadding}px + 17px)`;
+        const contentDiv = messageElement.querySelector('.message-content');
+        const editArea = messageElement.querySelector('.message-edit-area');
+        const cascadeControls = messageElement.querySelector('.message-cascade-controls');
+        editArea.innerHTML = '';
 
-         const textarea = document.createElement('textarea');
-         textarea.value = rawContent;
-         textarea.classList.add('edit-textarea');
-         textarea.rows = 3;
-         textarea.oninput = () => uiUtils.adjustTextareaHeight(textarea, 400);
+        let horizontalPadding = 0;
+        try {
+            const computedStyle = window.getComputedStyle(messageElement);
+            const paddingLeft = parseFloat(computedStyle.paddingLeft) || 0;
+            const paddingRight = parseFloat(computedStyle.paddingRight) || 0;
+            horizontalPadding = paddingLeft + paddingRight;
+        } catch (e) {
+            console.error("幅の動的計算中にエラー:", e);
+        }
+        messageElement.style.width = `calc(var(--message-max-width) + ${horizontalPadding}px + 17px)`;
 
-         const actionsDiv = document.createElement('div');
-         actionsDiv.classList.add('message-edit-actions');
+        const textarea = document.createElement('textarea');
+        textarea.value = rawContent;
+        textarea.classList.add('edit-textarea');
+        textarea.rows = 3;
+        textarea.oninput = () => uiUtils.adjustTextareaHeight(textarea, 400);
 
-         const saveButton = document.createElement('button');
-         saveButton.textContent = '保存';
-         saveButton.classList.add('save-edit-btn');
-         saveButton.onclick = () => this.saveEditMessage(index, messageElement);
+        const actionsDiv = document.createElement('div');
+        actionsDiv.classList.add('message-edit-actions');
 
-         const cancelButton = document.createElement('button');
-         cancelButton.textContent = 'キャンセル';
-         cancelButton.classList.add('cancel-edit-btn');
-         cancelButton.onclick = () => this.cancelEditMessage(index, messageElement);
+        const saveButton = document.createElement('button');
+        saveButton.textContent = '保存';
+        saveButton.classList.add('save-edit-btn');
+        saveButton.onclick = () => this.saveEditMessage(index, messageElement);
 
-         actionsDiv.appendChild(saveButton);
-         actionsDiv.appendChild(cancelButton);
-         editArea.appendChild(textarea);
-         editArea.appendChild(actionsDiv);
+        const cancelButton = document.createElement('button');
+        cancelButton.textContent = 'キャンセル';
+        cancelButton.classList.add('cancel-edit-btn');
+        cancelButton.onclick = () => this.cancelEditMessage(index, messageElement);
 
-         messageElement.classList.add('editing');
-         if(contentDiv) contentDiv.classList.add('hidden');
-         if(cascadeControls) cascadeControls.classList.add('hidden');
-         editArea.classList.remove('hidden');
+        actionsDiv.appendChild(saveButton);
+        actionsDiv.appendChild(cancelButton);
+        editArea.appendChild(textarea);
+        editArea.appendChild(actionsDiv);
 
-         uiUtils.adjustTextareaHeight(textarea, 400);
-         textarea.focus();
-         textarea.select();
+        messageElement.classList.add('editing');
+        if(contentDiv) contentDiv.classList.add('hidden');
+        if(cascadeControls) cascadeControls.classList.add('hidden');
+        editArea.classList.remove('hidden');
+
+        uiUtils.adjustTextareaHeight(textarea, 400);
+        textarea.focus();
+        textarea.select();
+        const endTime = performance.now();
+        console.log(`[PERF_DEBUG] startEditMessage 完了 (所要時間: ${endTime - startTime}ms)`);
     },
+
+
 
     // メッセージ編集を保存
     async saveEditMessage(index, messageElement) {
@@ -6490,6 +6551,252 @@ const appLogic = {
         };
         reader.readAsText(file);
     },
+    updateAssetCount: async function() {
+        try {
+            const assets = await dbUtils.getAllAssets();
+            elements.assetCountDisplay.textContent = `現在 ${assets.length} 枚のアセットが保存されています。`;
+        } catch (error) {
+            console.error("アセット数の更新に失敗:", error);
+            elements.assetCountDisplay.textContent = "アセット数の取得に失敗しました。";
+        }
+    },
+
+    convertBlobToWebP: function(originalBlob) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0);
+                    canvas.toBlob((webpBlob) => {
+                        if (webpBlob) {
+                            console.log(`[WebP Converter] 変換成功: ${originalBlob.size} bytes -> ${webpBlob.size} bytes`);
+                            resolve(webpBlob);
+                        } else {
+                            console.warn("[WebP Converter] WebPへの変換に失敗。元の形式を使用します。");
+                            resolve(originalBlob);
+                        }
+                    }, 'image/webp', 0.9);
+                };
+                img.onerror = () => {
+                    console.error("[WebP Converter] 画像データの読み込み失敗。");
+                    resolve(originalBlob);
+                };
+                img.src = e.target.result;
+            };
+            reader.onerror = () => {
+                console.error("[WebP Converter] FileReader失敗。");
+                resolve(originalBlob);
+            };
+            reader.readAsDataURL(originalBlob);
+        });
+    },
+
+    handleAssetExport: async function() {
+        try {
+            const assets = await dbUtils.getAllAssets();
+            if (assets.length === 0) {
+                return uiUtils.showCustomAlert("エクスポートするアセットがありません。");
+            }
+
+            uiUtils.setLoadingIndicatorText('Zipファイルを生成中...');
+            elements.loadingIndicator.classList.remove('hidden');
+
+            const zip = new JSZip();
+            const manifest = [];
+            const usedFileNames = new Set();
+
+            // ファイル名として使えない文字を置換するヘルパー関数
+            const sanitizeFileName = (name) => {
+                return name.replace(/[\\/:*?"<>|]/g, '_');
+            };
+
+            for (const asset of assets) {
+                let baseName = sanitizeFileName(asset.name);
+                let fileName = `${baseName}.webp`;
+                let count = 1;
+                // ファイル名の重複を避ける
+                while (usedFileNames.has(fileName)) {
+                    count++;
+                    fileName = `${baseName}_${count}.webp`;
+                }
+                usedFileNames.add(fileName);
+                
+                manifest.push({ asset_name: asset.name, file_name: fileName });
+                zip.file(fileName, asset.blob);
+            }
+
+            zip.file("manifest.json", JSON.stringify(manifest, null, 2));
+
+            const content = await zip.generateAsync({ type: "blob" });
+            
+            const a = document.createElement("a");
+            const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+            a.download = `Gemini_PWA_Assets_${date}.zip`;
+            a.href = URL.createObjectURL(content);
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(a.href);
+
+        } catch (error) {
+            console.error("アセットのエクスポートに失敗:", error);
+            await uiUtils.showCustomAlert(`エクスポート中にエラーが発生しました: ${error.message}`);
+        } finally {
+            elements.loadingIndicator.classList.add('hidden');
+        }
+    },
+
+
+    handleAssetImport: async function(file) {
+        if (!file) return;
+        if (typeof JSZip === 'undefined') {
+            return uiUtils.showCustomAlert("Zip処理ライブラリが読み込まれていません。");
+        }
+
+        uiUtils.setLoadingIndicatorText('Zipファイルを展開中...');
+        elements.loadingIndicator.classList.remove('hidden');
+        console.log(`[Import] インポート処理開始: ${file.name}`);
+
+        try {
+            const zip = await JSZip.loadAsync(file);
+            const manifestFileEntry = Object.values(zip.files).find(
+                entry => !entry.dir && entry.name.endsWith('manifest.json')
+            );
+
+            const assetsToImport = [];
+            const assetNameMap = new Map();
+
+            if (manifestFileEntry) {
+                console.log(`[Import] ${manifestFileEntry.name} を発見。通常モードで処理します。`);
+                try {
+                    const manifest = JSON.parse(await manifestFileEntry.async("string"));
+                    manifest.forEach(item => assetNameMap.set(item.file_name, item.asset_name));
+                    console.log(`[Import] manifestから ${assetNameMap.size} 件のアセット定義を読み込みました。`);
+                } catch (e) {
+                    console.error("[Import] manifest.jsonのパースに失敗しました。", e);
+                    await uiUtils.showCustomAlert("manifest.jsonの形式が正しくありません。簡易モードで続行します。");
+                }
+            } else {
+                console.log("[Import] manifest.jsonが見つかりません。簡易モードで処理します。");
+            }
+
+            const imageFilePromises = [];
+            zip.forEach((relativePath, zipEntry) => {
+                if (!zipEntry.dir && /\.(webp|png|jpe?g|gif)$/i.test(relativePath)) {
+                    const baseName = relativePath.split('/').pop();
+                    const assetName = assetNameMap.get(baseName) || baseName.replace(/\.[^/.]+$/, "");
+                    console.log(`[Import] ファイルを発見: '${relativePath}' -> アセット名: '${assetName}'`);
+                    imageFilePromises.push({ name: assetName, file: zipEntry });
+                }
+            });
+
+            assetsToImport.push(...imageFilePromises);
+
+            if (assetsToImport.length === 0) {
+                return uiUtils.showCustomAlert("Zipファイル内にインポート可能な画像が見つかりませんでした。");
+            }
+            console.log(`[Import] ${assetsToImport.length}件のインポート対象画像をリストアップしました。`);
+
+            let conflictChoice = null;
+            let applyToAll = false;
+            let importedCount = 0;
+
+            for (let i = 0; i < assetsToImport.length; i++) {
+                const item = assetsToImport[i];
+                let assetName = item.name;
+                uiUtils.setLoadingIndicatorText(`アセットを処理中 (${i + 1}/${assetsToImport.length}): ${assetName}`);
+
+                const existingAsset = await dbUtils.getAsset(assetName);
+                
+                if (existingAsset) {
+                    console.log(`[Import] 競合を検出: アセット「${assetName}」は既に存在します。`);
+                    if (!applyToAll) {
+                        // 新しいカスタムダイアログを表示して結果を待つ
+                        const userDecision = await this.showAssetConflictDialog(assetName);
+                        conflictChoice = userDecision.choice;
+                        applyToAll = userDecision.applyToAll;
+                        console.log(`[Import] ユーザーの選択: ${conflictChoice}, 全てに適用: ${applyToAll}`);
+                    }
+
+                    if (conflictChoice === 'skip') {
+                        console.log(`[Import] 「${assetName}」をスキップしました。`);
+                        continue;
+                    }
+                    if (conflictChoice === 'rename') {
+                        let newName;
+                        let count = 2;
+                        do {
+                            newName = `${assetName} (${count})`;
+                            count++;
+                        } while (await dbUtils.getAsset(newName));
+                        console.log(`[Import] 「${assetName}」の名前を「${newName}」に変更しました。`);
+                        assetName = newName;
+                    }
+                }
+
+                const blob = await item.file.async("blob");
+                const webpBlob = await this.convertBlobToWebP(blob);
+                
+                await assetDB.save({ name: assetName, blob: webpBlob, createdAt: new Date() });
+                console.log(`[Import] アセット「${assetName}」をDBに保存しました。`);
+                importedCount++;
+            }
+            
+            await uiUtils.showCustomAlert(`${importedCount}件のアセットのインポート処理が完了しました。`);
+            await this.updateAssetCount();
+
+        } catch (error) {
+            console.error("アセットのインポートに失敗:", error);
+            await uiUtils.showCustomAlert(`インポート中にエラーが発生しました: ${error.message}`);
+        } finally {
+            elements.loadingIndicator.classList.add('hidden');
+        }
+    },
+
+    showAssetConflictDialog: function(assetName) {
+        return new Promise(resolve => {
+            const dialog = elements.assetConflictDialog;
+            elements.assetConflictMessage.textContent = `アセット「${assetName}」は既に存在します。どうしますか？`;
+            elements.assetConflictApplyAll.checked = false; // チェックボックスをリセット
+
+            const actionArea = dialog.querySelector('.dialog-actions-main');
+
+            const listener = (event) => {
+                const button = event.target.closest('button');
+                if (!button) return; // ボタン以外がクリックされた場合は何もしない
+
+                const choice = button.value;
+                if (choice) {
+                    dialog.close(); // ダイアログを閉じる
+                    // リスナーを削除
+                    actionArea.removeEventListener('click', listener);
+                    // 結果を返す
+                    resolve({
+                        choice: choice,
+                        applyToAll: elements.assetConflictApplyAll.checked
+                    });
+                }
+            };
+            
+            // 既存のリスナーがあれば念のため削除
+            // (dialog.close()で消えるはずだが、安全のため)
+            const oldListener = actionArea._listener;
+            if (oldListener) {
+                actionArea.removeEventListener('click', oldListener);
+            }
+
+            actionArea.addEventListener('click', listener);
+            actionArea._listener = listener; // リスナーを記憶させておく
+
+            dialog.showModal();
+        });
+    },
+
 }; // appLogic終了
 
 window.appLogic = appLogic;

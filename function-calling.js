@@ -31,53 +31,6 @@
 };
 
 /**
- * 画像Blobを受け取り、WebPに変換するヘルパー関数
- * @param {Blob} originalBlob - 変換元の画像Blob
- * @returns {Promise<Blob>} 変換後のWebP Blob、または変換に失敗した場合は元のBlob
- */
- function convertBlobToWebP(originalBlob) {
-    return new Promise((resolve, reject) => {
-        // FileReaderでBlobをData URLに変換
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const img = new Image();
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                canvas.width = img.width;
-                canvas.height = img.height;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0);
-
-                // CanvasをWebP Blobに変換 (品質0.9)
-                canvas.toBlob((webpBlob) => {
-                    if (webpBlob) {
-                        console.log(`[WebP Converter] 変換成功: ${originalBlob.size} bytes -> ${webpBlob.size} bytes`);
-                        resolve(webpBlob);
-                    } else {
-                        // 変換に失敗した場合は元のBlobをそのまま返す
-                        console.warn("[WebP Converter] WebPへの変換に失敗しました。元の形式を使用します。");
-                        resolve(originalBlob);
-                    }
-                }, 'image/webp', 0.9);
-            };
-            img.onerror = () => {
-                console.error("[WebP Converter] 画像データの読み込みに失敗しました。");
-                // エラー時も元のBlobを返すことで処理を続行させる
-                resolve(originalBlob);
-            };
-            img.src = e.target.result;
-        };
-        reader.onerror = () => {
-            console.error("[WebP Converter] FileReaderでBlobの読み込みに失敗しました。");
-            // エラー時も元のBlobを返す
-            resolve(originalBlob);
-        };
-        reader.readAsDataURL(originalBlob);
-    });
-}
-
-
-/**
  * メッセージオブジェクトから画像データをBlob形式で抽出するヘルパー
  * 添付画像(attachments)と生成画像(imageIds)の両方に対応
  * @param {object} message - 抽出元のメッセージオブジェクト
@@ -146,6 +99,9 @@
     }
 
     try {
+        let result;
+        let updateCount = false;
+
         switch (action) {
             case "save": {
                 if (typeof source_image_message_index !== 'number') {
@@ -168,16 +124,17 @@
                     return { error: `指定されたメッセージから保存可能な画像が見つかりませんでした。` };
                 }
 
-                // 取得したBlobをWebPに変換
-                const webpBlob = await convertBlobToWebP(imageBlob);
+                const webpBlob = await appLogic.convertBlobToWebP(imageBlob);
 
                 const newAsset = {
                     name: asset_name,
-                    blob: webpBlob, // 変換後のBlobを保存
+                    blob: webpBlob,
                     createdAt: new Date()
                 };
                 await assetDB.save(newAsset);
-                return { success: true, message: `画像アセット「${asset_name}」をWebP形式で保存しました。` };
+                result = { success: true, message: `画像アセット「${asset_name}」をWebP形式で保存しました。` };
+                updateCount = true;
+                break;
             }
             case "get": {
                 const asset = await assetDB.get(asset_name);
@@ -187,7 +144,7 @@
                 
                 const tempImageId = await window.appLogic.saveImageBlob(asset.blob);
 
-                return {
+                result = {
                     success: true,
                     message: `画像アセット「${asset_name}」を取得しました。`,
                     _internal_ui_action: {
@@ -195,14 +152,18 @@
                         imageIds: [tempImageId]
                     }
                 };
+                break;
             }
             case "delete": {
                 await assetDB.delete(asset_name);
-                return { success: true, message: `画像アセット「${asset_name}」を削除しました。` };
+                result = { success: true, message: `画像アセット「${asset_name}」を削除しました。` };
+                updateCount = true;
+                break;
             }
             case "list": {
                 const keys = await assetDB.list();
-                return { success: true, count: keys.length, asset_names: keys };
+                result = { success: true, count: keys.length, asset_names: keys };
+                break;
             }
             case "delete_all": {
                 const keys = await assetDB.list();
@@ -215,20 +176,25 @@
                     request.onsuccess = () => resolve();
                     request.onerror = () => reject(request.error);
                 });
-                return { success: true, message: `${count}件の画像アセットをすべて削除しました。` };
+                result = { success: true, message: `${count}件の画像アセットをすべて削除しました。` };
+                updateCount = true;
+                break;
             }
             default:
                 return { error: `無効なアクションです: ${action}` };
         }
+
+        if (updateCount && window.appLogic && typeof window.appLogic.updateAssetCount === 'function') {
+            // UIの更新はメインスレッドに任せるため、非同期で呼び出す
+            setTimeout(() => window.appLogic.updateAssetCount(), 0);
+        }
+        return result;
+
     } catch (error) {
         console.error(`[Function Calling] manage_image_assetsでエラーが発生しました:`, error);
         return { error: `内部エラーが発生しました: ${error.message}` };
     }
 }
-
-
-
-
 
 /**
  * 現在のチャットセッションに紐づく永続メモリを管理する関数

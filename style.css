@@ -1547,3 +1547,65 @@ body.dark-mode #reload-for-update-btn {
         max-width: 1600px;
     }
 }
+
+/* --- Asset Management Styles --- */
+.asset-count-display {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+    text-align: center;
+}
+
+.asset-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.asset-actions button {
+    font-size: 0.8rem;
+    padding: 10px 12px;
+    justify-content: center;
+    background-color: var(--bg-button-action);
+    color: var(--text-light);
+}
+.asset-actions button:hover {
+    background-color: var(--bg-button-action-hover);
+}
+body.dark-mode .asset-actions button {
+    color: var(--text-primary);
+}
+
+/* --- Asset Conflict Dialog Styles --- */
+#assetConflictDialog .dialog-title {
+    font-size: 1.1rem;
+    font-weight: 500;
+    margin-bottom: 12px;
+    color: var(--text-primary);
+}
+#assetConflictDialog .dialog-actions-main {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 20px;
+}
+#assetConflictDialog .dialog-actions-main .dialog-button {
+    flex-grow: 1;
+    padding: 10px;
+    font-size: 0.8rem;
+    background-color: var(--bg-button-action);
+}
+body.dark-mode #assetConflictDialog .dialog-actions-main .dialog-button {
+    color: var(--text-primary);
+}
+#assetConflictDialog .dialog-actions-sub {
+    margin-top: 15px;
+    border-top: 1px solid var(--border-primary);
+    padding-top: 15px;
+}
+#assetConflictDialog .checkbox-label {
+    justify-content: center;
+    font-size: 0.8rem;
+    margin-bottom: 0;
+}
