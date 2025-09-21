@@ -409,7 +409,6 @@ body.dark-mode #chat-overlay {
     padding: var(--spacing-unit) calc(var(--spacing-unit) * 1.5);
     border-radius: var(--border-radius-lg);
     max-width: var(--message-max-width, 85%);
-    min-width: 220px;
     position: relative;
     word-wrap: break-word;
     color: var(--text-primary);
