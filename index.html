@@ -173,11 +173,16 @@
                         <label for="memory-auto-save-interval">自動学習の間隔:</label>
                         <select id="memory-auto-save-interval">
                             <option value="5">5メッセージごと (デバッグ用)</option>
+                            <option value="10">10メッセージごと</option>
+                            <option value="20">20メッセージごと</option>
                             <option value="30">30メッセージごと</option>
+                            <option value="40">40メッセージごと</option>
                             <option value="50">50メッセージごと</option>
-                            <option value="100">100メッセージごと</option>
                             <option value="0">自動学習OFF</option>
                         </select>
+                        <p style="font-size: 11px; color: var(--text-secondary); margin-top: 8px;">
+                            ※ユーザーのメッセージ送信を1回としてカウントします。
+                        </p>
                         <button id="manage-memory-btn" class="settings-action-button" style="margin-top: 16px;">記憶を管理する</button>
                     </div>
                 </div>
