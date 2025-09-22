@@ -5878,7 +5878,6 @@ const appLogic = {
                 originalResponses.push(firstModelResponse);
             }
             
-            // 先にDOMから要素を削除
             const messagesToRemove = state.currentMessages.slice(index + 1);
             messagesToRemove.forEach((msg, i) => {
                 const elementToRemove = elements.messageContainer.querySelector(`.message[data-index="${index + 1 + i}"]`);
@@ -5886,15 +5885,15 @@ const appLogic = {
                     elementToRemove.remove();
                 }
             });
-            // その後stateを更新
             state.currentMessages.splice(index + 1);
+
+            let modelMessage; // ★★★★★ tryブロックの外で変数を宣言 ★★★★★
 
             try {
                 const baseHistory = state.currentMessages.filter(msg => !msg.isCascaded || msg.isSelected);
                 const historyForApi = this._prepareApiHistory(baseHistory);
 
-                // プレースホルダーをstateとUIに「追加」
-                const modelMessage = { role: 'model', content: '', timestamp: Date.now() };
+                modelMessage = { role: 'model', content: '', timestamp: Date.now() }; // ★★★★★ ここで代入 ★★★★★
                 state.currentMessages.push(modelMessage);
                 const modelMessageIndex = state.currentMessages.length - 1;
                 uiUtils.appendMessage(modelMessage.role, modelMessage.content, modelMessageIndex, true);
@@ -5930,17 +5929,15 @@ const appLogic = {
                 newAggregatedMessage.isSelected = true;
                 newAggregatedMessage.siblingGroupId = siblingGroupId;
 
-
-                // プレースホルダーを削除し、元の応答と新しい応答をstateに追加
                 state.currentMessages.splice(modelMessageIndex, 1, ...originalResponses, newAggregatedMessage);
-                // 最終結果を全再描画
                 uiUtils.renderChatMessages(() => uiUtils.scrollToBottom());
                 await dbUtils.saveChat();
 
             } catch(error) {
                 console.error("--- retryFromMessage: 最終catchブロックでエラー捕捉 ---", error);
                 const errorMessage = (error.name !== 'AbortError') ? (error.message || "不明なエラーが発生しました。") : "リクエストがキャンセルされました。";
-                // プレースホルダーをエラーメッセージに置き換える
+                
+                // ★★★★★ catchブロックからmodelMessageに安全にアクセスできる ★★★★★
                 const errorIndex = state.currentMessages.findIndex(m => m.timestamp === modelMessage.timestamp);
                 if (errorIndex !== -1) {
                     state.currentMessages[errorIndex] = { role: 'error', content: errorMessage, timestamp: Date.now() };
@@ -5958,6 +5955,7 @@ const appLogic = {
             }
         }
     },
+
 
     // --- カスケード応答操作 ---
     getCascadedSiblings(index, includeSelf = false) {
@@ -7026,23 +7024,19 @@ const appLogic = {
             return `${msg.role === 'user' ? 'ユーザー' : 'アシスタント'}: ${msg.content}`;
         }).join('\n');
 
-        const summarizationPrompt = `あなたは、対話システムの利用者の傾向を分析する専門家です。
-以下の会話履歴を分析し、**この対話システムの操作者（以下、ユーザー）**自身の好み、性格、指示の傾向、重要な設定などを抽出してください。
+        const summarizationPrompt = `以下の会話履歴から、**操作者であるユーザー**の好み、設定、重要な事実に関する情報を抽出し、箇条書きで簡潔にまとめてください。
 
-[重要事項]
-- **主人公 ≠ ユーザー**: 会話が小説やゲームのようなロールプレイ形式であっても、物語の登場人物（主人公）の設定ではなく、あくまで操作者である**ユーザー**の好みを抽出してください。
-- **客観的な事実のみ**: 抽出する記憶は、第三者が読んでも理解できる客観的な事実として記述してください。
-- **箇条書きで要約**: 3〜5個の最も重要だと思われる項目を、簡潔な箇条書きで要約してください。
-
----
-[会話履歴]
-${conversationText}
----
-
-[分析結果の出力例]
-- ユーザーは、キャラクターに厳しい口調で話すよう指示する傾向がある。
-- ユーザーは、ファンタジー世界における魔法の設定に強い関心を持っている。
-- ユーザーは、物語の展開として、悲劇的な結末を好む傾向が見られる。`;
+        [重要事項]
+        - **事実の抽出**: 会話の内容から、ユーザーに関する具体的な情報（例: 好きな食べ物、ペットの名前、性格など）だけを抜き出してください。「ユーザーは〇〇する傾向がある」といった行動分析は不要です。
+        - **主人公との区別**: 会話がロールプレイ形式の場合、物語の登場人物ではなく、操作者であるユーザー自身の好みや設定を抽出してください。
+        - **簡潔な記述**: 各項目は「ユーザーは〇〇が好き」「ユーザーの猫の名前はタマ」のように、客観的な事実として記述してください。
+        
+        ---
+        [会話履歴]
+        ${conversationText}
+        ---
+        
+        [抽出結果]`;
 
         const modelForMemory = "gemini-2.5-flash";
         const endpoint = `${GEMINI_API_BASE_URL}${modelForMemory}:generateContent?key=${state.settings.apiKey}`;
