@@ -113,8 +113,6 @@ const elements = {
     maxTokensInput: document.getElementById('max-tokens'),
     topKInput: document.getElementById('top-k'),
     topPInput: document.getElementById('top-p'),
-    presencePenaltyInput: document.getElementById('presence-penalty'),
-    frequencyPenaltyInput: document.getElementById('frequency-penalty'),
     thinkingBudgetInput: document.getElementById('thinking-budget'),
     includeThoughtsToggle: document.getElementById('include-thoughts-toggle'),
     thoughtTranslationOptionsDiv: document.getElementById('thought-translation-options'),
@@ -232,7 +230,9 @@ const elements = {
     memoryListContainer: document.getElementById('memory-list-container'),
     newMemoryInput: document.getElementById('new-memory-input'),
     addMemoryBtn: document.getElementById('add-memory-btn'),
-    closeMemoryDialogBtn: document.getElementById('close-memory-dialog-btn')
+    closeMemoryDialogBtn: document.getElementById('close-memory-dialog-btn'),
+    headerAutoHideToggle: document.getElementById('header-auto-hide-toggle'),
+    headerTriggerArea: document.getElementById('header-trigger-area')
 };
 
 // --- アプリ状態 ---
@@ -256,8 +256,6 @@ const state = {
         maxTokens: null,
         topK: null,
         topP: null,
-        presencePenalty: null,
-        frequencyPenalty: null,
         thinkingBudget: null,
         includeThoughts: false,
         enableThoughtTranslation: true, // 思考プロセスの翻訳を有効にするか
@@ -295,7 +293,8 @@ const state = {
         autoScroll: true,
         enableWideMode: false,
         enableMemory: false,
-        memoryAutoSaveInterval: 30
+        memoryAutoSaveInterval: 30,
+        headerAutoHide: false
     },
     backgroundImageUrl: null,
     isSending: false,
@@ -405,6 +404,12 @@ function registerServiceWorker() {
         if (!notification || !reloadButton) return;
 
         reloadButton.onclick = () => {
+            // 更新を実行する前に、現在のタブが持つDB接続を明示的に閉じる
+            if (state.db) {
+                state.db.close();
+                state.db = null; // stateからも参照を削除
+                console.log("Service Worker更新のため、現在のDB接続を閉じました。");
+            }
             worker.postMessage({ action: 'skipWaiting' });
         };
         notification.classList.remove('hidden');
@@ -481,6 +486,17 @@ const dbUtils = {
                 return;
             }
             const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+            request.onblocked = (event) => {
+                console.warn("IndexedDBのバージョンアップがブロックされました。古い接続が残っています。", event);
+                // ユーザーに具体的な対処法を案内する
+                uiUtils.showCustomAlert(
+                    "アプリの更新が他のチャットセッションのタブによってブロックされています。\n\n" +
+                    "このアプリを開いている他のタブを閉じてから、" +
+                    "このタブを再読み込み（リロード）してください。"
+                );
+                // ここではrejectしないことで、ユーザーが対処する時間を与える
+            };
 
             request.onerror = (event) => {
                 console.error("IndexedDBエラー:", event.target.error);
@@ -1752,8 +1768,6 @@ const uiUtils = {
         elements.maxTokensInput.value = state.settings.maxTokens === null ? '' : state.settings.maxTokens;
         elements.topKInput.value = state.settings.topK === null ? '' : state.settings.topK;
         elements.topPInput.value = state.settings.topP === null ? '' : state.settings.topP;
-        elements.presencePenaltyInput.value = state.settings.presencePenalty === null ? '' : state.settings.presencePenalty;
-        elements.frequencyPenaltyInput.value = state.settings.frequencyPenalty === null ? '' : state.settings.frequencyPenalty;
         elements.thinkingBudgetInput.value = state.settings.thinkingBudget === null ? '' : state.settings.thinkingBudget;
         elements.includeThoughtsToggle.checked = state.settings.includeThoughts;
         elements.enableThoughtTranslationCheckbox.checked = state.settings.enableThoughtTranslation;
@@ -1798,11 +1812,13 @@ const uiUtils = {
         elements.forceFunctionCallingToggle.checked = state.settings.forceFunctionCalling;
         elements.autoScrollToggle.checked = state.settings.autoScroll;
         elements.enableWideModeToggle.checked = state.settings.enableWideMode; 
-
-        // メモリ機能のUIを更新
         elements.enableMemoryToggle.checked = state.settings.enableMemory;
         elements.memoryAutoSaveIntervalSelect.value = state.settings.memoryAutoSaveInterval;
         appLogic.toggleMemoryOptions(state.settings.enableMemory);
+        
+        // ヘッダー自動非表示機能のUIを更新
+        elements.headerAutoHideToggle.checked = state.settings.headerAutoHide;
+        document.body.classList.toggle('header-auto-hide', state.settings.headerAutoHide);
 
         const defaultHeaderColor = state.settings.darkMode ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
         elements.headerColorInput.value = state.settings.headerColor || defaultHeaderColor;
@@ -1818,6 +1834,7 @@ const uiUtils = {
         this.applyBackgroundImage();
         appLogic.applyWideMode();
     },
+
 
 
     // ユーザー指定モデルをコンボボックスに反映
@@ -2426,8 +2443,6 @@ const apiUtils = {
         state.abortController = new AbortController();
         const { signal } = state.abortController;
 
-        const useStreaming = state.settings.streamingOutput;
-        const usePseudo = state.settings.pseudoStreaming;
         const model = state.settings.modelName || DEFAULT_MODEL;
         const apiKey = state.settings.apiKey;
 
@@ -2439,8 +2454,6 @@ const apiUtils = {
         const endpoint = `${GEMINI_API_BASE_URL}${model}:${endpointMethod}key=${apiKey}`;
         
         const finalGenerationConfig = { ...generationConfig };
-        if (state.settings.presencePenalty !== null) finalGenerationConfig.presencePenalty = state.settings.presencePenalty;
-        if (state.settings.frequencyPenalty !== null) finalGenerationConfig.frequencyPenalty = state.settings.frequencyPenalty;
         
         if (isImageGenModel) {
             finalGenerationConfig.responseModalities = ['IMAGE', 'TEXT'];
@@ -2450,8 +2463,6 @@ const apiUtils = {
             delete finalGenerationConfig.topK;
             delete finalGenerationConfig.topP;
             delete finalGenerationConfig.temperature;
-            delete finalGenerationConfig.presencePenalty;
-            delete finalGenerationConfig.frequencyPenalty;
 
         } else {
             if (state.settings.thinkingBudget !== null || state.settings.includeThoughts) {
@@ -2550,6 +2561,7 @@ const apiUtils = {
             }
         }
     },
+
 
     /**
      * テキストを日本語に翻訳する関数
@@ -3036,7 +3048,7 @@ const appLogic = {
     getCurrentUiSettings() {
         const settings = {};
         const stringKeys = ['apiKey', 'modelName', 'systemPrompt', 'dummyUser', 'dummyModel', 'additionalModels', 'historySortOrder', 'fontFamily', 'proofreadingModelName', 'proofreadingSystemInstruction', 'googleSearchApiKey', 'googleSearchEngineId', 'headerColor', 'thoughtTranslationModel'];
-        const numberKeys = ['temperature', 'maxTokens', 'topK', 'topP', 'presencePenalty', 'frequencyPenalty', 'thinkingBudget', 'maxRetries', 'fixedRetryDelaySeconds', 'maxBackoffDelaySeconds', 'overlayOpacity', 'messageOpacity'];
+        const numberKeys = ['temperature', 'maxTokens', 'topK', 'topP', 'thinkingBudget', 'maxRetries', 'fixedRetryDelaySeconds', 'maxBackoffDelaySeconds', 'overlayOpacity', 'messageOpacity'];
         const booleanKeys = ['enterToSend', 'darkMode', 'hideSystemPromptInChat', 'geminiEnableGrounding', 'geminiEnableFunctionCalling', 'enableSwipeNavigation', 'enableProofreading', 'enableAutoRetry', 'useFixedRetryDelay', 'concatDummyModel', 'includeThoughts', 'enableThoughtTranslation', 'applyDummyToProofread', 'applyDummyToTranslate', 'allowPromptUiChanges', 'forceFunctionCalling', 'autoScroll', 'enableWideMode'];
         
         stringKeys.forEach(key => {
@@ -3515,7 +3527,7 @@ const appLogic = {
         });
     
         // --- 設定項目（即時保存） ---
-        const setupInstantSave = (element, key, eventType = 'change') => {
+        const setupInstantSave = (element, key, eventType = 'change', onUpdate = null) => { // onUpdateコールバックを追加
             if (element) {
                 element.addEventListener(eventType, async () => {
                     if (!state.activeProfile) return;
@@ -3528,9 +3540,9 @@ const appLogic = {
                             value = parseFloat(element.value) / 100;
                             break;
                         case 'number':
-                        case 'select-one': // select要素も考慮
+                        case 'select-one':
                             value = parseFloat(element.value);
-                            if (isNaN(value)) value = element.value; // 数値でなければ元の文字列
+                            if (isNaN(value)) value = element.value;
                             break;
                         default:
                             value = element.value;
@@ -3542,37 +3554,25 @@ const appLogic = {
                     
                     await dbUtils.updateProfile(state.activeProfile);
                     
-                    // UI更新が必要な特定のキー
-                    const uiUpdateMap = {
-                        darkMode: () => uiUtils.applyDarkMode(),
-                        fontFamily: () => uiUtils.applyFontFamily(),
-                        hideSystemPromptInChat: () => uiUtils.toggleSystemPromptVisibility(),
-                        overlayOpacity: () => uiUtils.applyOverlayOpacity(),
-                        headerColor: () => uiUtils.applyHeaderColor(),
-                        messageOpacity: () => document.documentElement.style.setProperty('--message-bubble-opacity', String(value)),
-                        modelName: () => uiUtils.updateModelWarningMessage(),
-                        enableWideMode: () => this.applyWideMode(),
-                        enableMemory: () => this.toggleMemoryOptions(value) // メモリ機能のUI連動
-                    };
-                    if (uiUpdateMap[key]) {
-                        uiUpdateMap[key]();
+                    // 汎用的なUI更新コールバックを実行
+                    if (onUpdate) {
+                        onUpdate(value);
                     }
                 });
             } else {
                 console.warn(`❌ [Debug Settings] '${key}' に対応するDOM要素が見つかりません。`);
             }
         };
+
         
         const settingsMap = {
             apiKey: { element: elements.apiKeyInput, event: 'input' },
-            modelName: { element: elements.modelNameSelect, event: 'change' },
+            modelName: { element: elements.modelNameSelect, event: 'change', onUpdate: () => uiUtils.updateModelWarningMessage() },
             systemPrompt: { element: elements.systemPromptDefaultTextarea, event: 'input' },
             temperature: { element: elements.temperatureInput, event: 'input' },
             maxTokens: { element: elements.maxTokensInput, event: 'input' },
             topK: { element: elements.topKInput, event: 'input' },
             topP: { element: elements.topPInput, event: 'input' },
-            presencePenalty: { element: elements.presencePenaltyInput, event: 'input' },
-            frequencyPenalty: { element: elements.frequencyPenaltyInput, event: 'input' },
             thinkingBudget: { element: elements.thinkingBudgetInput, event: 'input' },
             includeThoughts: { element: elements.includeThoughtsToggle, event: 'change' },
             enableThoughtTranslation: { element: elements.enableThoughtTranslationCheckbox, event: 'change' },
@@ -3585,9 +3585,9 @@ const appLogic = {
             additionalModels: { element: elements.additionalModelsTextarea, event: 'input' },
             enterToSend: { element: elements.enterToSendCheckbox, event: 'change' },
             historySortOrder: { element: elements.historySortOrderSelect, event: 'change' },
-            darkMode: { element: elements.darkModeToggle, event: 'change' },
-            fontFamily: { element: elements.fontFamilyInput, event: 'input' },
-            hideSystemPromptInChat: { element: elements.hideSystemPromptToggle, event: 'change' },
+            darkMode: { element: elements.darkModeToggle, event: 'change', onUpdate: () => uiUtils.applyDarkMode() },
+            fontFamily: { element: elements.fontFamilyInput, event: 'input', onUpdate: () => uiUtils.applyFontFamily() },
+            hideSystemPromptInChat: { element: elements.hideSystemPromptToggle, event: 'change', onUpdate: () => uiUtils.toggleSystemPromptVisibility() },
             geminiEnableGrounding: { element: elements.geminiEnableGroundingToggle, event: 'change' },
             geminiEnableFunctionCalling: { element: elements.geminiEnableFunctionCallingToggle, event: 'change' },
             enableSwipeNavigation: { element: elements.swipeNavigationToggle, event: 'change' },
@@ -3601,17 +3601,23 @@ const appLogic = {
             maxBackoffDelaySeconds: { element: elements.maxBackoffDelayInput, event: 'input' },
             googleSearchApiKey: { element: elements.googleSearchApiKeyInput, event: 'input' },
             googleSearchEngineId: { element: elements.googleSearchEngineIdInput, event: 'input' },
-            overlayOpacity: { element: elements.overlayOpacitySlider, event: 'input' },
-            messageOpacity: { element: elements.messageOpacitySlider, event: 'input' },
-            headerColor: { element: elements.headerColorInput, event: 'input' },
+            overlayOpacity: { element: elements.overlayOpacitySlider, event: 'input', onUpdate: () => uiUtils.applyOverlayOpacity() },
+            messageOpacity: { element: elements.messageOpacitySlider, event: 'input', onUpdate: (value) => document.documentElement.style.setProperty('--message-bubble-opacity', String(value)) },
+            headerColor: { element: elements.headerColorInput, event: 'input', onUpdate: () => uiUtils.applyHeaderColor() },
             allowPromptUiChanges: { element: document.getElementById('allow-prompt-ui-changes'), event: 'change' },
             forceFunctionCalling: { element: elements.forceFunctionCallingToggle, event: 'change' },
             autoScroll: { element: elements.autoScrollToggle, event: 'change' },
-            enableWideMode: { element: elements.enableWideModeToggle, event: 'change' },
-            // メモリ機能のイベントリスナーを追加
-            enableMemory: { element: elements.enableMemoryToggle, event: 'change' },
-            memoryAutoSaveInterval: { element: elements.memoryAutoSaveIntervalSelect, event: 'change' }
+            enableWideMode: { element: elements.enableWideModeToggle, event: 'change', onUpdate: () => this.applyWideMode() },
+            enableMemory: { element: elements.enableMemoryToggle, event: 'change', onUpdate: (value) => this.toggleMemoryOptions(value) },
+            memoryAutoSaveInterval: { element: elements.memoryAutoSaveIntervalSelect, event: 'change' },
+            headerAutoHide: { element: elements.headerAutoHideToggle, event: 'change', onUpdate: (value) => document.body.classList.toggle('header-auto-hide', value) }
         };
+    
+        for (const key in settingsMap) {
+            const { element, event, onUpdate } = settingsMap[key];
+            setupInstantSave(element, key, event, onUpdate);
+        }
+
     
         for (const key in settingsMap) {
             const { element, event } = settingsMap[key];
@@ -3623,6 +3629,14 @@ const appLogic = {
         elements.manageMemoryBtn.addEventListener('click', () => this.openMemoryManagementDialog());
         elements.closeMemoryDialogBtn.addEventListener('click', () => elements.memoryManagementDialog.close());
         elements.addMemoryBtn.addEventListener('click', () => this.addMemoryItem());
+
+        // スライダーの数値表示をリアルタイムで更新するリスナー
+        elements.overlayOpacitySlider.addEventListener('input', (event) => {
+            elements.overlayOpacityValue.textContent = `${event.target.value}%`;
+        });
+        elements.messageOpacitySlider.addEventListener('input', (event) => {
+            elements.messageOpacityValue.textContent = `${event.target.value}%`;
+        });
 
         // --- その他 ---
         elements.importHistoryBtn.addEventListener('click', () => elements.importHistoryInput.click());
@@ -3888,6 +3902,54 @@ const appLogic = {
             if (file) this.handleAssetImport(file);
             event.target.value = null;
         });
+
+        // --- Header Auto-Hide Event Listeners ---
+        let headerHideTimer = null;
+
+        const showHeader = () => {
+            if (state.settings.headerAutoHide) {
+                clearTimeout(headerHideTimer);
+                document.body.classList.add('header-force-show');
+            }
+        };
+
+        const hideHeader = () => {
+            if (state.settings.headerAutoHide) {
+                headerHideTimer = setTimeout(() => {
+                    document.body.classList.remove('header-force-show');
+                }, 200); // 200msの遅延を持たせる
+            }
+        };
+
+        // PC向け: マウスの出入りで制御
+        if (window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+            elements.headerTriggerArea.addEventListener('mouseenter', showHeader);
+            elements.appHeader.addEventListener('mouseenter', showHeader);
+            
+            elements.headerTriggerArea.addEventListener('mouseleave', hideHeader);
+            elements.appHeader.addEventListener('mouseleave', hideHeader);
+        }
+
+        // スマホ向け: タップでトグル制御
+        elements.messageContainer.addEventListener('click', (event) => {
+            if (state.settings.headerAutoHide && !window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+                const interactiveElements = 'A, BUTTON, INPUT, TEXTAREA, SELECT, DETAILS, SUMMARY, IMG, PRE, CODE';
+                if (!event.target.closest(interactiveElements)) {
+                    document.body.classList.toggle('header-force-show');
+                }
+            }
+        });
+
+        // 画面遷移時に表示状態をリセット
+        const resetHeaderVisibility = () => {
+            document.body.classList.remove('header-force-show');
+        };
+        elements.gotoHistoryBtn.addEventListener('click', resetHeaderVisibility);
+        elements.gotoSettingsBtn.addEventListener('click', resetHeaderVisibility);
+        elements.backToChatFromHistoryBtn.addEventListener('click', resetHeaderVisibility);
+        elements.backToChatFromSettingsBtn.addEventListener('click', resetHeaderVisibility);
+
+
     },
 
     
@@ -5296,8 +5358,6 @@ const appLogic = {
                     maxTokens: null,
                     topK: null,
                     topP: null,
-                    presencePenalty: null,
-                    frequencyPenalty: null,
                     thinkingBudget: null,
                     dummyUser: '',
                     dummyModel: '',

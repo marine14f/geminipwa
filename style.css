@@ -1670,3 +1670,38 @@ body.dark-mode #assetConflictDialog .dialog-actions-main .dialog-button {
 #memory-toggle-btn .material-symbols-outlined {
     font-size: 22px; /* メモリボタンのアイコンサイズを小さくする */
 }
+
+/* --- Header Auto-Hide Feature --- */
+
+/* 機能が有効な時の基本設定 */
+body.header-auto-hide #chat-screen .app-header {
+    transform: translateY(-100%);
+    transition: transform 0.3s ease-in-out;
+    position: absolute;
+    width: 100%;
+    max-width: inherit;
+    z-index: 12;
+}
+
+body.header-auto-hide #chat-screen .main-content {
+    height: 100%;
+}
+
+/* PC向け: 画面上部の透明なトリガーエリア */
+@media (hover: hover) and (pointer: fine) {
+    body.header-auto-hide #header-trigger-area {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 40px;
+        z-index: 11;
+        /* background: rgba(255,0,0,0.2); */ /* デバッグ用 */
+    }
+}
+
+/* JSによってこのクラスが付与されたときにヘッダーを表示 */
+body.header-auto-hide.header-force-show #chat-screen .app-header {
+    transform: translateY(0);
+}
+
