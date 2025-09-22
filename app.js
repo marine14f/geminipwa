@@ -3906,39 +3906,57 @@ const appLogic = {
         // --- Header Auto-Hide Event Listeners ---
         let headerHideTimer = null;
 
-        const showHeader = () => {
-            if (state.settings.headerAutoHide) {
-                clearTimeout(headerHideTimer);
-                document.body.classList.add('header-force-show');
-            }
-        };
-
-        const hideHeader = () => {
-            if (state.settings.headerAutoHide) {
-                headerHideTimer = setTimeout(() => {
-                    document.body.classList.remove('header-force-show');
-                }, 200); // 200msの遅延を持たせる
-            }
-        };
-
-        // PC向け: マウスの出入りで制御
+        // --- PC (Mouse Hover) Logic ---
         if (window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
-            elements.headerTriggerArea.addEventListener('mouseenter', showHeader);
-            elements.appHeader.addEventListener('mouseenter', showHeader);
-            
-            elements.headerTriggerArea.addEventListener('mouseleave', hideHeader);
-            elements.appHeader.addEventListener('mouseleave', hideHeader);
+            const showHeaderPC = () => {
+                if (state.settings.headerAutoHide) {
+                    clearTimeout(headerHideTimer);
+                    document.body.classList.add('header-force-show');
+                }
+            };
+            const hideHeaderPC = () => {
+                if (state.settings.headerAutoHide) {
+                    headerHideTimer = setTimeout(() => {
+                        document.body.classList.remove('header-force-show');
+                    }, 200);
+                }
+            };
+            elements.headerTriggerArea.addEventListener('mouseenter', showHeaderPC);
+            elements.appHeader.addEventListener('mouseenter', showHeaderPC);
+            elements.headerTriggerArea.addEventListener('mouseleave', hideHeaderPC);
+            elements.appHeader.addEventListener('mouseleave', hideHeaderPC);
         }
 
-        // スマホ向け: タップでトグル制御
-        elements.messageContainer.addEventListener('click', (event) => {
-            if (state.settings.headerAutoHide && !window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
-                const interactiveElements = 'A, BUTTON, INPUT, TEXTAREA, SELECT, DETAILS, SUMMARY, IMG, PRE, CODE';
-                if (!event.target.closest(interactiveElements)) {
-                    document.body.classList.toggle('header-force-show');
+        // --- Smartphone (Touch) Logic ---
+        if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+            // メッセージエリアのタップで表示をトグル ＆ 5秒タイマーを開始
+            elements.messageContainer.addEventListener('click', (event) => {
+                if (state.settings.headerAutoHide) {
+                    const interactiveElements = 'A, BUTTON, INPUT, TEXTAREA, SELECT, DETAILS, SUMMARY, IMG, PRE, CODE';
+                    if (!event.target.closest(interactiveElements)) {
+                        clearTimeout(headerHideTimer);
+                        const body = document.body;
+                        const isVisible = body.classList.contains('header-force-show');
+
+                        if (isVisible) {
+                            body.classList.remove('header-force-show');
+                        } else {
+                            body.classList.add('header-force-show');
+                            headerHideTimer = setTimeout(() => {
+                                body.classList.remove('header-force-show');
+                            }, 5000); // 5秒後に自動で隠す
+                        }
+                    }
                 }
-            }
-        });
+            });
+
+            // ヘッダーに触れている間は、自動で隠れるタイマーをキャンセルする
+            elements.appHeader.addEventListener('touchstart', () => {
+                if (state.settings.headerAutoHide) {
+                    clearTimeout(headerHideTimer);
+                }
+            }, { passive: true }); // スクロール性能を阻害しないようにする
+        }
 
         // 画面遷移時に表示状態をリセット
         const resetHeaderVisibility = () => {
@@ -3948,8 +3966,6 @@ const appLogic = {
         elements.gotoSettingsBtn.addEventListener('click', resetHeaderVisibility);
         elements.backToChatFromHistoryBtn.addEventListener('click', resetHeaderVisibility);
         elements.backToChatFromSettingsBtn.addEventListener('click', resetHeaderVisibility);
-
-
     },
 
     
