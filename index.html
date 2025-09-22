@@ -26,8 +26,8 @@
             <div id="chat-overlay"></div> 
             <header class="app-header">
                 <button id="goto-history-btn" class="header-button" title="履歴一覧へ"><span class="material-symbols-outlined">menu</span></button>
-                <h1 id="chat-title">新規チャット</h1>   
                 <button id="memory-toggle-btn" class="header-button hidden" title="このチャットの長期記憶を切り替え"><span class="material-symbols-outlined">auto_stories</span></button>             
+                <h1 id="chat-title">新規チャット</h1>                
                 <button id="new-chat-btn" class="new-chat-button" title="新規チャットを開始"><span class="material-symbols-outlined">add</span></button>
                 <button id="goto-settings-btn" class="header-button" title="設定へ"><span class="material-symbols-outlined">settings</span></button>
             </header>
@@ -159,7 +159,28 @@
                         ※新機能の詳細は<a href="https://github.com/kinkan04/Gemini-PWA-Mk-II" target="_blank" rel="noopener noreferrer">リポジトリ</a>を参照。
                     </p>
                 </div>
-                
+                <div class="settings-group" id="memory-settings-container">
+                    <h3>メモリ機能</h3>
+                    <p style="font-size: 11px; color: var(--text-secondary); margin-top: -10px; margin-bottom: 15px;">
+                        チャットを横断してユーザーの好みや指示を記憶し、応答に反映させます。記憶はプロファイルごとに独立して保存されます。
+                    </p>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="enable-memory-toggle">
+                        メモリ機能を有効にする
+                    </label>
+                    <div id="memory-options-container" class="hidden">
+                        <label for="memory-auto-save-interval">自動学習の間隔:</label>
+                        <select id="memory-auto-save-interval">
+                            <option value="5">5メッセージごと (デバッグ用)</option>
+                            <option value="30">30メッセージごと</option>
+                            <option value="50">50メッセージごと</option>
+                            <option value="100">100メッセージごと</option>
+                            <option value="0">自動学習OFF</option>
+                        </select>
+                        <button id="manage-memory-btn" class="settings-action-button" style="margin-top: 16px;">記憶を管理する</button>
+                    </div>
+                </div>
+
                 <div class="settings-group">
                     <h3>基本設定</h3>
                     <label for="api-key">Gemini APIキー:</label>
@@ -590,6 +611,23 @@
                 </label>
             </div>
         </dialog>
+        <!-- Memory Management Dialog -->
+        <dialog id="memoryManagementDialog" class="custom-dialog">
+            <h3 class="dialog-title">記憶の管理</h3>
+            <div class="dialog-content">
+                <div id="memory-list-container" class="memory-list-container">
+                    <!-- 記憶項目がここに表示されます -->
+                </div>
+                <div class="memory-add-form">
+                    <textarea id="new-memory-input" placeholder="新しい記憶を追加..."></textarea>
+                    <button id="add-memory-btn">追加</button>
+                </div>
+            </div>
+            <div class="dialog-actions">
+                <button id="close-memory-dialog-btn" value="close">閉じる</button>
+            </div>
+        </dialog>
+
     
         <!-- App Update Notification -->
         <div id="update-notification" class="update-notification hidden">

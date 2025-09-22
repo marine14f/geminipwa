@@ -240,23 +240,28 @@ body:not(.dark-mode) .app-container {
     top: 0;
     z-index: 10;
     transition: background-color var(--transition-duration) var(--transition-timing);
-    gap: var(--spacing-unit);
+    gap: 8px; /* 要素間のスペースを再設定 */
     box-shadow: var(--shadow-2);
 }
+
 .app-header h1 {
-    font-size: 1.25rem;
-    font-weight: 700;
+    font-size: 1.1rem;
+    font-weight: 500;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
     margin: 0;
     margin-right: auto;
+    /* ボタンの高さに合わせるための行の高さを指定 */
+    line-height: 40px; /* header-buttonのpadding(8*2) + icon-size(24) = 40px */
 }
+
+
+
 .header-button {
     background: none;
     border: none;
     color: var(--text-light);
-    font-size: 24px;
     padding: var(--spacing-unit);
     line-height: 1;
     min-width: auto;
@@ -264,6 +269,7 @@ body:not(.dark-mode) .app-container {
     border-radius: 50%;
     box-shadow: none;
 }
+
 .header-button:hover {
     background-color: rgba(255, 255, 255, 0.1);
 }
@@ -1561,3 +1567,106 @@ body.dark-mode #assetConflictDialog .dialog-actions-main .dialog-button {
     margin-bottom: 0;
 }
 
+/* --- Memory Settings --- */
+.settings-group-subsection {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-primary);
+}
+
+#memory-options-container {
+    margin-top: 16px;
+    padding-left: 0; /* 左のパディングを削除してインデントをなくす */
+}
+
+
+/* --- Memory Management Dialog --- */
+#memoryManagementDialog {
+    width: 90%;
+    max-width: 600px;
+}
+
+.dialog-title {
+    font-size: 1.2rem;
+    font-weight: 500;
+    margin-bottom: 16px;
+    color: var(--text-primary);
+}
+
+.memory-list-container {
+    max-height: 40vh;
+    overflow-y: auto;
+    border: 1px solid var(--border-primary);
+    border-radius: var(--border-radius-sm);
+    margin-bottom: 16px;
+    padding: 8px;
+    background-color: var(--bg-secondary);
+}
+
+.memory-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px;
+    border-radius: var(--border-radius-sm);
+    background-color: var(--bg-primary);
+    margin-bottom: 8px;
+}
+
+.memory-item-text {
+    flex-grow: 1;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.memory-item-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.memory-item-actions button {
+    padding: 4px;
+    min-width: auto;
+    box-shadow: none;
+}
+.memory-item-actions button .material-symbols-outlined {
+    font-size: 16px;
+}
+
+.memory-add-form {
+    display: flex;
+    gap: 8px;
+}
+
+.memory-add-form textarea {
+    flex-grow: 1;
+    min-height: 60px;
+    height: 60px;
+    margin-bottom: 0;
+}
+
+.memory-add-form button {
+    flex-shrink: 0;
+    align-self: flex-end;
+}
+
+#memory-toggle-btn.active {
+    color: var(--badge-color);
+}
+
+/* --- Header Layout Adjustments --- */
+.app-header {
+    gap: 4px; /* ヘッダー内の要素間のデフォルト間隔を詰める */
+}
+
+#chat-screen .app-header h1 {
+    margin-left: 0; /* 不要になったマージンをリセット */
+}
+
+
+#memory-toggle-btn .material-symbols-outlined {
+    font-size: 22px; /* メモリボタンのアイコンサイズを小さくする */
+}

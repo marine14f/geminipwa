@@ -10,7 +10,7 @@ import("https://esm.run/@google/genai").then(module => {
 
 // --- 定数 ---
 const DB_NAME = 'GeminiPWA_DB';
-const DB_VERSION = 11; 
+const DB_VERSION = 12; 
 const SETTINGS_STORE = 'settings';
 const PROFILES_STORE = 'profiles';
 const CHATS_STORE = 'chats';
@@ -222,7 +222,17 @@ const elements = {
     assetImportInput: document.getElementById('asset-import-input'),
     assetConflictDialog: document.getElementById('assetConflictDialog'),
     assetConflictMessage: document.getElementById('assetConflictDialog').querySelector('.dialog-message'),
-    assetConflictApplyAll: document.getElementById('apply-to-all-checkbox')
+    assetConflictApplyAll: document.getElementById('apply-to-all-checkbox'),
+    memoryToggleBtn: document.getElementById('memory-toggle-btn'),
+    enableMemoryToggle: document.getElementById('enable-memory-toggle'),
+    memoryOptionsContainer: document.getElementById('memory-options-container'),
+    memoryAutoSaveIntervalSelect: document.getElementById('memory-auto-save-interval'),
+    manageMemoryBtn: document.getElementById('manage-memory-btn'),
+    memoryManagementDialog: document.getElementById('memoryManagementDialog'),
+    memoryListContainer: document.getElementById('memory-list-container'),
+    newMemoryInput: document.getElementById('new-memory-input'),
+    addMemoryBtn: document.getElementById('add-memory-btn'),
+    closeMemoryDialogBtn: document.getElementById('close-memory-dialog-btn')
 };
 
 // --- アプリ状態 ---
@@ -283,7 +293,9 @@ const state = {
         allowPromptUiChanges: true,
         forceFunctionCalling: false,
         autoScroll: true,
-        enableWideMode: false
+        enableWideMode: false,
+        enableMemory: false,
+        memoryAutoSaveInterval: 30
     },
     backgroundImageUrl: null,
     isSending: false,
@@ -302,6 +314,7 @@ const state = {
     isTemporaryBackgroundActive: false,
     currentScene: null,
     currentStyleProfiles: {},
+    isMemoryEnabledForChat: true
 };
 
 function updateMessageMaxWidthVar() {
@@ -498,7 +511,8 @@ const dbUtils = {
                     chatStore.createIndex(CHAT_CREATEDAT_INDEX, 'createdAt', { unique: false });
                 }
                 if (!db.objectStoreNames.contains(PROFILES_STORE)) {
-                    db.createObjectStore(PROFILES_STORE, { keyPath: 'id', autoIncrement: true });
+                    const profilesStore = db.createObjectStore(PROFILES_STORE, { keyPath: 'id', autoIncrement: true });
+                    // v12でmemoryストアを追加するため、ここでプロファイルストアの存在を確認
                 }
                 if (!db.objectStoreNames.contains('image_assets')) {
                     db.createObjectStore('image_assets', { keyPath: 'name' });
@@ -577,6 +591,16 @@ const dbUtils = {
                         appLogic.migrateImageData(); 
                     };
                 }
+
+                if (event.oldVersion < 12) {
+                    console.log("[DB Migration] v12へのアップグレード: memory_storeを作成します。");
+                    if (!db.objectStoreNames.contains('memory_store')) {
+                        // プロファイルIDをキーとして、メモリデータを保存するストア
+                        db.createObjectStore('memory_store', { keyPath: 'profileId' });
+                    }
+                    // chatストアにisMemoryEnabledプロパティを追加するためのマイグレーションは不要
+                    // データ取得時に存在しなければデフォルト値を適用するため
+                }
             };
         });
     },
@@ -616,7 +640,6 @@ const dbUtils = {
     async saveChat(optionalTitle = null, chatObjectToSave = null) { // 第2引数を追加
         await this.openDB();
         
-        // 引数でチャットオブジェクトが渡されなかった場合、現在のstateから生成する（従来の動作）
         if (!chatObjectToSave) {
             if ((!state.currentMessages || state.currentMessages.length === 0) && !state.currentSystemPrompt) {
                 if(state.currentChatId) console.log(`saveChat: 既存チャット ${state.currentChatId} にメッセージもシステムプロンプトもないため保存せず`);
@@ -644,7 +667,7 @@ const dbUtils = {
                 ...(msg.generated_images && msg.generated_images.length > 0 && { generated_images: msg.generated_images }),
                 ...(msg.generated_videos && msg.generated_videos.length > 0 && { 
                     generated_videos: msg.generated_videos.map(video => ({
-                        base64Data: video.base64Data, // Base64データのみ保存
+                        base64Data: video.base64Data,
                         prompt: video.prompt
                     }))
                 }),
@@ -656,6 +679,7 @@ const dbUtils = {
                 messages: messagesToSave,
                 systemPrompt: state.currentSystemPrompt,
                 persistentMemory: state.currentPersistentMemory || {},
+                isMemoryEnabledForChat: state.isMemoryEnabledForChat, // メモリ状態を追加
             };
         }
     
@@ -676,7 +700,7 @@ const dbUtils = {
     
                 const chatIdForOperation = existingChatData ? existingChatData.id : state.currentChatId;
                 const chatData = {
-                    ...chatObjectToSave, // 引数またはstateから生成されたオブジェクトを展開
+                    ...chatObjectToSave,
                     updatedAt: now,
                     createdAt: existingChatData ? existingChatData.createdAt : now,
                     title: title,
@@ -728,6 +752,7 @@ const dbUtils = {
             };
         });
     },
+
 
     // チャットタイトルをDBで更新
     async updateChatTitleDb(id, newTitle) {
@@ -925,6 +950,31 @@ const dbUtils = {
             const request = store.getAll();
             request.onsuccess = (event) => resolve(event.target.result);
             request.onerror = (event) => reject(`全アセット取得エラー: ${event.target.error}`);
+        });
+    },
+    async getMemory(profileId) {
+        if (!profileId) return null;
+        await this.openDB();
+        return new Promise((resolve, reject) => {
+            const store = this._getStore('memory_store');
+            const request = store.get(profileId);
+            request.onsuccess = (event) => resolve(event.target.result);
+            request.onerror = (event) => reject(`メモリ(ID: ${profileId})取得エラー: ${event.target.error}`);
+        });
+    },
+
+    async saveMemory(profileId, memoryData) {
+        if (!profileId) return Promise.reject("プロファイルIDが必要です。");
+        await this.openDB();
+        return new Promise((resolve, reject) => {
+            const store = this._getStore('memory_store', 'readwrite');
+            const dataToSave = { profileId, ...memoryData };
+            const request = store.put(dataToSave);
+            request.onsuccess = () => {
+                console.log(`[DB] メモリを保存しました (ID: ${profileId})`);
+                resolve();
+            };
+            request.onerror = (event) => reject(`メモリ(ID: ${profileId})保存エラー: ${event.target.error}`);
         });
     },
 
@@ -1492,41 +1542,39 @@ const uiUtils = {
         let baseTitle = '';
         let isNewChat = !state.currentChatId;
 
-        if (state.currentChatId) { // 既存チャットの場合
+        if (state.currentChatId) {
             isNewChat = false;
-            if (definitiveTitle !== null) { // 引数でタイトルが指定されていればそれを使う
+            if (definitiveTitle !== null) {
                 baseTitle = definitiveTitle;
-            } else { // 指定がなければメッセージから推測 (ユーザーメッセージ優先)
+            } else {
                 const firstUserMessage = state.currentMessages.find(m => m.role === 'user' && !m.isHidden);
                 if (firstUserMessage) {
                     baseTitle = firstUserMessage.content;
-                } else if (state.currentMessages.length > 0) { // ユーザーメッセージ以外でもメッセージがあれば
+                } else if (state.currentMessages.length > 0) {
                     baseTitle = "チャット履歴";
                 }
             }
-            // タイトルを切り詰める
             if(baseTitle) {
-                // インポート接頭辞を除いて切り詰める
                 const displayBase = baseTitle.startsWith(IMPORT_PREFIX) ? baseTitle.substring(IMPORT_PREFIX.length) : baseTitle;
                 const truncated = displayBase.substring(0, CHAT_TITLE_LENGTH);
                 titleText = truncated + (displayBase.length > CHAT_TITLE_LENGTH ? '...' : '');
-                // インポート接頭辞を再度付与
                 if (baseTitle.startsWith(IMPORT_PREFIX)) {
                     titleText = IMPORT_PREFIX + titleText;
                 }
-            } else if(state.currentMessages.length > 0) { // メッセージがあれば (SPは考慮しない)
+            } else if(state.currentMessages.length > 0) {
                 titleText = 'チャット履歴';
             }
-            // メッセージがあるのにタイトルが「新規チャット」のままなら変更
-            if (titleText === '新規チャット' && state.currentMessages.length > 0) { // メッセージがあれば (SPは考慮しない)
+            if (titleText === '新規チャット' && state.currentMessages.length > 0) {
                 titleText = 'チャット履歴';
             }
         }
-        // 表示用タイトル (既存チャットならプレフィックス追加)
-        const displayTitle = isNewChat ? titleText : `: ${titleText}`;
+        
+        // コロンを削除
+        const displayTitle = titleText;
         elements.chatTitle.textContent = displayTitle;
-        document.title = `Gemini PWA Mk-II - ${titleText}`; // ブラウザタブのタイトルも更新
+        document.title = `Gemini PWA Mk-II - ${titleText}`;
     },
+
 
     // タイムスタンプをフォーマット
     formatDate(timestamp) {
@@ -1710,7 +1758,6 @@ const uiUtils = {
         elements.includeThoughtsToggle.checked = state.settings.includeThoughts;
         elements.enableThoughtTranslationCheckbox.checked = state.settings.enableThoughtTranslation;
         elements.thoughtTranslationModelSelect.value = state.settings.thoughtTranslationModel || 'gemini-2.5-flash-lite';
-        // 「Include Thoughts」が有効な場合のみ翻訳オプションを表示
         elements.thoughtTranslationOptionsDiv.classList.toggle('hidden', !state.settings.includeThoughts);
         elements.dummyUserInput.value = state.settings.dummyUser || '';
         elements.applyDummyToProofreadCheckbox.checked = state.settings.applyDummyToProofread;
@@ -1736,7 +1783,6 @@ const uiUtils = {
         elements.useFixedRetryDelayCheckbox.checked = state.settings.useFixedRetryDelay;
         elements.fixedRetryDelayInput.value = state.settings.fixedRetryDelaySeconds;
         elements.maxBackoffDelayInput.value = state.settings.maxBackoffDelaySeconds;
-        // チェック状態に応じて表示を切り替える
         elements.fixedRetryDelayContainer.classList.toggle('hidden', !state.settings.useFixedRetryDelay);
         elements.maxBackoffDelayContainer.classList.toggle('hidden', state.settings.useFixedRetryDelay);
         elements.googleSearchApiKeyInput.value = state.settings.googleSearchApiKey || '';
@@ -1744,7 +1790,6 @@ const uiUtils = {
         const opacityPercent = Math.round((state.settings.overlayOpacity ?? 0.65) * 100);
         if (elements.overlayOpacitySlider) elements.overlayOpacitySlider.value = opacityPercent;
         if (elements.overlayOpacityValue)  elements.overlayOpacityValue.textContent = `${opacityPercent}%`;
-        // メッセージバブルの濃さ（UI と CSS へ）
         const msgPercent = Math.round((state.settings.messageOpacity ?? 1) * 100);
         if (elements.messageOpacitySlider) elements.messageOpacitySlider.value = msgPercent;
         if (elements.messageOpacityValue)  elements.messageOpacityValue.textContent = `${msgPercent}%`;
@@ -1753,6 +1798,11 @@ const uiUtils = {
         elements.forceFunctionCallingToggle.checked = state.settings.forceFunctionCalling;
         elements.autoScrollToggle.checked = state.settings.autoScroll;
         elements.enableWideModeToggle.checked = state.settings.enableWideMode; 
+
+        // メモリ機能のUIを更新
+        elements.enableMemoryToggle.checked = state.settings.enableMemory;
+        elements.memoryAutoSaveIntervalSelect.value = state.settings.memoryAutoSaveInterval;
+        appLogic.toggleMemoryOptions(state.settings.enableMemory);
 
         const defaultHeaderColor = state.settings.darkMode ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
         elements.headerColorInput.value = state.settings.headerColor || defaultHeaderColor;
@@ -1768,6 +1818,7 @@ const uiUtils = {
         this.applyBackgroundImage();
         appLogic.applyWideMode();
     },
+
 
     // ユーザー指定モデルをコンボボックスに反映
     updateUserModelOptions() {
@@ -3371,11 +3422,11 @@ const appLogic = {
     setupEventListeners() {
         if (!this._popstateBound) {
             window.addEventListener('popstate', this.handlePopState.bind(this));
-            this._popstateBound = true; // 一度だけ登録するためのフラグ
+            this._popstateBound = true;
             console.log("popstate listener added (once).");
         }
     
-        this._setupEventListenersCallCount++; // カウンターを増やす
+        this._setupEventListenersCallCount++;
         console.log(`[Debug Event] setupEventListeners が呼び出されました。(${this._setupEventListenersCallCount}回目)`);
         if (this._setupEventListenersCallCount > 1) {
             console.error('%c[CRITICAL_BUG] setupEventListenersが複数回呼び出されています！これがバグの根本原因である可能性が非常に高いです。', 'color: red; font-size: 1.2em; font-weight: bold;');
@@ -3477,8 +3528,9 @@ const appLogic = {
                             value = parseFloat(element.value) / 100;
                             break;
                         case 'number':
+                        case 'select-one': // select要素も考慮
                             value = parseFloat(element.value);
-                            if (isNaN(value)) value = null;
+                            if (isNaN(value)) value = element.value; // 数値でなければ元の文字列
                             break;
                         default:
                             value = element.value;
@@ -3490,15 +3542,21 @@ const appLogic = {
                     
                     await dbUtils.updateProfile(state.activeProfile);
                     
-                    if (key === 'darkMode') uiUtils.applyDarkMode();
-                    if (key === 'fontFamily') uiUtils.applyFontFamily();
-                    if (key === 'hideSystemPromptInChat') uiUtils.toggleSystemPromptVisibility();
-                    if (key === 'overlayOpacity') uiUtils.applyOverlayOpacity();
-                    if (key === 'headerColor') uiUtils.applyHeaderColor();
-                    if (key === 'messageOpacity') document.documentElement.style.setProperty('--message-bubble-opacity', String(value));
-                    if (key === 'modelName') uiUtils.updateModelWarningMessage();
-                    if (key === 'enableWideMode') this.applyWideMode();
-    
+                    // UI更新が必要な特定のキー
+                    const uiUpdateMap = {
+                        darkMode: () => uiUtils.applyDarkMode(),
+                        fontFamily: () => uiUtils.applyFontFamily(),
+                        hideSystemPromptInChat: () => uiUtils.toggleSystemPromptVisibility(),
+                        overlayOpacity: () => uiUtils.applyOverlayOpacity(),
+                        headerColor: () => uiUtils.applyHeaderColor(),
+                        messageOpacity: () => document.documentElement.style.setProperty('--message-bubble-opacity', String(value)),
+                        modelName: () => uiUtils.updateModelWarningMessage(),
+                        enableWideMode: () => this.applyWideMode(),
+                        enableMemory: () => this.toggleMemoryOptions(value) // メモリ機能のUI連動
+                    };
+                    if (uiUpdateMap[key]) {
+                        uiUpdateMap[key]();
+                    }
                 });
             } else {
                 console.warn(`❌ [Debug Settings] '${key}' に対応するDOM要素が見つかりません。`);
@@ -3549,7 +3607,10 @@ const appLogic = {
             allowPromptUiChanges: { element: document.getElementById('allow-prompt-ui-changes'), event: 'change' },
             forceFunctionCalling: { element: elements.forceFunctionCallingToggle, event: 'change' },
             autoScroll: { element: elements.autoScrollToggle, event: 'change' },
-            enableWideMode: { element: elements.enableWideModeToggle, event: 'change' }
+            enableWideMode: { element: elements.enableWideModeToggle, event: 'change' },
+            // メモリ機能のイベントリスナーを追加
+            enableMemory: { element: elements.enableMemoryToggle, event: 'change' },
+            memoryAutoSaveInterval: { element: elements.memoryAutoSaveIntervalSelect, event: 'change' }
         };
     
         for (const key in settingsMap) {
@@ -3557,6 +3618,12 @@ const appLogic = {
             setupInstantSave(element, key, event);
         }
     
+        // --- メモリ機能の個別イベントリスナー ---
+        elements.memoryToggleBtn.addEventListener('click', () => this.toggleChatMemory());
+        elements.manageMemoryBtn.addEventListener('click', () => this.openMemoryManagementDialog());
+        elements.closeMemoryDialogBtn.addEventListener('click', () => elements.memoryManagementDialog.close());
+        elements.addMemoryBtn.addEventListener('click', () => this.addMemoryItem());
+
         // --- その他 ---
         elements.importHistoryBtn.addEventListener('click', () => elements.importHistoryInput.click());
         elements.importHistoryInput.addEventListener('change', (event) => {
@@ -3589,7 +3656,6 @@ const appLogic = {
         elements.resetHeaderColorBtn.addEventListener('click', () => {
             state.settings.headerColor = '';
             elements.headerColorInput.value = state.settings.darkMode ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
-            // headerColorの'change'イベントリスナーが自動で保存と適用を行うため、ここでは値をリセットするだけ
             const event = new Event('input', { bubbles: true });
             elements.headerColorInput.dispatchEvent(event);
         });
@@ -3624,7 +3690,6 @@ const appLogic = {
         
         elements.attachFileBtn.addEventListener('click', () => uiUtils.showFileUploadDialog());
     
-        // モバイルでのファイルキャッシュ問題を回避するため、毎回input要素を動的に生成する
         elements.selectFilesBtn.addEventListener('click', () => {
             const fileInput = document.createElement('input');
             fileInput.type = 'file';
@@ -3633,7 +3698,7 @@ const appLogic = {
 
             fileInput.addEventListener('change', (event) => {
                 this.handleFileSelection(event.target.files);
-                document.body.removeChild(fileInput); // 使い終わったら要素を削除
+                document.body.removeChild(fileInput);
             });
 
             document.body.appendChild(fileInput);
@@ -3795,7 +3860,6 @@ const appLogic = {
             elements.maxBackoffDelayContainer.classList.toggle('hidden', useFixed);
         });
     
-        // --- モデル選択時の警告表示リスナー ---
         elements.modelNameSelect.addEventListener('change', () => {
             uiUtils.updateModelWarningMessage();
         });
@@ -3817,16 +3881,15 @@ const appLogic = {
             revokeUrls(state.imageUrlCache, 'チャット画像');
         });
 
-        // --- Asset Management ---
         elements.assetExportBtn.addEventListener('click', () => this.handleAssetExport());
         elements.assetImportBtn.addEventListener('click', () => elements.assetImportInput.click());
         elements.assetImportInput.addEventListener('change', (event) => {
             const file = event.target.files[0];
             if (file) this.handleAssetImport(file);
-            event.target.value = null; // 同じファイルを選択できるようにリセット
+            event.target.value = null;
         });
-
     },
+
     
 
     // popstateイベントハンドラ (戻るボタン/ジェスチャー)
@@ -4002,6 +4065,8 @@ const appLogic = {
         state.currentSystemPrompt = state.settings.systemPrompt || ''; 
         state.pendingAttachments = [];
         state.currentPersistentMemory = {};
+        state.isMemoryEnabledForChat = true; // 新規チャットではデフォルトで有効
+        this.toggleMemoryIconVisibility();
         state.currentScene = { scene_id: "initial", location: "不明な場所" };
         uiUtils.updateSystemPromptUI();
         uiUtils.renderChatMessages();
@@ -4012,8 +4077,8 @@ const appLogic = {
         state.currentStyleProfiles = {};
     },
 
-    // app.js の appLogic オブジェクト内
 
+    // app.js の appLogic オブジェクト内
     async loadChat(id) {
         const loadChatStartTime = performance.now();
         console.log(`%c[PERF_DEBUG] loadChat: START - チャットID ${id} の読み込み処理を開始...`, 'color: red; font-weight: bold;');
@@ -4062,6 +4127,9 @@ const appLogic = {
                 console.log(`[Debug LoadChat] 3. DBから新しいチャットを読み込みました。 new length: ${state.currentMessages.length}`);
                 
                 state.currentPersistentMemory = chat.persistentMemory || {};
+                // チャットごとのメモリ有効状態を読み込む (未定義ならtrue)
+                state.isMemoryEnabledForChat = chat.isMemoryEnabledForChat !== false;
+                this.toggleMemoryIconVisibility();
 
                 let needsSave = false;
                 const groupIds = new Set(state.currentMessages.filter(m => m.siblingGroupId).map(m => m.siblingGroupId));
@@ -4115,6 +4183,7 @@ const appLogic = {
         const loadChatEndTime = performance.now();
         console.log(`%c[PERF_DEBUG] loadChat: END - 全処理完了 (合計所要時間: ${loadChatEndTime - loadChatStartTime}ms)`, 'color: red; font-weight: bold;');
     },
+
 
 
 
@@ -4822,8 +4891,7 @@ const appLogic = {
         uiUtils.appendMessage(userMessage.role, userMessage.content, state.currentMessages.length - 1, false, null, userMessage.attachments);
         
         const baseHistory = state.currentMessages.filter(msg => !msg.isCascaded || msg.isSelected);
-        const historyForApi = this._prepareApiHistory(baseHistory);
-
+        
         const modelMessage = { role: 'model', content: '', timestamp: Date.now() };
         state.currentMessages.push(modelMessage);
         const modelMessageIndex = state.currentMessages.length - 1;
@@ -4851,17 +4919,39 @@ const appLogic = {
                 if(state.settings.thinkingBudget !== null) generationConfig.thinkingConfig.thinkingBudget = state.settings.thinkingBudget;
                 if(state.settings.includeThoughts) generationConfig.thinkingConfig.includeThoughts = true;
             }
-            const systemInstruction = state.currentSystemPrompt?.trim() ? { role: "system", parts: [{ text: state.currentSystemPrompt.trim() }] } : null;
+
+            let finalSystemPrompt = state.currentSystemPrompt?.trim() || '';
+
+            if (state.settings.enableMemory && state.isMemoryEnabledForChat && state.activeProfileId) {
+                const memoryData = await dbUtils.getMemory(state.activeProfileId);
+                if (memoryData && memoryData.items && memoryData.items.length > 0) {
+                    const memoryBlock = `[長期記憶]\n- ${memoryData.items.join('\n- ')}\n---\n\n`;
+                    finalSystemPrompt = memoryBlock + finalSystemPrompt;
+                    console.log("長期記憶をシステムプロンプトに挿入しました。");
+                }
+            }
+
+            const systemInstruction = finalSystemPrompt ? { role: "system", parts: [{ text: finalSystemPrompt }] } : null;
+            const historyForApi = this._prepareApiHistory(baseHistory);
 
             const newMessages = await this._internalHandleSend(historyForApi, generationConfig, systemInstruction);
             
             const finalAggregatedMessage = this._aggregateMessages(newMessages);
             state.currentMessages[modelMessageIndex] = finalAggregatedMessage;
 
-            // API応答後、全再描画で最終結果を反映
             uiUtils.renderChatMessages(() => uiUtils.scrollToBottom());
 
             await dbUtils.saveChat();
+
+            // --- 自動学習トリガー ---
+            const interval = parseInt(state.settings.memoryAutoSaveInterval, 10);
+            // ユーザーの発言回数をカウント
+            const userMessageCount = state.currentMessages.filter(m => m.role === 'user').length;
+            if (state.settings.enableMemory && state.isMemoryEnabledForChat && interval > 0 && userMessageCount > 0 && userMessageCount % interval === 0) {
+                console.log(`[Memory] ユーザーの発言数が ${userMessageCount} 回に達したため、自動学習を開始します。`);
+                this.triggerAutoMemorySave(); // awaitを付けずに実行 (Fire-and-forget)
+            }
+            // -------------------------
 
         } catch(error) {
             console.error("--- handleSend: 最終catchブロックでエラー捕捉 ---", error);
@@ -4880,6 +4970,8 @@ const appLogic = {
             }
         }
     },
+
+
     
     // APIリクエストを中断
     abortRequest() {
@@ -6790,6 +6882,227 @@ const appLogic = {
             dialog.showModal();
         });
     },
+    // --- Memory Feature ---
+    toggleMemoryOptions(isEnabled) {
+        elements.memoryOptionsContainer.classList.toggle('hidden', !isEnabled);
+        this.toggleMemoryIconVisibility();
+    },
+
+    toggleMemoryIconVisibility() {
+        const isMasterEnabled = state.settings.enableMemory;
+        elements.memoryToggleBtn.classList.toggle('hidden', !isMasterEnabled);
+        if (isMasterEnabled) {
+            elements.memoryToggleBtn.classList.toggle('active', state.isMemoryEnabledForChat);
+        }
+    },
+
+    async toggleChatMemory() {
+        state.isMemoryEnabledForChat = !state.isMemoryEnabledForChat;
+        this.toggleMemoryIconVisibility();
+        // 現在のチャットの状態として保存
+        if (state.currentChatId) {
+            try {
+                await dbUtils.saveChat();
+            } catch (error) {
+                console.error("チャットごとのメモリ設定の保存に失敗:", error);
+            }
+        }
+    },
+
+    async openMemoryManagementDialog() {
+        if (!state.activeProfileId) return;
+        try {
+            const memoryData = await dbUtils.getMemory(state.activeProfileId);
+            this.renderMemoryList(memoryData ? memoryData.items : []);
+            elements.memoryManagementDialog.showModal();
+        } catch (error) {
+            console.error("記憶管理ダイアログの表示に失敗:", error);
+            await uiUtils.showCustomAlert("記憶の読み込みに失敗しました。");
+        }
+    },
+
+    renderMemoryList(memoryItems) {
+        elements.memoryListContainer.innerHTML = '';
+        if (!memoryItems || memoryItems.length === 0) {
+            elements.memoryListContainer.innerHTML = '<p class="no-memory-message">記憶されている項目はありません。</p>';
+            return;
+        }
+        memoryItems.forEach((item, index) => {
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'memory-item';
+            
+            const textSpan = document.createElement('span');
+            textSpan.className = 'memory-item-text';
+            textSpan.textContent = item;
+            
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'memory-item-actions';
+            
+            const editBtn = document.createElement('button');
+            editBtn.innerHTML = '<span class="material-symbols-outlined">edit</span>';
+            editBtn.title = "編集";
+            editBtn.onclick = () => this.editMemoryItem(index);
+            
+            const deleteBtn = document.createElement('button');
+            deleteBtn.innerHTML = '<span class="material-symbols-outlined">delete</span>';
+            deleteBtn.title = "削除";
+            deleteBtn.onclick = () => this.deleteMemoryItem(index);
+            
+            actionsDiv.appendChild(editBtn);
+            actionsDiv.appendChild(deleteBtn);
+            itemDiv.appendChild(textSpan);
+            itemDiv.appendChild(actionsDiv);
+            elements.memoryListContainer.appendChild(itemDiv);
+        });
+    },
+
+    async addMemoryItem() {
+        const newItem = elements.newMemoryInput.value.trim();
+        if (!newItem) return;
+
+        try {
+            const memoryData = await dbUtils.getMemory(state.activeProfileId) || { items: [] };
+            memoryData.items.push(newItem);
+            await dbUtils.saveMemory(state.activeProfileId, memoryData);
+            this.renderMemoryList(memoryData.items);
+            elements.newMemoryInput.value = '';
+        } catch (error) {
+            console.error("記憶の追加に失敗:", error);
+            await uiUtils.showCustomAlert("記憶の追加に失敗しました。");
+        }
+    },
+
+    async editMemoryItem(index) {
+        try {
+            const memoryData = await dbUtils.getMemory(state.activeProfileId);
+            if (!memoryData || !memoryData.items || !memoryData.items[index]) return;
+            
+            const currentItem = memoryData.items[index];
+            const newItem = await uiUtils.showCustomPrompt("記憶を編集:", currentItem);
+
+            if (newItem && newItem.trim() !== currentItem) {
+                memoryData.items[index] = newItem.trim();
+                await dbUtils.saveMemory(state.activeProfileId, memoryData);
+                this.renderMemoryList(memoryData.items);
+            }
+        } catch (error) {
+            console.error("記憶の編集に失敗:", error);
+            await uiUtils.showCustomAlert("記憶の編集に失敗しました。");
+        }
+    },
+
+    async deleteMemoryItem(index) {
+        try {
+            const memoryData = await dbUtils.getMemory(state.activeProfileId);
+            if (!memoryData || !memoryData.items || !memoryData.items[index]) return;
+
+            const itemToDelete = memoryData.items[index];
+            const confirmed = await uiUtils.showCustomConfirm(`以下の記憶を削除しますか？\n\n「${itemToDelete}」`);
+            
+            if (confirmed) {
+                memoryData.items.splice(index, 1);
+                await dbUtils.saveMemory(state.activeProfileId, memoryData);
+                this.renderMemoryList(memoryData.items);
+            }
+        } catch (error) {
+            console.error("記憶の削除に失敗:", error);
+            await uiUtils.showCustomAlert("記憶の削除に失敗しました。");
+        }
+    },
+
+    async triggerAutoMemorySave() {
+        if (!state.activeProfileId || !state.settings.apiKey) {
+            console.error("[Memory] APIキーが未設定のため、自動学習をスキップしました。");
+            return;
+        }
+
+        const interval = parseInt(state.settings.memoryAutoSaveInterval, 10);
+        const userMessagesInInterval = state.currentMessages.filter(m => m.role === 'user').slice(-interval);
+        if (userMessagesInInterval.length === 0) return;
+        const firstUserMessageIndex = state.currentMessages.indexOf(userMessagesInInterval[0]);
+        const historyToSummarize = state.currentMessages.slice(firstUserMessageIndex);
+
+        const conversationText = historyToSummarize.map(msg => {
+            return `${msg.role === 'user' ? 'ユーザー' : 'アシスタント'}: ${msg.content}`;
+        }).join('\n');
+
+        const summarizationPrompt = `あなたは、対話システムの利用者の傾向を分析する専門家です。
+以下の会話履歴を分析し、**この対話システムの操作者（以下、ユーザー）**自身の好み、性格、指示の傾向、重要な設定などを抽出してください。
+
+[重要事項]
+- **主人公 ≠ ユーザー**: 会話が小説やゲームのようなロールプレイ形式であっても、物語の登場人物（主人公）の設定ではなく、あくまで操作者である**ユーザー**の好みを抽出してください。
+- **客観的な事実のみ**: 抽出する記憶は、第三者が読んでも理解できる客観的な事実として記述してください。
+- **箇条書きで要約**: 3〜5個の最も重要だと思われる項目を、簡潔な箇条書きで要約してください。
+
+---
+[会話履歴]
+${conversationText}
+---
+
+[分析結果の出力例]
+- ユーザーは、キャラクターに厳しい口調で話すよう指示する傾向がある。
+- ユーザーは、ファンタジー世界における魔法の設定に強い関心を持っている。
+- ユーザーは、物語の展開として、悲劇的な結末を好む傾向が見られる。`;
+
+        const modelForMemory = "gemini-2.5-flash";
+        const endpoint = `${GEMINI_API_BASE_URL}${modelForMemory}:generateContent?key=${state.settings.apiKey}`;
+        const requestBody = {
+            contents: [{
+                role: 'user',
+                parts: [{ text: summarizationPrompt }]
+            }],
+            safetySettings: [
+                { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+            ]
+        };
+
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                const errorMessage = errorData.error?.message || `HTTPエラー: ${response.status}`;
+                throw new Error(errorMessage);
+            }
+
+            const responseData = await response.json();
+            const summaryText = responseData.candidates?.[0]?.content?.parts?.[0]?.text;
+
+            if (!summaryText) {
+                console.warn("[Memory] 自動学習による要約結果が空でした。");
+                return;
+            }
+
+            const newItems = summaryText.split('\n')
+                .map(line => line.replace(/^[*-]\s*/, '').trim())
+                .filter(line => line.length > 0);
+
+            if (newItems.length > 0) {
+                const memoryData = await dbUtils.getMemory(state.activeProfileId) || { items: [] };
+                const existingItems = new Set(memoryData.items);
+                const uniqueNewItems = newItems.filter(item => !existingItems.has(item));
+                
+                if (uniqueNewItems.length > 0) {
+                    memoryData.items.push(...uniqueNewItems);
+                    await dbUtils.saveMemory(state.activeProfileId, memoryData);
+                    console.log(`[Memory] 自動学習により、${uniqueNewItems.length}件の新しい記憶を追加しました。`, uniqueNewItems);
+                } else {
+                    console.log("[Memory] 自動学習で生成された記憶は、すべて既存のものでした。");
+                }
+            }
+        } catch (error) {
+            console.error("[Memory] 自動学習プロセスの実行中にエラーが発生しました:", error);
+        }
+    },
+
+
 
 }; // appLogic終了
 
