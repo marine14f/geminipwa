@@ -7100,36 +7100,49 @@ const appLogic = {
             return `${msg.role === 'user' ? 'ユーザー' : 'アシスタント'}: ${msg.content}`;
         }).join('\n');
 
-        const summarizationPrompt = `以下の会話履歴から、**操作者であるユーザー**の好み、設定、重要な事実に関する情報を抽出し、箇条書きで簡潔にまとめてください。
-
-        [重要事項]
-        - **事実の抽出**: 会話の内容から、ユーザーに関する具体的な情報（例: 好きな食べ物、ペットの名前、性格など）だけを抜き出してください。「ユーザーは〇〇する傾向がある」といった行動分析は不要です。
-        - **主人公との区別**: 会話がロールプレイ形式の場合、物語の登場人物ではなく、操作者であるユーザー自身の好みや設定を抽出してください。
-        - **簡潔な記述**: 各項目は「ユーザーは〇〇が好き」「ユーザーの猫の名前はタマ」のように、客観的な事実として記述してください。
-        
-        ---
-        [会話履歴]
-        ${conversationText}
-        ---
-        
-        [抽出結果]`;
-
-        const modelForMemory = "gemini-2.5-flash";
-        const endpoint = `${GEMINI_API_BASE_URL}${modelForMemory}:generateContent?key=${state.settings.apiKey}`;
-        const requestBody = {
-            contents: [{
-                role: 'user',
-                parts: [{ text: summarizationPrompt }]
-            }],
-            safetySettings: [
-                { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-                { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-                { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-                { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
-            ]
-        };
-
         try {
+            // 1. 既存の記憶をDBから取得
+            const memoryData = await dbUtils.getMemory(state.activeProfileId) || { items: [] };
+            const existingMemoryText = memoryData.items.length > 0 
+                ? `- ${memoryData.items.join('\n- ')}`
+                : "（まだ何も記憶していません）";
+
+            // 2. 新しいプロンプトを構築
+            const summarizationPrompt = `以下の【既存の記憶】と【会話履歴】を参考にして、**操作者であるユーザー**に関する新しい好み、性癖、重要な事実だけを抽出し、箇条書きで簡潔にまとめてください。
+            ここで抽出された情報は、今後のチャットセッションでモデルが閲覧することが可能になり、ユーザーの会話体験の質を高めるものです。
+
+            [重要事項]
+            - **重複の排除**: 【既存の記憶】に既に含まれている情報は絶対に含めないでください。
+            - **事実の抽出**: 会話の内容から、ユーザーに関する具体的な情報（例: 好きな食べ物、ペットの名前、性格など）だけを抜き出してください。「ユーザーは〇〇する傾向がある」といった行動分析は不要です。
+            - **主人公との区別**: 会話がロールプレイ形式の場合、物語の登場人物ではなく、操作者であるユーザー自身の好みや設定を抽出してください。
+            - **簡潔な記述**: 各項目は「ユーザーは〇〇が好き」「ユーザーの猫の名前はタマ」のように、客観的な事実として記述してください。
+            - **情報がない場合**: もし新しい情報が何もなければ、他の言葉は一切含めず \`[追加情報なし]\` とだけ出力してください。
+
+            ---
+            【既存の記憶】
+            ${existingMemoryText}
+            ---
+            【会話履歴】
+            ${conversationText}
+            ---
+
+            [抽出結果]`;
+
+            const modelForMemory = "gemini-2.5-flash";
+            const endpoint = `${GEMINI_API_BASE_URL}${modelForMemory}:generateContent?key=${state.settings.apiKey}`;
+            const requestBody = {
+                contents: [{
+                    role: 'user',
+                    parts: [{ text: summarizationPrompt }]
+                }],
+                safetySettings: [
+                    { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                    { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                    { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                    { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+                ]
+            };
+
             const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -7150,12 +7163,18 @@ const appLogic = {
                 return;
             }
 
+            // 3. AIの応答をチェック
+            if (summaryText.trim() === '[追加情報なし]') {
+                console.log("[Memory] AIが追加情報なしと判断したため、メモリの更新をスキップしました。");
+                return;
+            }
+
             const newItems = summaryText.split('\n')
                 .map(line => line.replace(/^[*-]\s*/, '').trim())
-                .filter(line => line.length > 0);
+                .filter(line => line.length > 0 && line !== '[追加情報なし]');
 
             if (newItems.length > 0) {
-                const memoryData = await dbUtils.getMemory(state.activeProfileId) || { items: [] };
+                // 4. 重複を最終チェックして保存
                 const existingItems = new Set(memoryData.items);
                 const uniqueNewItems = newItems.filter(item => !existingItems.has(item));
                 
