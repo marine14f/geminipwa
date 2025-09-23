@@ -32,6 +32,7 @@
                 <button id="new-chat-btn" class="new-chat-button" title="新規チャットを開始"><span class="material-symbols-outlined">add</span></button>
                 <button id="goto-settings-btn" class="header-button" title="設定へ"><span class="material-symbols-outlined">settings</span></button>
             </header>
+
             <main class="main-content">
                 <!-- システムプロンプト表示/編集エリア -->
                 <div id="system-prompt-area" class="system-prompt-area">
@@ -62,6 +63,8 @@
                     <div id="header-profile-menu" class="profile-menu hidden"></div>
                 </div>
                 <textarea id="user-input" placeholder="メッセージを入力..." rows="1" aria-label="メッセージ入力"></textarea>
+                <!-- 履歴要約ボタンを追加 -->
+                <button id="summarize-history-btn" title="履歴を要約" disabled><span class="material-symbols-outlined">cleaning_services</span></button>
                 <!-- 添付ファイルボタンを追加 -->
                 <button id="attach-file-btn" title="ファイルを添付">
                     <div class="attach-icon-container">
@@ -411,6 +414,14 @@
                     </div>
                 </div>
                 <div class="settings-group">
+                    <h3>履歴の要約機能</h3>
+                    <p style="font-size: 11px; color: var(--text-secondary); margin-top: -10px; margin-bottom: 15px;">
+                        チャット履歴が長くなった際に、AIに送信するコンテキストを要約して応答品質の低下を防ぎます。
+                    </p>
+                    <label for="summary-system-prompt">要約実行時のシステムプロンプト:</label>
+                    <textarea id="summary-system-prompt" placeholder="要約を実行するAIへの指示を入力します。" aria-label="要約実行時のシステムプロンプト"></textarea>
+                </div>
+                <div class="settings-group">
                     <h3>イメージ画像</h3>
                     <label>チャット画面の背景画像:</label>
                     <div class="image-upload-controls">
@@ -637,6 +648,32 @@
             <span>新しいバージョンが利用可能です。</span>
             <button id="reload-for-update-btn">更新</button>
         </div>
+
+        <!-- Summary Dialog -->
+        <dialog id="summaryDialog" class="custom-dialog">
+            <h3 class="dialog-title">履歴の要約</h3>
+            <div class="dialog-content">
+                <div class="summary-description">
+                    <p>APIに送信する会話履歴を要約し、コンテキストを圧縮します。</p>
+                    <ul>
+                        <li>ユーザーから見える会話履歴は変更されません。</li>
+                        <li>要約文は会話ログと紐づいてDBに保存されており、会話ログを削除すると一緒に削除されます。</li>
+                        <li>会話ログをエクスポート/インポートした場合、要約ログもその対象になります。</li>
+                        <li>要約後に会話を続けて再度要約を行うと、前回の要約文に新しい要約内容が追記されます。</li>
+                        <li>APIには「冒頭5件」+「前回の要約文（あれば）」+「今回の要約文」+「最新15件」が送信されます。</li>
+                    </ul>
+                </div>
+                <p id="summary-stats" class="summary-stats"></p>
+                <textarea id="summary-editor" class="summary-editor" rows="10"></textarea>
+            </div>
+            <div class="dialog-actions summary-actions">
+                <button id="summary-cancel-btn" value="cancel" class="dialog-cancel-btn">キャンセル</button>
+                <div class="summary-main-actions">
+                    <button id="summary-regenerate-btn" value="regenerate">再生成</button>
+                    <button id="summary-confirm-btn" value="confirm" class="dialog-ok-btn">決定</button>
+                </div>
+            </div>
+        </dialog>
     
     <script src="prism.js" data-autoloader-path="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>

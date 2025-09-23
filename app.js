@@ -232,7 +232,15 @@ const elements = {
     addMemoryBtn: document.getElementById('add-memory-btn'),
     closeMemoryDialogBtn: document.getElementById('close-memory-dialog-btn'),
     headerAutoHideToggle: document.getElementById('header-auto-hide-toggle'),
-    headerTriggerArea: document.getElementById('header-trigger-area')
+    headerTriggerArea: document.getElementById('header-trigger-area'),
+    summarizeHistoryBtn: document.getElementById('summarize-history-btn'),
+    summarySystemPromptTextarea: document.getElementById('summary-system-prompt'),
+    summaryDialog: document.getElementById('summaryDialog'),
+    summaryStats: document.getElementById('summary-stats'),
+    summaryEditor: document.getElementById('summary-editor'),
+    summaryCancelBtn: document.getElementById('summary-cancel-btn'),
+    summaryRegenerateBtn: document.getElementById('summary-regenerate-btn'),
+    summaryConfirmBtn: document.getElementById('summary-confirm-btn')
 };
 
 // --- アプリ状態 ---
@@ -242,6 +250,7 @@ const state = {
     currentMessages: [],
     currentSystemPrompt: '',
     currentPersistentMemory: {}, // 現在のチャットの永続メモリ
+    currentSummarizedContext: null,
     profiles: [], // 全プロファイルのリスト
     activeProfileId: null, // 現在アクティブなプロファイルのID
     activeProfile: null, // 現在アクティブなプロファイルの完全なデータ
@@ -294,7 +303,17 @@ const state = {
         enableWideMode: false,
         enableMemory: false,
         memoryAutoSaveInterval: 30,
-        headerAutoHide: false
+        headerAutoHide: false,
+        summarySystemPrompt:`あなたはプロの編集者です。以下の会話履歴を、第三者の視点から見た物語の「あらすじ」として要約してください。
+「承知しました」等のAIとしての応答は不要です。要約文のみ出力して下さい。
+
+【最重要ルール】
+- **プロットの維持**: 物語の重要な転換点、登場人物の重要な決断、新しい事実の判明、伏線となりうる発言は、絶対に省略しないでください。
+- **客観的な記述**: 「主人公は〜した。」「〇〇は〜と感じた。」のように、キャラクターの行動と感情を客観的に記述してください。
+- **情報の取捨選択**: 日常的な挨拶や、物語の進行に直接関係のない会話は省略してください。
+- **時系列の維持**: 出来事が起こった順番を正確に保ってください。
+
+最終的な出力は、このあらすじを初めて読む人でも、これまでの物語の流れを正確に理解できるような形式にしてください。`
     },
     backgroundImageUrl: null,
     isSending: false,
@@ -695,6 +714,7 @@ const dbUtils = {
                 messages: messagesToSave,
                 systemPrompt: state.currentSystemPrompt,
                 persistentMemory: state.currentPersistentMemory || {},
+                summarizedContext: state.currentSummarizedContext || null,
                 isMemoryEnabledForChat: state.isMemoryEnabledForChat, // メモリ状態を追加
             };
         }
@@ -1077,10 +1097,27 @@ const uiUtils = {
             }
         });
 
+        const summaryEndIndex = state.currentSummarizedContext?.summaryRange?.end;
+        let markerInserted = false; // 区切り線が挿入されたかを管理するフラグ
+
         visibleMessages.forEach(msg => {
             const index = state.currentMessages.indexOf(msg);
             if (index === -1 || msg.role === 'tool') return;
             
+            // 新しい区切り線表示ロジック
+            // まだ区切り線が挿入されておらず、現在のメッセージのインデックスが要約範囲の終端インデックス以上の場合に挿入
+            if (!markerInserted && summaryEndIndex !== undefined && index >= summaryEndIndex) {
+                const markerDiv = document.createElement('div');
+                markerDiv.className = 'summary-marker';
+                const markerText = document.createElement('span');
+                markerText.className = 'summary-marker-text';
+                const summarizedDate = new Date(state.currentSummarizedContext.summarizedAt).toLocaleString('ja-JP');
+                markerText.textContent = `ここまで要約済み (${summarizedDate})`;
+                markerDiv.appendChild(markerText);
+                fragment.appendChild(markerDiv);
+                markerInserted = true; // 一度挿入したら、それ以降は挿入しない
+            }
+
             let cascadeInfo = null;
             if (msg.isCascaded && msg.siblingGroupId) {
                 const siblings = state.currentMessages.filter(m => m.siblingGroupId === msg.siblingGroupId && !m.isHidden);
@@ -1092,7 +1129,7 @@ const uiUtils = {
                 };
             }
             
-            const messageElement = this.createMessageElement(msg.role, msg.content, index, false, cascadeInfo, msg.attachments);
+            const messageElement = uiUtils.createMessageElement(msg.role, msg.content, index, false, cascadeInfo, msg.attachments);
             if (messageElement) {
                 fragment.appendChild(messageElement);
             }
@@ -1111,16 +1148,19 @@ const uiUtils = {
         requestAnimationFrame(() => {
             container.style.minHeight = '';
         });
+        
+        appLogic.updateSummarizeButtonState();
         const renderEndTime = performance.now();
         console.log(`[PERF_DEBUG] renderChatMessages 完了 (合計所要時間: ${renderEndTime - renderStartTime}ms)`);
     },
 
 
-
-
     createMessageElement(role, content, index, isStreamingPlaceholder = false, cascadeInfo = null, attachments = null) {
         const messageData = state.currentMessages[index];
         if (!messageData) return null;
+
+        const summaryEndIndex = state.currentSummarizedContext?.summaryRange?.end;
+        const isSummarized = summaryEndIndex !== undefined && index < summaryEndIndex;
 
         const messageDiv = document.createElement('div');
         messageDiv.classList.add('message', role);
@@ -1195,21 +1235,18 @@ const uiUtils = {
         }
         messageDiv.appendChild(contentDiv);
         
-        // [IMAGE_HERE] を遅延読み込み画像に置換する新しいロジック
         const imagePlaceholderRegex = /<p>\[IMAGE_HERE\]<\/p>|\[IMAGE_HERE\]/g;
         if (role === 'model' && messageData && messageData.imageIds && messageData.imageIds.length > 0) {
             let imageIndex = 0;
             const replacedHtml = contentDiv.innerHTML.replace(imagePlaceholderRegex, () => {
                 if (imageIndex < messageData.imageIds.length) {
                     const imageId = messageData.imageIds[imageIndex++];
-                    // プレースホルダーのimgタグを生成
                     return `<img class="lazy-load-image" alt="生成画像（読み込み中...）" data-image-id="${imageId}">`;
                 }
                 return '';
             });
             contentDiv.innerHTML = replacedHtml;
 
-            // プレースホルダーが足りなかった画像を末尾に追加
             if (imageIndex < messageData.imageIds.length) {
                 const fragment = document.createDocumentFragment();
                 for (let i = imageIndex; i < messageData.imageIds.length; i++) {
@@ -1222,7 +1259,6 @@ const uiUtils = {
                 }
                 contentDiv.appendChild(fragment);
             }
-            // 遅延読み込みオブザーバーに新しい画像を追加
             requestAnimationFrame(() => {
                 const newImages = contentDiv.querySelectorAll('.lazy-load-image');
                 newImages.forEach(img => appLogic.imageObserver.observe(img));
@@ -1464,26 +1500,30 @@ const uiUtils = {
         if (role !== 'error') {
             const actionsDiv = document.createElement('div');
             actionsDiv.classList.add('message-actions');
-            const editButton = document.createElement('button');
-            editButton.innerHTML = '<span class="material-symbols-outlined">edit</span> 編集'; 
-            editButton.title = 'メッセージを編集'; 
-            editButton.classList.add('js-edit-btn');
-            editButton.onclick = () => appLogic.startEditMessage(index, messageDiv);
-            actionsDiv.appendChild(editButton);
-            const deleteButton = document.createElement('button');
-            deleteButton.innerHTML = '<span class="material-symbols-outlined">delete</span> 削除'; 
-            deleteButton.title = 'この会話ターンを削除'; 
-            deleteButton.classList.add('js-delete-btn');
-            deleteButton.onclick = () => appLogic.deleteMessage(index);
-            actionsDiv.appendChild(deleteButton);
-            if (role === 'user') {
-                const retryButton = document.createElement('button');
-                retryButton.innerHTML = '<span class="material-symbols-outlined">replay</span> 再生成'; 
-                retryButton.title = 'このメッセージから再生成'; 
-                retryButton.classList.add('js-retry-btn');
-                retryButton.onclick = () => appLogic.retryFromMessage(index);
-                actionsDiv.appendChild(retryButton);
+
+            if (!isSummarized) {
+                const editButton = document.createElement('button');
+                editButton.innerHTML = '<span class="material-symbols-outlined">edit</span> 編集'; 
+                editButton.title = 'メッセージを編集'; 
+                editButton.classList.add('js-edit-btn');
+                editButton.onclick = () => appLogic.startEditMessage(index, messageDiv);
+                actionsDiv.appendChild(editButton);
+                const deleteButton = document.createElement('button');
+                deleteButton.innerHTML = '<span class="material-symbols-outlined">delete</span> 削除'; 
+                deleteButton.title = 'この会話ターンを削除'; 
+                deleteButton.classList.add('js-delete-btn');
+                deleteButton.onclick = () => appLogic.deleteMessage(index);
+                actionsDiv.appendChild(deleteButton);
+                if (role === 'user') {
+                    const retryButton = document.createElement('button');
+                    retryButton.innerHTML = '<span class="material-symbols-outlined">replay</span> 再生成'; 
+                    retryButton.title = 'このメッセージから再生成'; 
+                    retryButton.classList.add('js-retry-btn');
+                    retryButton.onclick = () => appLogic.retryFromMessage(index);
+                    actionsDiv.appendChild(retryButton);
+                }
             }
+
             if (role === 'model' && messageData?.usageMetadata &&
                 typeof messageData.usageMetadata.candidatesTokenCount === 'number' &&
                 typeof messageData.usageMetadata.totalTokenCount === 'number')
@@ -1511,7 +1551,11 @@ const uiUtils = {
                 }
                 actionsDiv.appendChild(retrySpan);
             }
-            messageDiv.appendChild(actionsDiv);
+            
+            // ボタンやトークン数が一つでもあればactionsDivを追加する
+            if (actionsDiv.hasChildNodes()) {
+                messageDiv.appendChild(actionsDiv);
+            }
         }
 
         if (isStreamingPlaceholder) {
@@ -1519,6 +1563,7 @@ const uiUtils = {
         }
         return messageDiv;
     },
+
 
     // エラーメッセージを表示
     displayError(message, isApiError = false) {
@@ -1818,6 +1863,7 @@ const uiUtils = {
         
         // ヘッダー自動非表示機能のUIを更新
         elements.headerAutoHideToggle.checked = state.settings.headerAutoHide;
+        elements.summarySystemPromptTextarea.value = state.settings.summarySystemPrompt || '';
         document.body.classList.toggle('header-auto-hide', state.settings.headerAutoHide);
 
         const defaultHeaderColor = state.settings.darkMode ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
@@ -3047,7 +3093,7 @@ const appLogic = {
 
     getCurrentUiSettings() {
         const settings = {};
-        const stringKeys = ['apiKey', 'modelName', 'systemPrompt', 'dummyUser', 'dummyModel', 'additionalModels', 'historySortOrder', 'fontFamily', 'proofreadingModelName', 'proofreadingSystemInstruction', 'googleSearchApiKey', 'googleSearchEngineId', 'headerColor', 'thoughtTranslationModel'];
+        const stringKeys = ['apiKey', 'modelName', 'systemPrompt', 'dummyUser', 'dummyModel', 'additionalModels', 'historySortOrder', 'fontFamily', 'proofreadingModelName', 'proofreadingSystemInstruction', 'googleSearchApiKey', 'googleSearchEngineId', 'headerColor', 'thoughtTranslationModel', 'summarySystemPrompt'];
         const numberKeys = ['temperature', 'maxTokens', 'topK', 'topP', 'thinkingBudget', 'maxRetries', 'fixedRetryDelaySeconds', 'maxBackoffDelaySeconds', 'overlayOpacity', 'messageOpacity'];
         const booleanKeys = ['enterToSend', 'darkMode', 'hideSystemPromptInChat', 'geminiEnableGrounding', 'geminiEnableFunctionCalling', 'enableSwipeNavigation', 'enableProofreading', 'enableAutoRetry', 'useFixedRetryDelay', 'concatDummyModel', 'includeThoughts', 'enableThoughtTranslation', 'applyDummyToProofread', 'applyDummyToTranslate', 'allowPromptUiChanges', 'forceFunctionCalling', 'autoScroll', 'enableWideMode'];
         
@@ -3097,15 +3143,36 @@ const appLogic = {
     },
 
     _prepareApiHistory(baseMessages) {
-        let history = [...baseMessages];
+        let messagesForApi;
+
+        if (state.currentSummarizedContext) {
+            console.log("[API Prep] 要約済みコンテキストを検出。履歴を再構築します。");
+            const headMessages = baseMessages.slice(0, 5);
+            const tailMessages = baseMessages.slice(-15);
+            
+            const summaryMessage = {
+                role: 'user',
+                content: `【これまでのあらすじ】\n${state.currentSummarizedContext.summaryText}`,
+                attachments: [] // 要約メッセージに添付ファイルは含めない
+            };
+
+            messagesForApi = [...headMessages, summaryMessage, ...tailMessages];
+            console.log(`[API Prep] 履歴を ${baseMessages.length}件 → ${messagesForApi.length}件に圧縮しました。`);
+
+        } else {
+            console.log("[API Prep] 要約データなし。通常の履歴を使用します。");
+            messagesForApi = [...baseMessages];
+        }
+
+        // ダミープロンプトの追加処理は共通
         if (state.settings.dummyUser) {
-            history.push({ role: 'user', content: state.settings.dummyUser, attachments: [] });
+            messagesForApi.push({ role: 'user', content: state.settings.dummyUser, attachments: [] });
         }
         if (state.settings.dummyModel) {
-            history.push({ role: 'model', content: state.settings.dummyModel, attachments: [] });
+            messagesForApi.push({ role: 'model', content: state.settings.dummyModel, attachments: [] });
         }
         
-        return history.map(msg => {
+        return messagesForApi.map(msg => {
             const parts = [];
             if (msg.content && msg.content.trim() !== '') {
                 parts.push({ text: msg.content });
@@ -3129,6 +3196,7 @@ const appLogic = {
             return { role: msg.role === 'tool' ? 'tool' : (msg.role === 'model' ? 'model' : 'user'), parts };
         }).filter(c => c.parts.length > 0);
     },
+
 
     /**
      * 画像Blobを受け取り、WebPに変換してimage_storeに保存し、新しいIDを返す
@@ -3903,6 +3971,16 @@ const appLogic = {
             event.target.value = null;
         });
 
+        // --- History Summary ---
+        elements.summarizeHistoryBtn.addEventListener('click', () => this.startSummaryProcess());
+        elements.summarySystemPromptTextarea.addEventListener('input', () => {
+            state.settings.summarySystemPrompt = elements.summarySystemPromptTextarea.value;
+            this.updateCurrentProfile(); // 設定変更を即時保存
+        });
+        elements.summaryCancelBtn.addEventListener('click', () => elements.summaryDialog.close('cancel'));
+        elements.summaryRegenerateBtn.addEventListener('click', () => this.regenerateSummary());
+        elements.summaryConfirmBtn.addEventListener('click', () => this.confirmSummary());
+
         // --- Header Auto-Hide Event Listeners ---
         let headerHideTimer = null;
 
@@ -4143,6 +4221,7 @@ const appLogic = {
         state.currentSystemPrompt = state.settings.systemPrompt || ''; 
         state.pendingAttachments = [];
         state.currentPersistentMemory = {};
+        state.currentSummarizedContext = null;
         state.isMemoryEnabledForChat = true; // 新規チャットではデフォルトで有効
         this.toggleMemoryIconVisibility();
         state.currentScene = { scene_id: "initial", location: "不明な場所" };
@@ -4205,6 +4284,7 @@ const appLogic = {
                 console.log(`[Debug LoadChat] 3. DBから新しいチャットを読み込みました。 new length: ${state.currentMessages.length}`);
                 
                 state.currentPersistentMemory = chat.persistentMemory || {};
+                state.currentSummarizedContext = chat.summarizedContext || null;
                 // チャットごとのメモリ有効状態を読み込む (未定義ならtrue)
                 state.isMemoryEnabledForChat = chat.isMemoryEnabledForChat !== false;
                 this.toggleMemoryIconVisibility();
@@ -4448,6 +4528,7 @@ const appLogic = {
                     messages: state.currentMessages,
                     systemPrompt: state.currentSystemPrompt,
                     persistentMemory: state.currentPersistentMemory,
+                    summarizedContext: state.currentSummarizedContext, // ★ 変更点
                     createdAt: null,
                     updatedAt: Date.now(),
                 };
@@ -4464,7 +4545,6 @@ const appLogic = {
             const imageDataBlock = {};
             const allImageIds = new Set();
 
-            // 1. 全メッセージから必要な画像IDを収集
             if (chatToExport.messages) {
                 chatToExport.messages.forEach(msg => {
                     if (msg.imageIds && msg.imageIds.length > 0) {
@@ -4473,7 +4553,6 @@ const appLogic = {
                 });
             }
 
-            // 2. 画像IDを元にDBから画像データを取得し、Base64に変換
             if (allImageIds.size > 0) {
                 uiUtils.setLoadingIndicatorText('画像データを収集中...');
                 elements.loadingIndicator.classList.remove('hidden');
@@ -4494,7 +4573,6 @@ const appLogic = {
                 elements.loadingIndicator.classList.add('hidden');
             }
     
-            // 3. テキストコンテンツを生成
             if (chatToExport.persistentMemory && Object.keys(chatToExport.persistentMemory).length > 0) {
                 try {
                     const metadataJson = JSON.stringify(chatToExport.persistentMemory, null, 2);
@@ -4506,6 +4584,15 @@ const appLogic = {
     
             if (chatToExport.systemPrompt) {
                 exportText += `<|#|system|#|>\n${chatToExport.systemPrompt}\n<|#|/system|#|>\n\n`;
+            }
+
+            if (chatToExport.summarizedContext) {
+                try {
+                    const summaryJson = JSON.stringify(chatToExport.summarizedContext, null, 2);
+                    exportText += `<|#|summary|#|>\n${summaryJson}\n<|#|/summary|#|>\n\n`;
+                } catch (e) {
+                    console.error("summarizedContextのJSON化に失敗しました:", e);
+                }
             }
     
             if (chatToExport.messages) {
@@ -4528,7 +4615,6 @@ const appLogic = {
                 });
             }
 
-            // 4. 画像データブロックを追記
             if (Object.keys(imageDataBlock).length > 0) {
                 exportText += `<|#|imagedata|#|>\n${JSON.stringify(imageDataBlock, null, 2)}\n<|#|/imagedata|#|>\n`;
             }
@@ -4550,6 +4636,7 @@ const appLogic = {
             elements.loadingIndicator.classList.add('hidden');
         }
     },
+
 
 
 
@@ -5077,7 +5164,7 @@ const appLogic = {
                 return;
             }
             try {
-                const { messages: importedMessages, systemPrompt: importedSystemPrompt, persistentMemory: importedMemory, imageData: importedImageData } = this.parseImportedHistory(textContent);
+                const { messages: importedMessages, systemPrompt: importedSystemPrompt, persistentMemory: importedMemory, summarizedContext: importedSummary, imageData: importedImageData } = this.parseImportedHistory(textContent);
                 
                 if (importedMessages.length === 0 && !importedSystemPrompt && (!importedMemory || Object.keys(importedMemory).length === 0)) {
                     await uiUtils.showCustomAlert("ファイルから有効なメッセージ、システムプロンプト、またはメタデータを読み込めませんでした。形式を確認してください。");
@@ -5151,6 +5238,7 @@ const appLogic = {
                     messages: importedMessages,
                     systemPrompt: importedSystemPrompt || '', // インポートされたシステムプロンプト
                     persistentMemory: importedMemory || {}, // インポートされた永続メモリ
+                    summarizedContext: importedSummary || null,
                     updatedAt: Date.now(),
                     createdAt: Date.now(),
                     title: newTitle.substring(0, 100) // 100文字制限
@@ -5190,7 +5278,8 @@ const appLogic = {
         const messages = [];
         let systemPrompt = '';
         let persistentMemory = {};
-        const imageData = {}; // 画像データブロックを格納するオブジェクト
+        let summarizedContext = null;
+        const imageData = {};
 
         // メタデータブロック
         const metadataRegex = /<\|#\|metadata\|#\|>([\s\S]*?)<\|#\|\/metadata\|#\|>\s*/;
@@ -5206,7 +5295,19 @@ const appLogic = {
             remainingText = remainingText.replace(metadataRegex, '');
         }
 
-        // 画像データブロックを先に抽出・削除
+        // 要約データブロックを先に抽出
+        const summaryRegex = /<\|#\|summary\|#\|>([\s\S]*?)<\|#\|\/summary\|#\|>\s*/;
+        const summaryMatch = remainingText.match(summaryRegex);
+        if (summaryMatch) {
+            try {
+                summarizedContext = JSON.parse(summaryMatch[1].trim());
+            } catch (e) {
+                console.error("インポートされたsummaryのJSONパースに失敗:", e);
+                summarizedContext = null;
+            }
+            remainingText = remainingText.replace(summaryRegex, '');
+        }
+
         const imageDataRegex = /<\|#\|imagedata\|#\|>([\s\S]*?)<\|#\|\/imagedata\|#\|>\s*/;
         const imageDataMatch = remainingText.match(imageDataRegex);
         if (imageDataMatch) {
@@ -5240,7 +5341,7 @@ const appLogic = {
                 const attributeRegex = /(\w+)="([^"]*)"|(\w+)/g;
                 let attrMatch;
                 while ((attrMatch = attributeRegex.exec(attributesString)) !== null) {
-                    if (attrMatch[1]) { // key="value" 形式
+                    if (attrMatch[1]) {
                         const key = attrMatch[1];
                         const value = attrMatch[2].replace(/&quot;/g, '"');
                         if (key === 'attachments') {
@@ -5250,18 +5351,18 @@ const appLogic = {
                         } else if (key === 'imageIds') {
                             messageData.imageIds = value.split(',');
                         }
-                    } else if (attrMatch[3]) { // boolean 形式
+                    } else if (attrMatch[3]) {
                         messageData[attrMatch[3]] = true;
                     }
                 }
                 messages.push(messageData);
             }
         }
-        console.log(`インポートテキストから ${messages.length} 件のメッセージとシステムプロンプト(${systemPrompt ? 'あり' : 'なし'})をパースしました。`);
-        
-        // 戻り値にimageDataを追加
-        return { messages, systemPrompt, persistentMemory, imageData };
+        console.log(`インポートテキストから ${messages.length} 件のメッセージとシステムプロンプト(${systemPrompt ? 'あり' : 'なし'})、要約データ(${summarizedContext ? 'あり' : 'なし'})をパースしました。`);
+
+        return { messages, systemPrompt, persistentMemory, summarizedContext, imageData };
     },
+
 
     // -------------------------------
 
@@ -7113,7 +7214,7 @@ const appLogic = {
 
             [重要事項]
             - **重複の排除**: 【既存の記憶】に既に含まれている情報は絶対に含めないでください。
-            - **事実の抽出**: 会話の内容から、ユーザーに関する具体的な情報（例: 好きな食べ物、ペットの名前、性格など）だけを抜き出してください。「ユーザーは〇〇する傾向がある」といった行動分析は不要です。
+            - **事実の抽出**: 会話の内容から、ユーザーに関する具体的な情報（例: 好きな食べ物、性癖、ペットの名前、性格など）だけを抜き出してください。「ユーザーは〇〇する傾向がある」といった行動分析は不要です。
             - **主人公との区別**: 会話がロールプレイ形式の場合、物語の登場人物ではなく、操作者であるユーザー自身の好みや設定を抽出してください。
             - **簡潔な記述**: 各項目は「ユーザーは〇〇が好き」「ユーザーの猫の名前はタマ」のように、客観的な事実として記述してください。
             - **情報がない場合**: もし新しい情報が何もなければ、他の言葉は一切含めず \`[追加情報なし]\` とだけ出力してください。
@@ -7191,8 +7292,202 @@ const appLogic = {
         }
     },
 
+    updateSummarizeButtonState() {
+        const messageCount = state.currentMessages.length;
+        elements.summarizeHistoryBtn.disabled = messageCount < 50;
+    },
+
+    async startSummaryProcess() {
+        if (state.isSending || state.editingMessageIndex !== null || state.isEditingSystemPrompt) {
+            uiUtils.showCustomAlert("他の処理が完了してから、再度お試しください。");
+            return;
+        }
+
+        const messages = state.currentMessages;
+        let start = 0;
+        let end = messages.length;
+
+        if (state.currentSummarizedContext && state.currentSummarizedContext.summaryRange) {
+            start = state.currentSummarizedContext.summaryRange.end;
+        }
+
+        if (end <= start) {
+            uiUtils.showCustomAlert("前回から新しい会話履歴がないため、要約する内容がありません。");
+            return;
+        }
+
+        const messagesToSummarize = messages.slice(start, end);
+        const originalText = messagesToSummarize.map(m => `${m.role === 'user' ? 'ユーザー' : 'アシスタント'}: ${m.content}`).join('\n\n');
+
+        const confirmed = await uiUtils.showCustomConfirm(
+            `履歴を要約しますか？\n\n要約を実行すると、対象範囲のメッセージ（${messagesToSummarize.length}件）は編集・削除・再生成ができなくなります。この操作は元に戻せません。`
+        );
+
+        if (!confirmed) {
+            console.log("要約処理をユーザーがキャンセルしました。");
+            return;
+        }
+
+        elements.summaryDialog.dataset.originalText = originalText;
+        elements.summaryDialog.dataset.summaryRangeStart = start;
+        elements.summaryDialog.dataset.summaryRangeEnd = end;
+
+        elements.summaryStats.textContent = '要約を生成中です...';
+        elements.summaryEditor.value = '';
+        elements.summaryEditor.disabled = true;
+        elements.summaryRegenerateBtn.disabled = true;
+        elements.summaryConfirmBtn.disabled = true;
+        elements.summaryDialog.showModal();
+
+        await this._callSummaryApi(originalText);
+    },
 
 
+    async _callSummaryApi(originalText) {
+        try {
+            const systemInstruction = {
+                parts: [{ text: state.settings.summarySystemPrompt }]
+            };
+            
+            const userContent = `【要約対象の会話履歴】\n${originalText}`;
+
+            const requestBody = {
+                contents: [{ role: 'user', parts: [{ text: userContent }] }],
+                systemInstruction: systemInstruction,
+                generationConfig: {
+                    temperature: 0.3,
+                },
+                safetySettings: [
+                    { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                    { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                    { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                    { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+                ]
+            };
+
+            console.log("--- [要約API] リクエスト開始 ---");
+            console.log("使用モデル:", state.settings.modelName);
+            console.log("リクエストボディ:", JSON.stringify(requestBody, null, 2));
+
+            const endpoint = `${GEMINI_API_BASE_URL}${state.settings.modelName}:generateContent?key=${state.settings.apiKey}`;
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: { message: "レスポンスボディのJSONパースに失敗" } }));
+                console.error("--- [要約API] APIエラーレスポンス ---");
+                console.error("ステータス:", response.status, response.statusText);
+                console.error("エラーレスポンスボディ:", errorData);
+                throw new Error(errorData.error?.message || `APIエラー: ${response.status}`);
+            }
+
+            const responseData = await response.json();
+
+            console.log("--- [要約API] 正常レスポンス ---");
+            console.log("レスポンスボディ全体:", JSON.stringify(responseData, null, 2));
+
+            const candidate = responseData.candidates?.[0];
+            const summaryText = candidate?.content?.parts?.[0]?.text;
+
+            if (!summaryText) {
+                if (candidate?.finishReason) {
+                    console.error(`[要約API] テキストが生成されませんでした。終了理由: ${candidate.finishReason}`);
+                    if (candidate.safetyRatings) {
+                        console.error("[要約API] 安全性評価:", candidate.safetyRatings);
+                    }
+                }
+                if (responseData.promptFeedback) {
+                     console.error("[要約API] プロンプトフィードバック:", responseData.promptFeedback);
+                }
+                throw new Error("APIから有効な要約結果が得られませんでした。");
+            }
+
+            this._showSummaryDialog(summaryText, originalText.length);
+
+        } catch (error) {
+            console.error("要約API呼び出し/処理中にエラー:", error);
+            elements.summaryDialog.close();
+            uiUtils.showCustomAlert(`要約の生成に失敗しました: ${error.message}`);
+        }
+    },
+
+
+    _showSummaryDialog(summaryText, originalLength) {
+        // 統計情報を更新 (計算式を修正)
+        const reductionRate = (100 - (summaryText.length / originalLength * 100)).toFixed(1);
+        elements.summaryStats.textContent = `原文: ${originalLength.toLocaleString()}文字 → 要約: ${summaryText.length.toLocaleString()}文字 (${reductionRate} %削減)`;
+        // テキストエリアに結果を表示し、編集可能にする
+        elements.summaryEditor.value = summaryText;
+        elements.summaryEditor.disabled = false;
+        // ボタンを有効化
+        elements.summaryRegenerateBtn.disabled = false;
+        elements.summaryConfirmBtn.disabled = false;
+        // ダイアログが既に開いていることを確認
+        if (!elements.summaryDialog.open) {
+            elements.summaryDialog.showModal();
+        }
+    },
+
+    async regenerateSummary() {
+        const originalText = elements.summaryDialog.dataset.originalText;
+        if (originalText) {
+            // ダイアログを閉じる代わりに、UIをローディング状態に戻す
+            elements.summaryStats.textContent = '要約を再生成中です...';
+            elements.summaryEditor.value = '';
+            elements.summaryEditor.disabled = true;
+            elements.summaryRegenerateBtn.disabled = true;
+            elements.summaryConfirmBtn.disabled = true;
+            
+            // APIを再呼び出し
+            await this._callSummaryApi(originalText);
+        } else {
+            uiUtils.showCustomAlert("再生成するための元データが見つかりませんでした。");
+        }
+    },
+
+
+    async confirmSummary() {
+        const summaryText = elements.summaryEditor.value.trim();
+        if (!summaryText) {
+            uiUtils.showCustomAlert("要約内容が空です。");
+            return;
+        }
+
+        const start = parseInt(elements.summaryDialog.dataset.summaryRangeStart, 10);
+        const end = parseInt(elements.summaryDialog.dataset.summaryRangeEnd, 10);
+        const originalMessageCount = end - start;
+
+        // チャットデータに要約コンテキストを保存
+        const chatToSave = await dbUtils.getChat(state.currentChatId);
+        if (!chatToSave) {
+            uiUtils.showCustomAlert("チャットデータの保存に失敗しました。");
+            return;
+        }
+        
+        // 既存の要約があれば追記、なければ新規作成
+        const existingSummary = chatToSave.summarizedContext ? chatToSave.summarizedContext.summaryText : "";
+        const newSummaryText = existingSummary ? `${existingSummary}\n\n${summaryText}` : summaryText;
+        
+        chatToSave.summarizedContext = {
+            summaryText: newSummaryText,
+            originalMessageCount: (chatToSave.summarizedContext?.originalMessageCount || 0) + originalMessageCount,
+            summarizedAt: new Date().toISOString(),
+            summaryRange: { start: 0, end: end } // 範囲は常に最初から現在の最後までを記録
+        };
+
+        try {
+            await dbUtils.saveChat(chatToSave.title, chatToSave);
+            state.currentSummarizedContext = chatToSave.summarizedContext;
+            elements.summaryDialog.close('confirm');
+            await uiUtils.showCustomAlert(`履歴の要約を保存しました。\n次回以降のメッセージ送信から、この要約がコンテキストとして使用されます。`);
+        } catch (error) {
+            console.error("要約の保存エラー:", error);
+            await uiUtils.showCustomAlert(`要約の保存に失敗しました: ${error.message}`);
+        }
+    }
 }; // appLogic終了
 
 window.appLogic = appLogic;

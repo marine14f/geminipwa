@@ -446,7 +446,6 @@ body.dark-mode #chat-overlay {
 /* --- Chat Input Area --- */
 .chat-input-area {
     display: flex;
-    align-items: flex-end;
     padding: var(--spacing-unit) calc(var(--spacing-unit) * 2);
     border-top: 1px solid var(--border-primary);
     background-color: var(--bg-primary);
@@ -1705,3 +1704,102 @@ body.header-auto-hide.header-force-show #chat-screen .app-header {
     transform: translateY(0);
 }
 
+/* --- History Summary Feature --- */
+#summarize-history-btn {
+    height: 44px;
+    width: 44px;
+    padding: 0;
+    font-size: 24px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background-color: transparent;
+    color: var(--text-secondary);
+    box-shadow: none;
+    align-self: flex-end;
+    position: relative;
+    top: 2px;
+}
+
+#summarize-history-btn:hover:not(:disabled) {
+    background-color: var(--bg-tertiary);
+}
+#summarize-history-btn:disabled {
+    color: var(--text-disabled);
+    background-color: transparent;
+    box-shadow: none;
+    cursor: not-allowed;
+}
+
+#summaryDialog {
+    width: 90%;
+    max-width: 700px;
+}
+
+.summary-stats {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+    text-align: center;
+    background-color: var(--bg-tertiary);
+    padding: 8px;
+    border-radius: var(--border-radius-sm);
+}
+
+.summary-editor {
+    width: 100%;
+    min-height: 200px;
+    max-height: 50vh;
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+.summary-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+}
+
+.summary-main-actions {
+    display: flex;
+    gap: 10px;
+}
+
+/* --- Summary Dialog Description --- */
+.summary-description {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--border-radius-md);
+    padding: 10px 12px;
+    margin-bottom: 12px;
+}
+.summary-description p {
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+.summary-description ul {
+    padding-left: 18px;
+    margin: 0;
+}
+.summary-description li {
+    margin-bottom: 4px;
+}
+
+/* --- Summary Marker in Chat --- */
+.summary-marker {
+    width: 80%;
+    margin: 20px auto;
+    text-align: center;
+    border-bottom: 1px dashed var(--border-secondary);
+    position: relative;
+}
+.summary-marker-text {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    background-color: var(--bg-secondary);
+    padding: 0 10px;
+    position: relative;
+    top: 8px; /* 線の中央に来るように調整 */
+}
