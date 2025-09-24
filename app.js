@@ -6131,19 +6131,21 @@ const appLogic = {
                 if (errorIndex !== -1) {
                     state.currentMessages[errorIndex] = { role: 'error', content: errorMessage, timestamp: Date.now() };
                 }
-                uiUtils.renderChatMessages(() => uiUtils.scrollToBottom());
+                uiUtils.renderChatMessages();
+                this.scrollToBottom();
                 await dbUtils.saveChat();
             } finally {
                 uiUtils.setSendingState(false);
                 state.abortController = null; 
                 if (state.settings.autoScroll) {
                     requestAnimationFrame(() => {
-                        uiUtils.scrollToBottom();
+                        this.scrollToBottom();
                     });
                 }
             }
         }
     },
+
 
 
     // --- カスケード応答操作 ---
