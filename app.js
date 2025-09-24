@@ -1066,39 +1066,38 @@ const uiUtils = {
 
     renderChatMessages() {
         const renderStartTime = performance.now();
-        console.log(`[PERF_DEBUG] renderChatMessages 開始 (Lazy Load版)`);
+        console.log(`[PERF_DEBUG] renderChatMessages 開始`);
 
         const container = elements.messageContainer;
         
-        // ▼▼▼ ここからが変更箇所 ▼▼▼
-        // 既存のObserverをすべて停止 (appLogicを明示的に参照)
-        if (appLogic.textObserver) appLogic.textObserver.disconnect();
-        if (appLogic.imageObserver) appLogic.imageObserver.disconnect();
-        // ▲▲▲ ここまでが変更箇所 ▲▲▲
+        container.style.minHeight = `${container.scrollHeight}px`;
 
-        // 既存のDOMクリーンアップ処理はそのまま
         if (state.imageUrlCache.size > 0) {
-            for (const url of state.imageUrlCache.values()) { URL.revokeObjectURL(url); }
+            for (const url of state.imageUrlCache.values()) {
+                URL.revokeObjectURL(url);
+            }
             state.imageUrlCache.clear();
         }
         if (state.editingMessageIndex !== null) {
             const messageElement = container.querySelector(`.message[data-index="${state.editingMessageIndex}"]`);
-            if (messageElement) this.cancelEditMessage(state.editingMessageIndex, messageElement);
+            if (messageElement) appLogic.cancelEditMessage(state.editingMessageIndex, messageElement);
             else state.editingMessageIndex = null;
         }
 
         container.innerHTML = '';
         const fragment = document.createDocumentFragment();
-        
         const visibleMessages = [];
         const processedGroupIds = new Set();
+
         state.currentMessages.forEach((msg) => {
             if (msg.isHidden) return;
             if (msg.isCascaded && msg.siblingGroupId) {
                 if (!processedGroupIds.has(msg.siblingGroupId)) {
                     const siblings = state.currentMessages.filter(m => m.siblingGroupId === msg.siblingGroupId && !m.isHidden);
                     const selectedSibling = siblings.find(m => m.isSelected) || siblings[siblings.length - 1];
-                    if (selectedSibling) visibleMessages.push(selectedSibling);
+                    if (selectedSibling) {
+                        visibleMessages.push(selectedSibling);
+                    }
                     processedGroupIds.add(msg.siblingGroupId);
                 }
             } else {
@@ -1107,12 +1106,14 @@ const uiUtils = {
         });
 
         const summaryEndIndex = state.currentSummarizedContext?.summaryRange?.end;
-        let markerInserted = false;
+        let markerInserted = false; // 区切り線が挿入されたかを管理するフラグ
 
         visibleMessages.forEach(msg => {
             const index = state.currentMessages.indexOf(msg);
             if (index === -1 || msg.role === 'tool') return;
             
+            // 新しい区切り線表示ロジック
+            // まだ区切り線が挿入されておらず、現在のメッセージのインデックスが要約範囲の終端インデックス以上の場合に挿入
             if (!markerInserted && summaryEndIndex !== undefined && index >= summaryEndIndex) {
                 const markerDiv = document.createElement('div');
                 markerDiv.className = 'summary-marker';
@@ -1122,18 +1123,39 @@ const uiUtils = {
                 markerText.textContent = `ここまで要約済み (${summarizedDate})`;
                 markerDiv.appendChild(markerText);
                 fragment.appendChild(markerDiv);
-                markerInserted = true;
+                markerInserted = true; // 一度挿入したら、それ以降は挿入しない
             }
 
-            const messageElement = uiUtils.createMessageElement(msg.role, '', index, false, null, null, true);
+            let cascadeInfo = null;
+            if (msg.isCascaded && msg.siblingGroupId) {
+                const siblings = state.currentMessages.filter(m => m.siblingGroupId === msg.siblingGroupId && !m.isHidden);
+                const currentIndexInGroup = siblings.findIndex(m => m === msg);
+                cascadeInfo = {
+                    currentIndex: currentIndexInGroup + 1,
+                    total: siblings.length,
+                    siblingGroupId: msg.siblingGroupId
+                };
+            }
+            
+            const messageElement = uiUtils.createMessageElement(msg.role, msg.content, index, false, cascadeInfo, msg.attachments);
             if (messageElement) {
                 fragment.appendChild(messageElement);
-                // 生成した骨格を監視対象に追加 (appLogicを明示的に参照)
-                appLogic.textObserver.observe(messageElement);
             }
         });
         
         container.appendChild(fragment);
+        
+        if (window.Prism) {
+            const highlightStartTime = performance.now();
+            console.log(`[PERF_DEBUG] Prism.highlightAll 開始`);
+            Prism.highlightAll();
+            const highlightEndTime = performance.now();
+            console.log(`[PERF_DEBUG] Prism.highlightAll 完了 (所要時間: ${highlightEndTime - highlightStartTime}ms)`);
+        }
+        
+        requestAnimationFrame(() => {
+            container.style.minHeight = '';
+        });
         
         appLogic.updateSummarizeButtonState();
         const renderEndTime = performance.now();
@@ -1141,9 +1163,7 @@ const uiUtils = {
     },
 
 
-
-
-    createMessageElement(role, content, index, isStreamingPlaceholder = false, cascadeInfo = null, attachments = null, isLazy = false) {
+    createMessageElement(role, content, index, isStreamingPlaceholder = false, cascadeInfo = null, attachments = null) {
         const messageData = state.currentMessages[index];
         if (!messageData) return null;
 
@@ -1153,12 +1173,6 @@ const uiUtils = {
         const messageDiv = document.createElement('div');
         messageDiv.classList.add('message', role);
         messageDiv.dataset.index = index;
-        
-        // isLazyがtrueの場合は、仮の高さを設定して処理を中断
-        if (isLazy) {
-            messageDiv.style.minHeight = '52px'; // 仮の高さ
-            return messageDiv;
-        }
         
         if (role === 'model' && messageData && messageData.thoughtSummary) {
             const thoughtDetails = document.createElement('details');
@@ -3364,18 +3378,6 @@ const appLogic = {
                 }
             }
         }, { rootMargin: '200px' });
-
-        // テキストコンテンツ遅延読み込み用のIntersectionObserver
-        this.textObserver = new IntersectionObserver((entries, observer) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    const messageElement = entry.target;
-                    const index = parseInt(messageElement.dataset.index, 10);
-                    this.renderMessageContent(messageElement, index);
-                    observer.unobserve(messageElement); // 一度表示したら監視を解除
-                }
-            });
-        }, { rootMargin: '300px' }); // 画面に入る少し前から読み込みを開始
 
         // MutationObserverの初期化 (オブジェクトURLのメモリ解放用)
         const mutationObserver = new MutationObserver((mutationsList) => {
@@ -7527,12 +7529,14 @@ const appLogic = {
     scrollToTop() {
         const mainContent = elements.chatScreen.querySelector('.main-content');
         if (mainContent) {
-            mainContent.scrollTop = 0;
-            console.log("[Direct Scroll] 最上部へ瞬時に移動しました。");
+            mainContent.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
         }
     },
 
-    scrollToBottom(force = false) {
+        scrollToBottom(force = false) {
         const mainContent = elements.chatScreen.querySelector('.main-content');
         if (!mainContent) return;
 
@@ -7540,55 +7544,62 @@ const appLogic = {
             return;
         }
 
-        // どのケースでも、レンダリングが落ち着くのを待ってから瞬時に移動する
-        let lastHeight = 0;
-        let attempts = 0;
-        const maxAttempts = 10; // 最大10回チェック (約0.5秒)
+        if (force) {
+            // ▼▼▼ ログ出力 ▼▼▼
+            console.log("--- [Scroll Start Log] ---");
+            console.log(`[Before] scrollHeight: ${mainContent.scrollHeight}, scrollTop: ${mainContent.scrollTop}`);
+            // ▲▲▲ ログ出力 ▲▲▲
 
-        const checkAndScroll = () => {
-            const currentHeight = mainContent.scrollHeight;
-            // 高さが安定したか、最大試行回数に達したか
-            if (currentHeight === lastHeight || attempts >= maxAttempts) {
-                mainContent.scrollTop = mainContent.scrollHeight;
-                console.log(`[Direct Scroll] 最下部へ瞬時に移動しました。(Attempts: ${attempts}, Final Height: ${currentHeight})`);
-            } else {
-                lastHeight = currentHeight;
-                attempts++;
-                setTimeout(checkAndScroll, 50); // 50ミリ秒後に再チェック
+            const startY = mainContent.scrollTop;
+            const endY = mainContent.scrollHeight; 
+            const distance = endY - startY;
+            const duration = 500; 
+            let startTime = null;
+
+            if (distance <= 0) {
+                console.log("[Scroll Log] Already at bottom.");
+                return;
             }
-        };
 
-        checkAndScroll();
+            const step = (currentTime) => {
+                if (startTime === null) startTime = currentTime;
+                const elapsed = currentTime - startTime;
+                
+                const t = Math.min(elapsed / duration, 1);
+                const easedT = 1 - Math.pow(1 - t, 3);
+
+                mainContent.scrollTop = startY + (distance * easedT);
+
+                if (elapsed < duration) {
+                    requestAnimationFrame(step);
+                } else {
+                    mainContent.scrollTop = endY;
+                    // ▼▼▼ ログ出力 ▼▼▼
+                    // アニメーション完了直後に、再度scrollHeightを計測
+                    requestAnimationFrame(() => {
+                        console.log("--- [Scroll End Log] ---");
+                        console.log(`[After] scrollHeight: ${mainContent.scrollHeight}, scrollTop: ${mainContent.scrollTop}`);
+                        console.log(`[Result] Goal was ${endY}, but final scrollHeight is ${mainContent.scrollHeight}.`);
+                    });
+                    // ▲▲▲ ログ出力 ▲▲▲
+                }
+            };
+
+            requestAnimationFrame(step);
+
+        } else {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    mainContent.scrollTop = mainContent.scrollHeight;
+                });
+            });
+        }
+        console.log(`[Debug Scroll] scrollToBottom: 実行 (Force: ${force})`);
     },
 
 
-    renderMessageContent(messageElement, index) {
-        // createMessageElementをisLazy=falseで呼び出し、完全な要素を生成
-        const fullMessageElement = uiUtils.createMessageElement(
-            state.currentMessages[index].role,
-            state.currentMessages[index].content,
-            index,
-            false, // isStreamingPlaceholder
-            null,  // cascadeInfo (遅延読み込み時には不要)
-            state.currentMessages[index].attachments,
-            false  // isLazy
-        );
 
-        if (fullMessageElement) {
-            // 生成された完全な要素の中身を、既存の骨格要素に移植する
-            while (fullMessageElement.firstChild) {
-                messageElement.appendChild(fullMessageElement.firstChild);
-            }
-            // 仮の高さを削除
-            messageElement.style.minHeight = '';
 
-            // Prism.jsのハイライトと画像の遅延読み込みをトリガー
-            if (window.Prism) {
-                messageElement.querySelectorAll('pre code').forEach(block => Prism.highlightElement(block));
-            }
-            messageElement.querySelectorAll('.lazy-load-image').forEach(img => this.imageObserver.observe(img));
-        }
-    }
 }; // appLogic終了
 
 window.appLogic = appLogic;
