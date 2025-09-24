@@ -1893,3 +1893,72 @@ body.dark-mode #chat-screen > .floating-action-button:hover:not(:disabled) {
         transform: rotate(360deg);
     }
 }
+
+/* --- Floating Action Panel --- */
+.floating-action-panel {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    display: flex;
+    gap: 8px;
+    background-color: rgba(255, 255, 255, 0.8);
+    border: 1px solid var(--border-primary);
+    border-radius: 24px; /* 角丸を調整 */
+    padding: 4px;
+    box-shadow: var(--shadow-2);
+    z-index: 5;
+    opacity: 0; /* 初期状態は非表示 */
+    pointer-events: none; /* 非表示時はクリックできないように */
+    transition: opacity 0.3s ease-in-out;
+}
+
+.floating-action-panel.visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.panel-button {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+}
+
+.panel-button .material-symbols-outlined {
+    font-size: 20px;
+}
+
+.panel-button:hover:not(:disabled) {
+    background-color: var(--bg-button-action);
+    color: #ffffff;
+}
+
+.panel-button:disabled {
+    color: var(--text-disabled);
+    cursor: not-allowed;
+}
+
+body.dark-mode .floating-action-panel {
+    background-color: rgba(40, 40, 40, 0.8);
+    border-color: var(--border-secondary);
+}
+
+body.dark-mode .panel-button {
+    color: var(--text-primary);
+}
+
+body.dark-mode .panel-button:hover:not(:disabled) {
+    background-color: var(--bg-button-action-hover);
+    color: #ffffff;
+}
+
+body.dark-mode .panel-button:disabled {
+    color: var(--text-disabled);
+}
