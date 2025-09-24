@@ -7527,10 +7527,8 @@ const appLogic = {
     scrollToTop() {
         const mainContent = elements.chatScreen.querySelector('.main-content');
         if (mainContent) {
-            mainContent.scrollTo({
-                top: 0,
-                behavior: 'smooth'
-            });
+            mainContent.scrollTop = 0;
+            console.log("[Direct Scroll] 最上部へ瞬時に移動しました。");
         }
     },
 
@@ -7542,58 +7540,27 @@ const appLogic = {
             return;
         }
 
-        if (force) {
-            // ▼▼▼ ログ出力 ▼▼▼
-            console.log("--- [Scroll Start Log] ---");
-            console.log(`[Before] scrollHeight: ${mainContent.scrollHeight}, scrollTop: ${mainContent.scrollTop}`);
-            // ▲▲▲ ログ出力 ▲▲▲
+        // どのケースでも、レンダリングが落ち着くのを待ってから瞬時に移動する
+        let lastHeight = 0;
+        let attempts = 0;
+        const maxAttempts = 10; // 最大10回チェック (約0.5秒)
 
-            const startY = mainContent.scrollTop;
-            const endY = mainContent.scrollHeight; 
-            const distance = endY - startY;
-            const duration = 500; 
-            let startTime = null;
-
-            if (distance <= 0) {
-                console.log("[Scroll Log] Already at bottom.");
-                return;
+        const checkAndScroll = () => {
+            const currentHeight = mainContent.scrollHeight;
+            // 高さが安定したか、最大試行回数に達したか
+            if (currentHeight === lastHeight || attempts >= maxAttempts) {
+                mainContent.scrollTop = mainContent.scrollHeight;
+                console.log(`[Direct Scroll] 最下部へ瞬時に移動しました。(Attempts: ${attempts}, Final Height: ${currentHeight})`);
+            } else {
+                lastHeight = currentHeight;
+                attempts++;
+                setTimeout(checkAndScroll, 50); // 50ミリ秒後に再チェック
             }
+        };
 
-            const step = (currentTime) => {
-                if (startTime === null) startTime = currentTime;
-                const elapsed = currentTime - startTime;
-                
-                const t = Math.min(elapsed / duration, 1);
-                const easedT = 1 - Math.pow(1 - t, 3);
-
-                mainContent.scrollTop = startY + (distance * easedT);
-
-                if (elapsed < duration) {
-                    requestAnimationFrame(step);
-                } else {
-                    mainContent.scrollTop = endY;
-                    // ▼▼▼ ログ出力 ▼▼▼
-                    // アニメーション完了直後に、再度scrollHeightを計測
-                    requestAnimationFrame(() => {
-                        console.log("--- [Scroll End Log] ---");
-                        console.log(`[After] scrollHeight: ${mainContent.scrollHeight}, scrollTop: ${mainContent.scrollTop}`);
-                        console.log(`[Result] Goal was ${endY}, but final scrollHeight is ${mainContent.scrollHeight}.`);
-                    });
-                    // ▲▲▲ ログ出力 ▲▲▲
-                }
-            };
-
-            requestAnimationFrame(step);
-
-        } else {
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    mainContent.scrollTop = mainContent.scrollHeight;
-                });
-            });
-        }
-        console.log(`[Debug Scroll] scrollToBottom: 実行 (Force: ${force})`);
+        checkAndScroll();
     },
+
 
     renderMessageContent(messageElement, index) {
         // createMessageElementをisLazy=falseで呼び出し、完全な要素を生成
