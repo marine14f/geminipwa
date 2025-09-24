@@ -33,6 +33,8 @@
                 <button id="goto-settings-btn" class="header-button" title="設定へ"><span class="material-symbols-outlined">settings</span></button>
             </header>
 
+
+
             <main class="main-content">
                 <!-- システムプロンプト表示/編集エリア -->
                 <div id="system-prompt-area" class="system-prompt-area">
@@ -55,6 +57,10 @@
                 <div id="loading-indicator" class="loading-indicator hidden" aria-live="polite">応答中</div>
             </main>
 
+            <button id="summarize-history-btn" class="floating-action-button" title="履歴を要約" disabled>
+                <span class="material-symbols-outlined">article_shortcut</span>
+            </button>
+
             <footer class="chat-input-area">
                 <div id="profile-card-header-wrapper" class="profile-card-wrapper">
                     <div id="profile-card-header" class="profile-card" title="プロファイルを切り替え">
@@ -63,8 +69,6 @@
                     <div id="header-profile-menu" class="profile-menu hidden"></div>
                 </div>
                 <textarea id="user-input" placeholder="メッセージを入力..." rows="1" aria-label="メッセージ入力"></textarea>
-                <!-- 履歴要約ボタンを追加 -->
-                <button id="summarize-history-btn" title="履歴を要約" disabled><span class="material-symbols-outlined">cleaning_services</span></button>
                 <!-- 添付ファイルボタンを追加 -->
                 <button id="attach-file-btn" title="ファイルを添付">
                     <div class="attach-icon-container">
@@ -76,6 +80,7 @@
                 </button>
                 <button id="send-button" title="送信"><span class="material-symbols-outlined">send</span></button>
             </footer>
+
         </div>
 
         <!-- 履歴画面 -->
@@ -418,6 +423,10 @@
                     <p style="font-size: 11px; color: var(--text-secondary); margin-top: -10px; margin-bottom: 15px;">
                         チャット履歴が長くなった際に、AIに送信するコンテキストを要約して応答品質の低下を防ぎます。
                     </p>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="enable-summary-button-toggle">
+                        チャット画面に要約ボタンを表示する
+                    </label>
                     <label for="summary-system-prompt">要約実行時のシステムプロンプト:</label>
                     <textarea id="summary-system-prompt" placeholder="要約を実行するAIへの指示を入力します。" aria-label="要約実行時のシステムプロンプト"></textarea>
                 </div>
@@ -648,6 +657,14 @@
             <span>新しいバージョンが利用可能です。</span>
             <button id="reload-for-update-btn">更新</button>
         </div>
+
+        <!-- Progress Dialog -->
+        <dialog id="progressDialog" class="custom-dialog progress-dialog">
+            <div class="dialog-content">
+                <div class="progress-spinner"></div>
+                <p id="progress-message" class="dialog-message"></p>
+            </div>
+        </dialog>
 
         <!-- Summary Dialog -->
         <dialog id="summaryDialog" class="custom-dialog">

@@ -240,7 +240,10 @@ const elements = {
     summaryEditor: document.getElementById('summary-editor'),
     summaryCancelBtn: document.getElementById('summary-cancel-btn'),
     summaryRegenerateBtn: document.getElementById('summary-regenerate-btn'),
-    summaryConfirmBtn: document.getElementById('summary-confirm-btn')
+    summaryConfirmBtn: document.getElementById('summary-confirm-btn'),
+    enableSummaryButtonToggle: document.getElementById('enable-summary-button-toggle'),
+    progressDialog: document.getElementById('progressDialog'),
+    progressMessage: document.getElementById('progress-message')
 };
 
 // --- アプリ状態 ---
@@ -313,7 +316,8 @@ const state = {
 - **情報の取捨選択**: 日常的な挨拶や、物語の進行に直接関係のない会話は省略してください。
 - **時系列の維持**: 出来事が起こった順番を正確に保ってください。
 
-最終的な出力は、このあらすじを初めて読む人でも、これまでの物語の流れを正確に理解できるような形式にしてください。`
+最終的な出力は、このあらすじを初めて読む人でも、これまでの物語の流れを正確に理解できるような形式にしてください。`,
+        enableSummaryButton: true
     },
     backgroundImageUrl: null,
     isSending: false,
@@ -1864,6 +1868,7 @@ const uiUtils = {
         // ヘッダー自動非表示機能のUIを更新
         elements.headerAutoHideToggle.checked = state.settings.headerAutoHide;
         elements.summarySystemPromptTextarea.value = state.settings.summarySystemPrompt || '';
+        elements.enableSummaryButtonToggle.checked = state.settings.enableSummaryButton;
         document.body.classList.toggle('header-auto-hide', state.settings.headerAutoHide);
 
         const defaultHeaderColor = state.settings.darkMode ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
@@ -3095,7 +3100,7 @@ const appLogic = {
         const settings = {};
         const stringKeys = ['apiKey', 'modelName', 'systemPrompt', 'dummyUser', 'dummyModel', 'additionalModels', 'historySortOrder', 'fontFamily', 'proofreadingModelName', 'proofreadingSystemInstruction', 'googleSearchApiKey', 'googleSearchEngineId', 'headerColor', 'thoughtTranslationModel', 'summarySystemPrompt'];
         const numberKeys = ['temperature', 'maxTokens', 'topK', 'topP', 'thinkingBudget', 'maxRetries', 'fixedRetryDelaySeconds', 'maxBackoffDelaySeconds', 'overlayOpacity', 'messageOpacity'];
-        const booleanKeys = ['enterToSend', 'darkMode', 'hideSystemPromptInChat', 'geminiEnableGrounding', 'geminiEnableFunctionCalling', 'enableSwipeNavigation', 'enableProofreading', 'enableAutoRetry', 'useFixedRetryDelay', 'concatDummyModel', 'includeThoughts', 'enableThoughtTranslation', 'applyDummyToProofread', 'applyDummyToTranslate', 'allowPromptUiChanges', 'forceFunctionCalling', 'autoScroll', 'enableWideMode'];
+        const booleanKeys = ['enterToSend', 'darkMode', 'hideSystemPromptInChat', 'geminiEnableGrounding', 'geminiEnableFunctionCalling', 'enableSwipeNavigation', 'enableProofreading', 'enableAutoRetry', 'useFixedRetryDelay', 'concatDummyModel', 'includeThoughts', 'enableThoughtTranslation', 'applyDummyToProofread', 'applyDummyToTranslate', 'allowPromptUiChanges', 'forceFunctionCalling', 'autoScroll', 'enableWideMode', 'enableSummaryButton'];
         
         stringKeys.forEach(key => {
             const element = elements[key + 'Input'] || elements[key + 'Select'] || elements[key + 'Textarea'];
@@ -3494,6 +3499,7 @@ const appLogic = {
             uiUtils.adjustTextareaHeight();
             uiUtils.setSendingState(false);
             this.updateAssetCount();
+            this.toggleSummaryButtonVisibility();
             uiUtils.scrollToBottom();
         }
     },
@@ -3977,6 +3983,11 @@ const appLogic = {
             state.settings.summarySystemPrompt = elements.summarySystemPromptTextarea.value;
             this.updateCurrentProfile(); // 設定変更を即時保存
         });
+        elements.enableSummaryButtonToggle.addEventListener('change', () => {
+            state.settings.enableSummaryButton = elements.enableSummaryButtonToggle.checked;
+            this.updateCurrentProfile();
+            this.toggleSummaryButtonVisibility();
+        });
         elements.summaryCancelBtn.addEventListener('click', () => elements.summaryDialog.close('cancel'));
         elements.summaryRegenerateBtn.addEventListener('click', () => this.regenerateSummary());
         elements.summaryConfirmBtn.addEventListener('click', () => this.confirmSummary());
@@ -4007,8 +4018,9 @@ const appLogic = {
 
         // --- Smartphone (Touch) Logic ---
         if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
-            // メッセージエリアのタップで表示をトグル ＆ 5秒タイマーを開始
-            elements.messageContainer.addEventListener('click', (event) => {
+            // メインコンテンツエリアのタップで表示をトグル ＆ 5秒タイマーを開始
+            const mainContent = elements.chatScreen.querySelector('.main-content');
+            mainContent.addEventListener('click', (event) => {
                 if (state.settings.headerAutoHide) {
                     const interactiveElements = 'A, BUTTON, INPUT, TEXTAREA, SELECT, DETAILS, SUMMARY, IMG, PRE, CODE';
                     if (!event.target.closest(interactiveElements)) {
@@ -5135,8 +5147,6 @@ const appLogic = {
             }
         }
     },
-
-
     
     // APIリクエストを中断
     abortRequest() {
@@ -5155,11 +5165,16 @@ const appLogic = {
             return;
         }
         console.log("履歴インポート開始:", file.name);
+        
+        elements.progressMessage.textContent = '履歴ファイルを解析中...';
+        elements.progressDialog.showModal();
+
         const reader = new FileReader();
 
         reader.onload = async (event) => {
             const textContent = event.target.result;
             if (!textContent) {
+                elements.progressDialog.close();
                 await uiUtils.showCustomAlert("ファイルの内容が空です。");
                 return;
             }
@@ -5167,56 +5182,58 @@ const appLogic = {
                 const { messages: importedMessages, systemPrompt: importedSystemPrompt, persistentMemory: importedMemory, summarizedContext: importedSummary, imageData: importedImageData } = this.parseImportedHistory(textContent);
                 
                 if (importedMessages.length === 0 && !importedSystemPrompt && (!importedMemory || Object.keys(importedMemory).length === 0)) {
+                    elements.progressDialog.close();
                     await uiUtils.showCustomAlert("ファイルから有効なメッセージ、システムプロンプト、またはメタデータを読み込めませんでした。形式を確認してください。");
                     return;
                 }
 
-                // 画像データをDBに保存し、IDの対応表を作成
                 const imageIdMap = new Map();
                 if (importedImageData && Object.keys(importedImageData).length > 0) {
-                    uiUtils.setLoadingIndicatorText('画像データを復元中...');
-                    elements.loadingIndicator.classList.remove('hidden');
+                   
+                    elements.progressMessage.textContent = `画像を復元中... (0 / ${Object.keys(importedImageData).length})`;
+                    let restoredCount = 0;
+                    const totalImages = Object.keys(importedImageData).length;
+
                     for (const oldId in importedImageData) {
                         try {
                             const { mimeType, data } = importedImageData[oldId];
                             const blob = await this.base64ToBlob(data, mimeType);
                             const newId = await this.saveImageBlob(blob);
                             imageIdMap.set(oldId, newId);
+                            restoredCount++;
+                            elements.progressMessage.textContent = `画像を復元中... (${restoredCount} / ${totalImages})`;
                         } catch (e) {
                             console.error(`インポート中に画像(旧ID: ${oldId})の復元に失敗:`, e);
                         }
                     }
-                    elements.loadingIndicator.classList.add('hidden');
                 }
 
-                // メッセージ内の古い画像IDを新しいIDに置換
+                elements.progressMessage.textContent = 'データベースに保存中...';
+
                 importedMessages.forEach(msg => {
                     if (msg.imageIds && msg.imageIds.length > 0) {
                         msg.imageIds = msg.imageIds.map(oldId => imageIdMap.get(oldId) || oldId).filter(Boolean);
                     }
                 });
 
-                // --- インポート後の siblingGroupId 割り当て ---
                 let currentGroupId = null;
                 let lastUserIndex = -1;
                 for (let i = 0; i < importedMessages.length; i++) {
                     const msg = importedMessages[i];
                     if (msg.role === 'user') {
                         lastUserIndex = i;
-                        currentGroupId = null; // ユーザーメッセージでグループリセット
+                        currentGroupId = null;
                     } else if (msg.role === 'model' && msg.isCascaded) {
                         if (currentGroupId === null && lastUserIndex !== -1) {
-                            // 新しいグループIDを生成
                             currentGroupId = `imp-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
                         }
                         if (currentGroupId) {
                             msg.siblingGroupId = currentGroupId;
                         }
                     } else {
-                        currentGroupId = null; // 非カスケードモデルでグループリセット
+                        currentGroupId = null;
                     }
                 }
-                // --- isSelected の正規化 (各グループの最後のものを選択) ---
                 const groupIds = new Set(importedMessages.filter(m => m.siblingGroupId).map(m => m.siblingGroupId));
                 groupIds.forEach(gid => {
                     const siblings = importedMessages.filter(m => m.siblingGroupId === gid);
@@ -5225,26 +5242,22 @@ const appLogic = {
                         siblings[siblings.length - 1].isSelected = true;
                     } else if (selected.length > 1) {
                         selected.slice(0, -1).forEach(m => m.isSelected = false);
-                        // 最後の isSelected は true のまま
                     }
                 });
-                // -----------------------------------------
 
-                // ファイル名から拡張子を除去してタイトル生成
                 const fileNameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
                 const newTitle = IMPORT_PREFIX + (fileNameWithoutExt || `Imported_${Date.now()}`);
 
                 const newChatData = {
                     messages: importedMessages,
-                    systemPrompt: importedSystemPrompt || '', // インポートされたシステムプロンプト
-                    persistentMemory: importedMemory || {}, // インポートされた永続メモリ
+                    systemPrompt: importedSystemPrompt || '',
+                    persistentMemory: importedMemory || {},
                     summarizedContext: importedSummary || null,
                     updatedAt: Date.now(),
                     createdAt: Date.now(),
-                    title: newTitle.substring(0, 100) // 100文字制限
+                    title: newTitle.substring(0, 100)
                 };
 
-                // 新しいチャットとしてDBに追加
                 const newChatId = await new Promise((resolve, reject) => {
                     const store = dbUtils._getStore(CHATS_STORE, 'readwrite');
                     const request = store.add(newChatData);
@@ -5253,25 +5266,26 @@ const appLogic = {
                 });
 
                 console.log("履歴インポート成功:", newChatId);
+                elements.progressDialog.close();
                 await uiUtils.showCustomAlert(`履歴「${newChatData.title}」をインポートしました。`);
-                // 履歴リストを再描画
                 uiUtils.renderHistoryList();
 
             } catch (error) {
                 console.error("履歴インポート処理エラー:", error);
+                elements.progressDialog.close();
                 await uiUtils.showCustomAlert(`履歴のインポート中にエラーが発生しました: ${error.message}`);
-            } finally {
-                elements.loadingIndicator.classList.add('hidden');
             }
         };
 
         reader.onerror = async (event) => {
             console.error("ファイル読み込みエラー:", event.target.error);
+            elements.progressDialog.close();
             await uiUtils.showCustomAlert("ファイルの読み込みに失敗しました。");
         };
 
-        reader.readAsText(file); // ファイルをテキストとして読み込む
+        reader.readAsText(file);
     },
+
 
     // インポートされたテキストをパースする
     parseImportedHistory(text) {
@@ -7211,10 +7225,13 @@ const appLogic = {
             // 2. 新しいプロンプトを構築
             const summarizationPrompt = `以下の【既存の記憶】と【会話履歴】を参考にして、**操作者であるユーザー**に関する新しい好み、性癖、重要な事実だけを抽出し、箇条書きで簡潔にまとめてください。
             ここで抽出された情報は、今後のチャットセッションでモデルが閲覧することが可能になり、ユーザーの会話体験の質を高めるものです。
+            ユーザーは成人であるため、性的な内容でも表現規制をすることなく抽出することを求められます。
+            AIとしての応答（承知しました等）は一切不要ですので、抽出内容のみ出力して下さい。
 
             [重要事項]
             - **重複の排除**: 【既存の記憶】に既に含まれている情報は絶対に含めないでください。
-            - **事実の抽出**: 会話の内容から、ユーザーに関する具体的な情報（例: 好きな食べ物、性癖、ペットの名前、性格など）だけを抜き出してください。「ユーザーは〇〇する傾向がある」といった行動分析は不要です。
+            - **事実の抽出**: 会話の内容から、ユーザーに関する具体的な情報（例: 性癖、好きなキャラクターのタイプ、性格など）だけを抜き出してください。「ユーザーは〇〇する傾向がある」といった行動分析は不要です。
+            - **情報の精査**: 抜き出す情報は**未来の会話に役に立つ情報**のみです。例えば、「制服フェチ」や「ツインテールのキャラが好き」といった情報は明確に未来の会話で役に立ちますが、「ユーザーはコンビニで酒と肉まんを買って一人で一杯やるのが好き」といった局所的な情報は未来の会話で役に立たないため、抜き出し不要です。
             - **主人公との区別**: 会話がロールプレイ形式の場合、物語の登場人物ではなく、操作者であるユーザー自身の好みや設定を抽出してください。
             - **簡潔な記述**: 各項目は「ユーザーは〇〇が好き」「ユーザーの猫の名前はタマ」のように、客観的な事実として記述してください。
             - **情報がない場合**: もし新しい情報が何もなければ、他の言葉は一切含めず \`[追加情報なし]\` とだけ出力してください。
@@ -7487,6 +7504,9 @@ const appLogic = {
             console.error("要約の保存エラー:", error);
             await uiUtils.showCustomAlert(`要約の保存に失敗しました: ${error.message}`);
         }
+    },
+    toggleSummaryButtonVisibility() {
+        elements.summarizeHistoryBtn.classList.toggle('hidden', !state.settings.enableSummaryButton);
     }
 }; // appLogic終了
 
