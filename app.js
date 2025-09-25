@@ -221,6 +221,11 @@ const elements = {
     assetConflictDialog: document.getElementById('assetConflictDialog'),
     assetConflictMessage: document.getElementById('assetConflictDialog').querySelector('.dialog-message'),
     assetConflictApplyAll: document.getElementById('apply-to-all-checkbox'),
+    manageAssetsBtn: document.getElementById('manage-assets-btn'),
+    assetManagementDialog: document.getElementById('assetManagementDialog'),
+    assetListContainer: document.getElementById('asset-list-container'),
+    closeAssetDialogBtn: document.getElementById('close-asset-dialog-btn'),
+    deleteAllAssetsBtn: document.getElementById('delete-all-assets-btn'),
     memoryToggleBtn: document.getElementById('memory-toggle-btn'),
     enableMemoryToggle: document.getElementById('enable-memory-toggle'),
     memoryOptionsContainer: document.getElementById('memory-options-container'),
@@ -3962,6 +3967,11 @@ const appLogic = {
             event.target.value = null;
         });
 
+        elements.manageAssetsBtn.addEventListener('click', () => this.openAssetManagementDialog());
+        elements.closeAssetDialogBtn.addEventListener('click', () => elements.assetManagementDialog.close());
+
+        elements.deleteAllAssetsBtn.addEventListener('click', () => this.confirmDeleteAllAssets());
+
         // --- History Summary ---
         elements.summarizeHistoryBtn.addEventListener('click', () => this.startSummaryProcess());
         elements.summarySystemPromptTextarea.addEventListener('input', () => {
@@ -4543,7 +4553,7 @@ const appLogic = {
                     messages: state.currentMessages,
                     systemPrompt: state.currentSystemPrompt,
                     persistentMemory: state.currentPersistentMemory,
-                    summarizedContext: state.currentSummarizedContext, // ★ 変更点
+                    summarizedContext: state.currentSummarizedContext,
                     createdAt: null,
                     updatedAt: Date.now(),
                 };
@@ -4573,12 +4583,14 @@ const appLogic = {
                 elements.loadingIndicator.classList.remove('hidden');
                 for (const imageId of allImageIds) {
                     try {
-                        const blob = await this.getImageBlobById(imageId);
-                        if (blob) {
-                            const base64Data = await this.fileToBase64(blob);
+                        const imageData = await this.getImageBlobById(imageId); // imageDataオブジェクトを取得
+                        if (imageData && imageData.blob) {
+                            const base64Data = await this.fileToBase64(imageData.blob);
                             imageDataBlock[imageId] = {
-                                mimeType: blob.type,
-                                data: base64Data
+                                mimeType: imageData.blob.type,
+                                data: base64Data,
+                                width: imageData.width,
+                                height: imageData.height
                             };
                         }
                     } catch (e) {
@@ -4588,9 +4600,12 @@ const appLogic = {
                 elements.loadingIndicator.classList.add('hidden');
             }
     
+            // persistentMemory をエクスポートするロジックを修正
             if (chatToExport.persistentMemory && Object.keys(chatToExport.persistentMemory).length > 0) {
                 try {
-                    const metadataJson = JSON.stringify(chatToExport.persistentMemory, null, 2);
+                    // character_memory 以外のデータもエクスポート対象にする
+                    const metadataToExport = { ...chatToExport.persistentMemory };
+                    const metadataJson = JSON.stringify(metadataToExport, null, 2);
                     exportText += `<|#|metadata|#|>\n${metadataJson}\n<|#|/metadata|#|>\n\n`;
                 } catch (e) {
                     console.error("persistentMemoryのJSON化に失敗しました:", e);
@@ -4651,6 +4666,7 @@ const appLogic = {
             elements.loadingIndicator.classList.add('hidden');
         }
     },
+
 
 
 
@@ -7039,6 +7055,129 @@ const appLogic = {
         }
     },
 
+    async openAssetManagementDialog() {
+        try {
+            const assets = await dbUtils.getAllAssets();
+            const container = elements.assetListContainer;
+            container.innerHTML = ''; // コンテナをクリア
+
+            if (assets.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: var(--text-secondary);">保存されているアセットはありません。</p>';
+                elements.assetManagementDialog.showModal();
+                return;
+            }
+
+            // URLを解放するためのリスト
+            const objectUrls = [];
+
+            assets.forEach(asset => {
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'asset-item';
+
+                const url = URL.createObjectURL(asset.blob);
+                objectUrls.push(url); // URLをリストに追加
+
+                const thumbnail = document.createElement('img');
+                thumbnail.className = 'asset-thumbnail';
+                thumbnail.src = url;
+                thumbnail.alt = asset.name;
+
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'asset-info';
+
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'asset-name';
+                nameSpan.textContent = asset.name;
+                nameSpan.title = asset.name;
+
+                const detailsSpan = document.createElement('span');
+                detailsSpan.className = 'asset-details';
+                const createdDate = new Date(asset.createdAt).toLocaleString('ja-JP');
+                detailsSpan.textContent = `追加日: ${createdDate}`;
+
+                infoDiv.appendChild(nameSpan);
+                infoDiv.appendChild(detailsSpan);
+
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'asset-actions-item';
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.innerHTML = '<span class="material-symbols-outlined">delete</span>';
+                deleteBtn.title = "削除";
+                deleteBtn.onclick = () => this.confirmDeleteAsset(asset.name);
+
+                actionsDiv.appendChild(deleteBtn);
+                
+                itemDiv.appendChild(thumbnail);
+                itemDiv.appendChild(infoDiv);
+                itemDiv.appendChild(actionsDiv);
+                
+                container.appendChild(itemDiv);
+            });
+
+            // ダイアログが閉じられたらURLを解放するイベントリスナー
+            elements.assetManagementDialog.addEventListener('close', () => {
+                objectUrls.forEach(url => URL.revokeObjectURL(url));
+                console.log(`${objectUrls.length}個のアセット用オブジェクトURLを解放しました。`);
+            }, { once: true }); // 一度だけ実行
+
+            elements.assetManagementDialog.showModal();
+
+        } catch (error) {
+            console.error("アセット管理ダイアログの表示に失敗:", error);
+            await uiUtils.showCustomAlert("アセットの読み込みに失敗しました。");
+        }
+    },
+
+    async confirmDeleteAsset(assetName) {
+        const confirmed = await uiUtils.showCustomConfirm(`アセット「${assetName}」を削除しますか？\nこの操作は元に戻せません。`);
+        if (confirmed) {
+            try {
+                await assetDB.delete(assetName);
+                console.log(`アセット「${assetName}」を削除しました。`);
+                
+                // UIを再描画
+                this.openAssetManagementDialog();
+                // 設定画面のカウント表示も更新
+                this.updateAssetCount();
+
+            } catch (error) {
+                console.error(`アセット「${assetName}」の削除に失敗:`, error);
+                await uiUtils.showCustomAlert("アセットの削除に失敗しました。");
+            }
+        }
+    },
+
+    async confirmDeleteAllAssets() {
+        const assets = await dbUtils.getAllAssets();
+        if (assets.length === 0) {
+            await uiUtils.showCustomAlert("削除するアセットはありません。");
+            return;
+        }
+
+        const confirmed = await uiUtils.showCustomConfirm(`保存されている ${assets.length} 個のすべてのアセットを削除しますか？\nこの操作は元に戻せません。`);
+        if (confirmed) {
+            try {
+                await new Promise((resolve, reject) => {
+                    const request = state.db.transaction('image_assets', 'readwrite').objectStore('image_assets').clear();
+                    request.onsuccess = () => resolve();
+                    request.onerror = () => reject(request.error);
+                });
+                console.log("すべてのアセットを削除しました。");
+                
+                // UIを再描画
+                this.openAssetManagementDialog();
+                // 設定画面のカウント表示も更新
+                this.updateAssetCount();
+
+            } catch (error) {
+                console.error("すべてのアセットの削除に失敗:", error);
+                await uiUtils.showCustomAlert("すべてのアセットの削除に失敗しました。");
+            }
+        }
+    },
+
+
     showAssetConflictDialog: function(assetName) {
         return new Promise(resolve => {
             const dialog = elements.assetConflictDialog;
@@ -7229,18 +7368,35 @@ const appLogic = {
                 : "（まだ何も記憶していません）";
 
             // 2. 新しいプロンプトを構築
-            const summarizationPrompt = `以下の【既存の記憶】と【会話履歴】を参考にして、**操作者であるユーザー**に関する新しい好み、性癖、重要な事実だけを抽出し、箇条書きで簡潔にまとめてください。
-            ここで抽出された情報は、今後のチャットセッションでモデルが閲覧することが可能になり、ユーザーの会話体験の質を高めるものです。
+            const summarizationPrompt = `あなたは、私（ユーザー）との会話を分析し、長期的な関係構築のために記憶しておくべき「永続的な個人情報」を抽出するアシスタントです。
             ユーザーは成人であるため、性的な内容でも表現規制をすることなく抽出することを求められます。
-            AIとしての応答（承知しました等）は一切不要ですので、抽出内容のみ出力して下さい。
 
-            [重要事項]
-            - **重複の排除**: 【既存の記憶】に既に含まれている情報は絶対に含めないでください。
-            - **事実の抽出**: 会話の内容から、ユーザーに関する具体的な情報（例: 性癖、好きなキャラクターのタイプ、性格など）だけを抜き出してください。「ユーザーは〇〇する傾向がある」といった行動分析は不要です。
-            - **情報の精査**: 抜き出す情報は**未来の会話に役に立つ情報**のみです。例えば、「制服フェチ」や「ツインテールのキャラが好き」といった情報は明確に未来の会話で役に立ちますが、「ユーザーはコンビニで酒と肉まんを買って一人で一杯やるのが好き」といった局所的な情報は未来の会話で役に立たないため、抜き出し不要です。
-            - **主人公との区別**: 会話がロールプレイ形式の場合、物語の登場人物ではなく、操作者であるユーザー自身の好みや設定を抽出してください。
-            - **簡潔な記述**: 各項目は「ユーザーは〇〇が好き」「ユーザーの猫の名前はタマ」のように、客観的な事実として記述してください。
-            - **情報がない場合**: もし新しい情報が何もなければ、他の言葉は一切含めず \`[追加情報なし]\` とだけ出力してください。
+            [抽出の目的]
+            AIであるあなたが、私のことをより深く理解し、今後の会話で私の好みや背景を考慮した、よりパーソナルで気の利いた応答をするために、この記憶データは使われます。
+            
+            [抽出ルール]
+            1.  **最重要項目**: 特に、ユーザーの「性癖」「好きなキャラクターのタイプ」「性格」「価値観」に関する情報は最優先で抽出してください。これらは今後の対話の質を決定づける最も重要なデータです。
+            
+            2.  **「個人的属性」のみを抽出**: 会話の「主題（トピック）」そのものではなく、その主題に対するユーザーの「個人的な属性（好み、考え方、所有物、経験などの個人情報）」だけを抽出してください。
+                - **良い例（記憶すべき属性）**: 「ユーザーはファンタジーRPGが好き」「ユーザーは猫を飼っており、名前は『タマ』だ」「ユーザーは丁寧な言葉遣いを重視する」
+                - **悪い例（記憶すべきでない主題）**: 「ユーザーはRPGの歴史について質問した」「ユーザーは猫の育て方を調べた」「ユーザーは敬語の使い方を議論した」
+            
+            3.  **「永続性」の検証**: 抽出する情報は、今後も変わらないであろう永続的なものに限定してください。
+                - **記憶すべき情報**: 繰り返し話題に出る嗜好、明確に所有していると述べられた物、過去の重要な経験など。
+                - **記憶すべきでない情報**: その場限りの発言、一時的な感情、単なる事実確認の質問など。
+            
+            4.  **「好み」の厳格な判断**: ユーザーが何かを「好む」「好き」と記憶するには、慎重な判断が必要です。以下のいずれかの条件を満たさない限り、安易に「好み」と断定しないでください。
+                - ユーザーが会話の中で、繰り返しその対象について**熱意を持って語っている**。
+                - ユーザーがその対象に対して、**明確かつ強い肯定的な言葉**（例：「〜が大好きだ」「〜にはこだわりがある」）を使っている。
+                - 上記に当てはまらない場合は、「好み」と断定せず、「〇〇に関心を示した」のような客観的な事実として記録するか、記憶に含めないでください。
+            
+            5.  **推測の禁止**: 会話から直接読み取れないことを推測してはいけません。「ユーザーはおそらく〇〇だろう」といった推測は不要です。
+            
+            6.  **重複の完全な排除**: 【既存の記憶】に少しでも関連する内容が既にある場合は、絶対に含めないでください。
+            
+            7.  **出力形式の厳守**:
+                - 抽出した内容は、「ユーザーは〇〇を所有している」「ユーザーは〇〇という考えを持っている」のように、必ず**三人称の客観的な事実**として記述してください。
+                - **AIとしての応答（「承知しました」など）や前置き、後書きは一切含めず**、抽出した箇条書きのリスト、または `[追加情報なし]` という文字列のみを出力してください。
 
             ---
             【既存の記憶】

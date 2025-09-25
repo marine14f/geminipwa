@@ -471,10 +471,12 @@
                     <h3>保存済み画像アセット</h3>
                     <p id="asset-count-display" class="asset-count-display">現在 ... 枚のアセットが保存されています。</p>
                     <div class="asset-actions">
-                        <button id="asset-export-btn"><span class="material-symbols-outlined">upload</span> アセットを出力</button>
                         <button id="asset-import-btn"><span class="material-symbols-outlined">download</span> アセットを取込</button>
+                        <button id="manage-assets-btn"><span class="material-symbols-outlined">inventory</span> アセットを管理</button>
+                        <button id="asset-export-btn"><span class="material-symbols-outlined">upload</span> アセットを出力</button>
                         <input type="file" id="asset-import-input" accept=".zip,application/zip" class="hidden">
                     </div>
+
                     <p class="profile-actions-note">
                         ※ Zip形式でアセットを一括で入出力します。<br>
                         ※ 取込（インポート）は、既存のアセットにファイルを追加します。<br>
@@ -700,7 +702,21 @@
                 </div>
             </div>
         </dialog>
-    
+
+        <!-- Asset Management Dialog -->
+        <dialog id="assetManagementDialog" class="custom-dialog">
+            <h3 class="dialog-title">アセットの管理</h3>
+            <div class="dialog-content">
+                <div id="asset-list-container" class="asset-list-container">
+                    <!-- アセット項目がここに表示されます -->
+                </div>
+            </div>
+            <div class="dialog-actions" style="justify-content: space-between; align-items: center;">
+                <button id="delete-all-assets-btn" value="delete_all" class="dialog-delete-btn">全て削除</button>
+                <button id="close-asset-dialog-btn" value="close">閉じる</button>
+            </div>
+        </dialog>
+
     <script src="prism.js" data-autoloader-path="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </body>

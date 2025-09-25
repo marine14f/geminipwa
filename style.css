@@ -1521,7 +1521,8 @@ body.dark-mode #reload-for-update-btn {
 
 .asset-actions {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    /* 3つのボタンを均等な幅で横に並べる */
+    grid-template-columns: repeat(3, 1fr);
     gap: 12px;
     margin-bottom: 8px;
 }
@@ -1529,9 +1530,12 @@ body.dark-mode #reload-for-update-btn {
 .asset-actions button {
     font-size: 0.8rem;
     padding: 10px 12px;
+    /* アイコンとテキストを中央揃えにする */
     justify-content: center;
     background-color: var(--bg-button-action);
     color: var(--text-light);
+    /* アイコンとテキストの間のスペース */
+    gap: 8px;
 }
 .asset-actions button:hover {
     background-color: var(--bg-button-action-hover);
@@ -1539,6 +1543,7 @@ body.dark-mode #reload-for-update-btn {
 body.dark-mode .asset-actions button {
     color: var(--text-primary);
 }
+
 
 /* --- Asset Conflict Dialog Styles --- */
 #assetConflictDialog .dialog-title {
@@ -1898,3 +1903,86 @@ body.dark-mode .floating-action-panel .floating-action-button:disabled {
     border-color: var(--border-secondary);
 }
 
+/* --- Asset Management Dialog --- */
+#assetManagementDialog {
+    width: 90%;
+    max-width: 700px;
+}
+
+.asset-list-container {
+    max-height: 60vh;
+    overflow-y: auto;
+    border: 1px solid var(--border-primary);
+    border-radius: var(--border-radius-sm);
+    padding: 8px;
+    background-color: var(--bg-secondary);
+}
+
+.asset-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px;
+    border-radius: var(--border-radius-sm);
+    background-color: var(--bg-primary);
+    margin-bottom: 8px;
+    box-shadow: var(--shadow-1);
+}
+.asset-item:last-child {
+    margin-bottom: 0;
+}
+
+.asset-thumbnail {
+    width: 60px;
+    height: 60px;
+    object-fit: cover;
+    border-radius: var(--border-radius-sm);
+    border: 1px solid var(--border-tertiary);
+    flex-shrink: 0;
+}
+
+.asset-info {
+    flex-grow: 1;
+    min-width: 0; /* flexアイテムの縮小問題を解決 */
+}
+
+.asset-name {
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block; /* ブロック要素にしてellipsisを有効化 */
+}
+
+.asset-details {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.asset-actions-item button {
+    padding: 6px;
+    min-width: auto;
+    box-shadow: none;
+    background-color: var(--bg-button-delete);
+}
+.asset-actions-item button:hover {
+    background-color: var(--bg-button-delete-hover);
+}
+.asset-actions-item button .material-symbols-outlined {
+    font-size: 20px;
+}
+
+/* --- Dialog Delete Button --- */
+.dialog-delete-btn {
+    background-color: var(--bg-button-delete);
+    color: var(--text-light);
+    margin-right: auto; /* 左端に配置 */
+}
+.dialog-delete-btn:hover {
+    background-color: var(--bg-button-delete-hover);
+}
+body.dark-mode .dialog-delete-btn {
+    /* ダークモード時は、背景が明るい赤になるため、文字色を暗くする */
+    color: var(--text-light); /* In dark mode, this variable is a dark color */
+}

@@ -88,13 +88,17 @@
  * @param {object} chat - 現在のチャットデータ
  * @returns {Promise<object>} 操作結果を含むオブジェクト
  */
- async function manage_image_assets({ action, asset_name, source_image_message_index }, chat) {
+async function manage_image_assets({ action, asset_name, source_image_message_index }, chat) {
     console.log(`[Function Calling] manage_image_assetsが呼び出されました。`, { action, asset_name, source_image_message_index });
     
+    // 'delete' と 'delete_all' を許可しないようにバリデーションを追加
+    if (['delete', 'delete_all'].includes(action)) {
+        return { error: "この関数によるアセットの削除は許可されていません。設定画面から手動で削除してください。" };
+    }
     if (!action) {
         return { error: "引数 'action' は必須です。" };
     }
-    if (!['list', 'delete_all'].includes(action) && !asset_name) {
+    if (!['list'].includes(action) && !asset_name) {
         return { error: `アクション '${action}' には 'asset_name' が必須です。` };
     }
 
@@ -154,30 +158,9 @@
                 };
                 break;
             }
-            case "delete": {
-                await assetDB.delete(asset_name);
-                result = { success: true, message: `画像アセット「${asset_name}」を削除しました。` };
-                updateCount = true;
-                break;
-            }
             case "list": {
                 const keys = await assetDB.list();
                 result = { success: true, count: keys.length, asset_names: keys };
-                break;
-            }
-            case "delete_all": {
-                const keys = await assetDB.list();
-                const count = keys.length;
-                if (count === 0) {
-                    return { success: true, message: "削除する画像アセットはありませんでした。" };
-                }
-                await new Promise((resolve, reject) => {
-                    const request = window.state.db.transaction('image_assets', 'readwrite').objectStore('image_assets').clear();
-                    request.onsuccess = () => resolve();
-                    request.onerror = () => reject(request.error);
-                });
-                result = { success: true, message: `${count}件の画像アセットをすべて削除しました。` };
-                updateCount = true;
                 break;
             }
             default:
@@ -185,7 +168,6 @@
         }
 
         if (updateCount && window.appLogic && typeof window.appLogic.updateAssetCount === 'function') {
-            // UIの更新はメインスレッドに任せるため、非同期で呼び出す
             setTimeout(() => window.appLogic.updateAssetCount(), 0);
         }
         return result;
@@ -195,6 +177,7 @@
         return { error: `内部エラーが発生しました: ${error.message}` };
     }
 }
+
 
 /**
  * 現在のチャットセッションに紐づく永続メモリを管理する関数
@@ -667,160 +650,6 @@ async function manage_game_date({ action, days = 1 }, chat) { // chat引数を�
       return { error: `内部エラーが発生しました: ${error.message}` };
   }
 }
-
-/**
- * キャラクター間の関係値（好感度、信頼度など）を多軸で管理する関数
- * @param {object} args - AIによって提供される引数オブジェクト
- * @param {string} args.source_character - 関係の主体となるキャラクター名
- * @param {string} args.target_character - 関係の対象となるキャラクター名
- * @param {string} args.axis - 操作する関係の軸 (例: "好感度", "信頼度", "緊張度")
- * @param {string} args.action - "set", "increase", "decrease", "get", "get_all_axes", "get_all_from_source" のいずれか
- * @param {number} [args.value] - "set", "increase", "decrease" アクションで使用する数値
- * @param {number} [args.clamp_min] - 関係値の下限値
- * @param {number} [args.clamp_max] - 関係値の上限値
- * @param {number} [args.days_to_decay] - 何日間更新がないと減衰が始まるか
- * @param {number} [args.decay_value] - 1日あたりに減衰する値 (通常は負の数)
- * @returns {Promise<object>} 操作結果を含むオブジェクトを返すPromise
- */
- async function manage_relationship(args, chat) {
-  console.log(`[Function Calling] manage_relationshipが呼び出されました。`, args);
-
-  const {
-    source_character,
-    target_character,
-    axis,
-    action,
-    value,
-    clamp_min,
-    clamp_max,
-    days_to_decay,
-    decay_value,
-  } = args;
-
-  if (!action) return { error: "引数 'action' は必須です。" };
-  if (!source_character) return { error: "引数 'source_character' は必須です。" };
-
-  // axis未指定時のデフォルト（好感度）
-  const needsAxis = ["get", "set", "increase", "decrease"].includes(action);
-  const axisName = needsAxis ? (axis || "好感度") : null;
-
-  // target_character 必須チェック（get_all_from_source 以外）
-  if (["get", "set", "increase", "decrease", "get_all_axes"].includes(action) && !target_character) {
-    return { error: `アクション '${action}' には 'target_character' が必須です。` };
-  }
-
-  // 軸必須の操作なのに最終的に軸が決まっていない場合
-  if (needsAxis && !axisName) {
-    return { error: `アクション '${action}' には 'axis' が必須です。` };
-  }
-
-  // 値が必要な操作
-  if (["set", "increase", "decrease"].includes(action) && typeof value !== "number") {
-    return { error: `アクション '${action}' には数値型の 'value' が必要です。` };
-  }
-
-  try {
-    if (!chat.persistentMemory) chat.persistentMemory = {};
-    if (!chat.persistentMemory.relationships) chat.persistentMemory.relationships = {};
-    if (typeof chat.persistentMemory.game_day !== "number") chat.persistentMemory.game_day = 1;
-
-    const relationships = chat.persistentMemory.relationships;
-    const currentGameDay = chat.persistentMemory.game_day;
-
-    const calculateDecay = (currentValue, lastUpdatedDay) => {
-      if (typeof days_to_decay !== "number" || typeof decay_value !== "number") return currentValue;
-      const elapsedDays = currentGameDay - lastUpdatedDay;
-      if (elapsedDays > days_to_decay) {
-        const decayDays = elapsedDays - days_to_decay;
-        const totalDecay = decayDays * decay_value;
-        return currentValue + totalDecay;
-      }
-      return currentValue;
-    };
-
-    const getRelation = (source, target, axisKey) => {
-      if (!relationships[source]) relationships[source] = {};
-      if (!relationships[source][target]) relationships[source][target] = {};
-      if (!relationships[source][target][axisKey]) {
-        relationships[source][target][axisKey] = { value: 0, last_updated_day: currentGameDay };
-      }
-      return relationships[source][target][axisKey];
-    };
-
-    let message = "";
-    let resultData = {};
-
-    switch (action) {
-      case "get": {
-        const relation = getRelation(source_character, target_character, axisName);
-        const decayedValue = calculateDecay(relation.value, relation.last_updated_day);
-        message = `${source_character}から${target_character}への${axisName}は現在 ${decayedValue} です。`;
-        resultData = { success: true, value: decayedValue, message };
-        break;
-      }
-      case "set":
-      case "increase":
-      case "decrease": {
-        const relation = getRelation(source_character, target_character, axisName);
-        const decayedBase = action === "set" ? relation.value : calculateDecay(relation.value, relation.last_updated_day);
-        let newValue;
-        if (action === "increase") newValue = decayedBase + value;
-        else if (action === "decrease") newValue = decayedBase - value;
-        else newValue = value;
-
-        if (typeof clamp_max === "number") newValue = Math.min(newValue, clamp_max);
-        if (typeof clamp_min === "number") newValue = Math.max(newValue, clamp_min);
-
-        relation.value = newValue;
-        relation.last_updated_day = currentGameDay;
-
-        message = `${source_character}から${target_character}への${axisName}が更新され、${newValue}になりました。`;
-        resultData = { success: true, new_value: newValue, message };
-        break;
-      }
-      case "get_all_axes": {
-        if (!relationships[source_character] || !relationships[source_character][target_character]) {
-          return { success: true, relations: {}, message: `${source_character}から${target_character}への関係はまだ設定されていません。` };
-        }
-        const targetRelations = relationships[source_character][target_character];
-        const allAxes = {};
-        for (const axisKey in targetRelations) {
-          const rel = targetRelations[axisKey];
-          allAxes[axisKey] = calculateDecay(rel.value, rel.last_updated_day);
-        }
-        message = `${source_character}から${target_character}への全関係軸を取得しました。`;
-        resultData = { success: true, relations: allAxes, message };
-        break;
-      }
-      case "get_all_from_source": {
-        if (!relationships[source_character]) {
-          return { success: true, relations: {}, message: `${source_character}の人間関係はまだ設定されていません。` };
-        }
-        const sourceRelations = relationships[source_character];
-        const allRelations = {};
-        for (const targetName in sourceRelations) {
-          allRelations[targetName] = {};
-          for (const axisKey in sourceRelations[targetName]) {
-            const rel = sourceRelations[targetName][axisKey];
-            allRelations[targetName][axisKey] = calculateDecay(rel.value, rel.last_updated_day);
-          }
-        }
-        message = `${source_character}が持つ全ての人間関係を取得しました。`;
-        resultData = { success: true, relations: allRelations, message };
-        break;
-      }
-      default:
-        return { error: `無効なアクションです: ${action}` };
-    }
-
-    console.log(`[Function Calling] 処理完了:`, resultData);
-    return resultData;
-  } catch (error) {
-    console.error(`[Function Calling] manage_relationshipでエラーが発生しました:`, error);
-    return { error: `内部エラーが発生しました: ${error.message}` };
-  }
-}
-
 
 /**
  * 指定された範囲内のランダムな整数を生成します。
@@ -1658,6 +1487,95 @@ async function generate_image(args = {}) {
     }
 }
 
+/**
+ * キャラクターの記憶、関係性、状態を統合的に管理する関数
+ * @param {object} args - AIによって提供される引数オブジェクト
+ * @param {string} args.character_name - 操作対象のキャラクター名
+ * @param {string} args.action - "get", "update", "delete" のいずれか
+ * @param {object} [args.update_data] - "update"アクションで使用するデータ
+ * @param {object} chat - 現在のチャットデータ
+ * @returns {Promise<object>} 操作結果を含むオブジェクトを返すPromise
+ */
+ async function manage_character_memory({ character_name, action, update_data }, chat) {
+    console.log(`[Function Calling] manage_character_memoryが呼び出されました。`, { character_name, action, update_data });
+
+    if (!character_name || !action) {
+        return { error: "引数 'character_name' と 'action' は必須です。" };
+    }
+
+    try {
+        if (!chat.persistentMemory) chat.persistentMemory = {};
+        const memoryKey = `character_memory_${character_name}`;
+
+        switch (action) {
+            case "get": {
+                const memory = chat.persistentMemory[memoryKey] || null;
+                if (!memory) {
+                    return { success: false, message: `キャラクター「${character_name}」の記憶はまだありません。` };
+                }
+                return { success: true, memory_data: memory };
+            }
+
+            case "update": {
+                if (!update_data || typeof update_data !== 'object') {
+                    return { error: "アクション 'update' にはオブジェクト型の 'update_data' が必要です。" };
+                }
+
+                if (!chat.persistentMemory[memoryKey]) {
+                    chat.persistentMemory[memoryKey] = {}; // 新規作成
+                }
+                const memory = chat.persistentMemory[memoryKey];
+
+                // 各キーを上書きまたは追記で更新
+                if (update_data.status !== undefined) memory.status = update_data.status;
+                if (update_data.current_location !== undefined) memory.current_location = update_data.current_location;
+                if (update_data.summary !== undefined) memory.summary = update_data.summary;
+                if (update_data.short_term_goal !== undefined) memory.short_term_goal = update_data.short_term_goal;
+
+                // relationships の処理 (contextの追記ロジックを含む)
+                if (update_data.relationships && typeof update_data.relationships === 'object') {
+                    if (!memory.relationships) memory.relationships = {};
+                    for (const targetName in update_data.relationships) {
+                        if (!memory.relationships[targetName]) memory.relationships[targetName] = {};
+                        const update = update_data.relationships[targetName];
+                        
+                        // affinity は上書き
+                        if (update.affinity !== undefined) {
+                            memory.relationships[targetName].affinity = update.affinity;
+                        }
+                        // context は追記
+                        if (update.context !== undefined && String(update.context).trim() !== '') {
+                            if (memory.relationships[targetName].context) {
+                                memory.relationships[targetName].context += `\n${update.context}`;
+                            } else {
+                                memory.relationships[targetName].context = update.context;
+                            }
+                        }
+                    }
+                }
+                
+                return { success: true, message: `キャラクター「${character_name}」の記憶を更新しました。`, updated_memory: memory };
+            }
+
+            case "delete": {
+                if (chat.persistentMemory[memoryKey]) {
+                    delete chat.persistentMemory[memoryKey];
+                    return { success: true, message: `キャラクター「${character_name}」の記憶を削除しました。` };
+                } else {
+                    return { success: false, message: `キャラクター「${character_name}」の記憶は存在しません。` };
+                }
+            }
+
+            default:
+                return { error: `無効なアクションです: ${action}` };
+        }
+    } catch (error) {
+        console.error(`[Function Calling] manage_character_memoryでエラーが発生しました:`, error);
+        return { error: `内部エラーが発生しました: ${error.message}` };
+    }
+}
+
+
 
 
 window.functionCallingTools = {
@@ -1693,7 +1611,6 @@ window.functionCallingTools = {
   manage_scene: manage_scene,
   manage_flags: manage_flags,
   manage_game_date: manage_game_date,
-  manage_relationship: manage_relationship,
   get_random_integer: get_random_integer,
   get_random_choice: get_random_choice,
   generate_random_string: generate_random_string,
@@ -1704,7 +1621,8 @@ window.functionCallingTools = {
   display_layered_image: display_layered_image,
   generate_video: generate_video,
   generate_image: generate_image,
-  edit_image: edit_image
+  edit_image: edit_image,
+  manage_character_memory: manage_character_memory
 };
 
 
@@ -1715,7 +1633,7 @@ window.functionCallingTools = {
 window.functionDeclarations = [
   {
       "function_declarations": [
-          {
+        {
             "name": "manage_image_assets",
             "description": "ユーザーが提供した画像を、後から再利用できるように名前を付けてアプリ内に永続的に保存・管理します。キャラクターの立ち絵や背景など、繰り返し使用する画像を保存するのに使用します。",
             "parameters": {
@@ -1723,7 +1641,7 @@ window.functionDeclarations = [
                 "properties": {
                     "action": {
                         "type": "STRING",
-                        "description": "実行する操作を選択します。'save': 画像を保存/上書き, 'get': 保存済み画像を取得して表示, 'delete': 画像を削除, 'list': 保存されている全画像の名前を一覧表示。 'delete_all': 保存されている全ての画像を削除。"
+                        "description": "実行する操作を選択します。'save': 画像を保存/上書き, 'get': 保存済み画像を取得して表示, 'list': 保存されている全画像の名前を一覧表示。"
                     },
                     "asset_name": {
                         "type": "STRING",
@@ -1950,52 +1868,6 @@ window.functionDeclarations = [
                     }
                 },
                 "required": ["action"]
-            }
-          },
-          {
-            "name": "manage_relationship",
-            "description": "キャラクター間の関係値（好感度、信頼度など）を多軸で管理し、キャラクターの感情や態度を決定するために使用します。重要：キャラクターと久しぶりに会話する場合など、応答を生成する前には、まず'get'アクションで現在の関係値を確認してください。これにより、ゲーム内時間経過による関係性の変化（減衰）が会話の第一声に反映され、自然なやり取りが実現できます。",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "action": {
-                        "type": "STRING",
-                        "description": "実行する操作。'set':値を直接設定。'increase':値を増加。'decrease':値を減少。'get':特定の一つの関係値を取得。'get_all_axes':特定相手への全関係軸の値を取得。'get_all_from_source':自分が持つ全人間関係を取得。"
-                    },
-                    "source_character": {
-                        "type": "STRING",
-                        "description": "関係の主体となるキャラクターの名前。'get_all_from_source'ではこのキャラクターの視点から関係性を取得します。基本的には対象のヒロインの名前が入ります。"
-                    },
-                    "target_character": {
-                        "type": "STRING",
-                        "description": "関係の対象となるキャラクターの名前。'get_all_from_source'アクション以外では必須です。"
-                    },
-                    "axis": {
-                        "type": "STRING",
-                        "description": "操作対象の関係軸。例: '好感度', '信頼度', '緊張度', '恐怖'。'get_all_axes'と'get_all_from_source'アクション以外では必須です。"
-                    },
-                    "value": {
-                        "type": "NUMBER",
-                        "description": "'set', 'increase', 'decrease'アクションで使用する数値。"
-                    },
-                    "clamp_min": {
-                        "type": "NUMBER",
-                        "description": "任意。関係値がこの値を下回らないようにするための下限値。"
-                    },
-                    "clamp_max": {
-                        "type": "NUMBER",
-                        "description": "任意。関係値がこの値を上回らないようにするための上限値。"
-                    },
-                    "days_to_decay": {
-                        "type": "NUMBER",
-                        "description": "任意。何日間更新がない場合に減衰を開始するかを指定します。この引数と'decay_value'はセットで使用します。"
-                    },
-                    "decay_value": {
-                        "type": "NUMBER",
-                        "description": "任意。'days_to_decay'を超えた後、1日あたりに変化する値。通常は負の数を指定します。例: -1"
-                    }
-                },
-                "required": ["action", "source_character"]
             }
           },
           {
@@ -2269,6 +2141,60 @@ window.functionDeclarations = [
                     }
                 },
                 "required": ["prompt", "source_images"]
+            }
+        },
+        {
+            "name": "manage_character_memory",
+            "description": "ロールプレイングゲームや物語に登場するキャラクターの、記憶、感情、目標、生死、現在地、他者との関係性(好感度を含む)といった、人格の一貫性を維持するための情報を管理します。キャラクターの状態が変化するイベントが発生した場合や、現在の状態を確認したい場合に使用します。",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "character_name": {
+                        "type": "STRING",
+                        "description": "操作対象のキャラクターの名前。"
+                    },
+                    "action": {
+                        "type": "STRING",
+                        "description": "実行する操作を選択します。'get': 記憶を取得, 'update': 記憶を更新, 'delete': 記憶を削除。"
+                    },
+                    "update_data": {
+                        "type": "OBJECT",
+                        "description": "'update'アクション時に使用する、更新する記憶データ。",
+                        "properties": {
+                            "status": {
+                                "type": "STRING",
+                                "description": "キャラクターの生死や健康状態を管理します。例: '生存', '死亡', '負傷'"
+                            },
+                            "current_location": {
+                                "type": "STRING",
+                                "description": "キャラクターの現在地を記録します。例: '王都の広場', '森の中の小屋'"
+                            },
+                            "summary": {
+                                "type": "STRING",
+                                "description": "キャラクターの性格や置かれている状況の要約。"
+                            },
+                            "relationships": {
+                                "type": "OBJECT",
+                                "description": "他キャラクターとの関係性を管理します。キーは相手のキャラクター名です。",
+                                "properties": {
+                                    "affinity": {
+                                        "type": "NUMBER",
+                                        "description": "相手への好感度(数値)。この値は上書きされます。"
+                                    },
+                                    "context": {
+                                        "type": "STRING",
+                                        "description": "関係性の文脈や履歴。このテキストは既存の内容に追記されます。"
+                                    }
+                                }
+                            },
+                            "short_term_goal": {
+                                "type": "STRING",
+                                "description": "キャラクターの短期的な目標。例: '主人公にペンダントのお礼を言う'"
+                            }
+                        }
+                    }
+                },
+                "required": ["character_name", "action"]
             }
         }
       ]
