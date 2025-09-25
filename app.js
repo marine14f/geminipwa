@@ -4024,19 +4024,37 @@ const appLogic = {
 
         // --- Floating Action Panel & Scroll ---
         const mainContent = elements.chatScreen.querySelector('.main-content');
+
+        // スクロールイベントからはパネル表示ロジックを削除し、ボタンの状態更新のみ残す
         mainContent.addEventListener('scroll', () => {
-            this.showActionPanel();
             this.updateScrollButtonsState();
         });
+
+        // クリックイベントをトグル方式に変更
         mainContent.addEventListener('click', (event) => {
+            // 設定が 'on-click' でない場合は何もしない
+            if (state.settings.floatingPanelBehavior !== 'on-click') return;
+
             const interactiveElements = 'A, BUTTON, INPUT, TEXTAREA, SELECT, DETAILS, SUMMARY, IMG, PRE, CODE';
-            if (!event.target.closest(interactiveElements)) {
+            // 操作可能な要素やパネル自体をクリックした場合は反応しない
+            if (event.target.closest(interactiveElements) || event.target.closest('.floating-action-panel')) {
+                return;
+            }
+
+            const panel = elements.floatingActionPanel;
+            // パネルが表示されている場合は、タイマーを止めて非表示にする
+            if (panel.classList.contains('visible')) {
+                clearTimeout(state.panelFadeOutTimer);
+                panel.classList.remove('visible');
+            } else {
+                // パネルが非表示の場合は、表示する (既存のロジックを呼び出す)
                 this.showActionPanel();
             }
         });
+
         elements.floatingActionPanel.addEventListener('mouseenter', () => clearTimeout(state.panelFadeOutTimer));
         elements.floatingActionPanel.addEventListener('mouseleave', () => this.showActionPanel());
-
+        
         elements.scrollToTopBtn.addEventListener('click', () => this.scrollToTop());
         elements.scrollToBottomBtn.addEventListener('click', () => this.scrollToBottom(true));
 
@@ -6985,8 +7003,6 @@ const appLogic = {
             uiUtils.hideProgressDialog();
         }
     },
-
-
 
     handleAssetImport: async function(file) {
         if (!file) return;
