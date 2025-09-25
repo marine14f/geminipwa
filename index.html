@@ -27,11 +27,11 @@
             <div id="header-trigger-area"></div>
             <header class="app-header">
                 <button id="goto-history-btn" class="header-button" title="履歴一覧へ"><span class="material-symbols-outlined">menu</span></button>
-                <button id="memory-toggle-btn" class="header-button hidden" title="このチャットの長期記憶を切り替え"><span class="material-symbols-outlined">auto_stories</span></button>             
                 <h1 id="chat-title">新規チャット</h1>                
                 <button id="new-chat-btn" class="new-chat-button" title="新規チャットを開始"><span class="material-symbols-outlined">add</span></button>
                 <button id="goto-settings-btn" class="header-button" title="設定へ"><span class="material-symbols-outlined">settings</span></button>
             </header>
+
 
 
 
@@ -61,6 +61,9 @@
                 <button id="summarize-history-btn" class="floating-action-button" title="履歴を要約" disabled>
                     <span class="material-symbols-outlined">article_shortcut</span>
                 </button>
+                <button id="memory-toggle-btn" class="floating-action-button hidden" title="このチャットの長期記憶を切り替え">
+                    <span class="material-symbols-outlined">auto_stories</span>
+                </button>
                 <button id="scroll-to-top-btn" class="floating-action-button" title="最上部へ">
                     <span class="material-symbols-outlined">arrow_upward</span>
                 </button>
@@ -68,7 +71,6 @@
                     <span class="material-symbols-outlined">arrow_downward</span>
                 </button>
             </div>
-
 
             <footer class="chat-input-area">
                 <div id="profile-card-header-wrapper" class="profile-card-wrapper">
@@ -532,6 +534,14 @@
                    <p style="font-size: 11px; color: var(--text-secondary); margin-top: -5px; margin-bottom: 10px;">
                        ※ 没入感を高めたい場合に。非表示でも機能は有効。
                    </p>
+                   <!-- フローティングボタン -->
+                   <label for="floating-panel-behavior">フローティングボタンの表示:</label>
+                   <select id="floating-panel-behavior" aria-label="フローティングボタンの表示">
+                       <option value="on-click">クリック/タップで表示 (時間経過で非表示)</option>
+                       <option value="always">常時表示</option>
+                       <option value="hidden">常時非表示</option>
+                   </select>
+                   <!-- 履歴のソート順 -->
                    <label for="history-sort-order">履歴のソート順:</label>
                    <select id="history-sort-order" aria-label="履歴のソート順">
                        <option value="updatedAt">更新日時 (新しい順)</option>
@@ -554,6 +564,8 @@
                    <p style="font-size: 11px; color: var(--text-secondary); margin-top: -5px; margin-bottom: 10px;">
                        ※ 追加後は設定を保存の上、ページをリロード。
                    </p>
+
+                   
                 </div>
 
                 <div class="danger-zone">

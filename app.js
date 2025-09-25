@@ -251,7 +251,8 @@ const elements = {
     progressMessage: document.getElementById('progress-message'),
     floatingActionPanel: document.getElementById('floating-action-panel'),
     scrollToTopBtn: document.getElementById('scroll-to-top-btn'),
-    scrollToBottomBtn: document.getElementById('scroll-to-bottom-btn')
+    scrollToBottomBtn: document.getElementById('scroll-to-bottom-btn'),
+    floatingPanelBehaviorSelect: document.getElementById('floating-panel-behavior')
 };
 
 // --- アプリ状態 ---
@@ -325,7 +326,8 @@ const state = {
 - **時系列の維持**: 出来事が起こった順番を正確に保ってください。
 
 最終的な出力は、このあらすじを初めて読む人でも、これまでの物語の流れを正確に理解できるような形式にしてください。`,
-        enableSummaryButton: true
+        enableSummaryButton: true,
+        floatingPanelBehavior: 'on-click'
     },
     backgroundImageUrl: null,
     isSending: false,
@@ -1855,6 +1857,7 @@ const uiUtils = {
         elements.summarySystemPromptTextarea.value = state.settings.summarySystemPrompt || '';
         elements.enableSummaryButtonToggle.checked = state.settings.enableSummaryButton;
         document.body.classList.toggle('header-auto-hide', state.settings.headerAutoHide);
+        elements.floatingPanelBehaviorSelect.value = state.settings.floatingPanelBehavior || 'on-click';
 
         const defaultHeaderColor = state.settings.darkMode ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
         elements.headerColorInput.value = state.settings.headerColor || defaultHeaderColor;
@@ -2460,8 +2463,24 @@ const uiUtils = {
             chatScreen.style.transform = 'translateX(0)';
             console.log('[DEBUG_TRANSITION] transform を設定しました。イベント発火を待ちます...');
         });
+    },
+
+    // --- 進捗ダイアログ ヘルパー ---
+    showProgressDialog(message) {
+        elements.progressMessage.textContent = message;
+        if (!elements.progressDialog.open) {
+            elements.progressDialog.showModal();
+        }
+    },
+    updateProgressMessage(message) {
+        elements.progressMessage.textContent = message;
+    },
+    hideProgressDialog() {
+        if (elements.progressDialog.open) {
+            elements.progressDialog.close();
+        }
     }
-};
+}; // uiUtilsオブジェクトの末尾
 
 // --- APIユーティリティ (apiUtils) ---
 const apiUtils = {
@@ -2915,16 +2934,24 @@ const appLogic = {
         state.activeProfile = state.profiles.find(p => p.id === state.activeProfileId);
         if (state.activeProfile) {
             console.log(`[Profile] プロファイル「${state.activeProfile.name}」(ID: ${state.activeProfile.id}) を適用します。`);
-            const { settings } = state.activeProfile;
-            // プロファイルの設定を state.settings にのみ反映させる
-            Object.assign(state.settings, settings);
-            // UIへの適用は、呼び出し元が責務を持つ
+            
+            // 1. アプリの最新のデフォルト設定を一時変数にコピー
+            const defaultSettings = { ...window.state.settings }; 
+            
+            // 2. ロードしたプロファイルの設定を取得
+            const loadedProfileSettings = state.activeProfile.settings || {};
+            
+            // 3. デフォルト設定の上に、ロードした設定をマージして、state.settingsを更新
+            //    これにより、新しい設定項目がプロファイルに無くても、デフォルト値が保証される。
+            Object.assign(state.settings, defaultSettings, loadedProfileSettings);
+
             uiUtils.applySettingsToUI(); 
             uiUtils.updateProfileCardUI();
         } else {
             console.error(`[Profile] 適用すべきアクティブなプロファイル (ID: ${state.activeProfileId}) が見つかりません。`);
         }
     },
+
 
     async switchProfile(newProfileId) {
         newProfileId = Number(newProfileId);
@@ -3491,6 +3518,7 @@ const appLogic = {
             this.updateAssetCount();
             this.toggleSummaryButtonVisibility();
             this.scrollToBottom();
+            this.applyFloatingPanelBehavior();
         }
     },
 
@@ -3971,6 +3999,13 @@ const appLogic = {
         elements.closeAssetDialogBtn.addEventListener('click', () => elements.assetManagementDialog.close());
 
         elements.deleteAllAssetsBtn.addEventListener('click', () => this.confirmDeleteAllAssets());
+
+        elements.floatingPanelBehaviorSelect.addEventListener('change', () => {
+            state.settings.floatingPanelBehavior = elements.floatingPanelBehaviorSelect.value;
+            this.updateCurrentProfile();
+            // 新しい挙動を即座に適用
+            this.applyFloatingPanelBehavior();
+        });
 
         // --- History Summary ---
         elements.summarizeHistoryBtn.addEventListener('click', () => this.startSummaryProcess());
@@ -4544,6 +4579,7 @@ const appLogic = {
         const confirmed = await uiUtils.showCustomConfirm(`チャット「${chatTitle || 'この履歴'}」をテキスト出力しますか？`);
         if (!confirmed) return;
     
+        uiUtils.showProgressDialog('エクスポート準備中...');
         try {
             let chatToExport;
             if (state.currentChatId === chatId) {
@@ -4579,11 +4615,11 @@ const appLogic = {
             }
 
             if (allImageIds.size > 0) {
-                uiUtils.setLoadingIndicatorText('画像データを収集中...');
-                elements.loadingIndicator.classList.remove('hidden');
+                uiUtils.updateProgressMessage(`画像データを収集中... (0 / ${allImageIds.size})`);
+                let processedCount = 0;
                 for (const imageId of allImageIds) {
                     try {
-                        const imageData = await this.getImageBlobById(imageId); // imageDataオブジェクトを取得
+                        const imageData = await this.getImageBlobById(imageId);
                         if (imageData && imageData.blob) {
                             const base64Data = await this.fileToBase64(imageData.blob);
                             imageDataBlock[imageId] = {
@@ -4596,14 +4632,14 @@ const appLogic = {
                     } catch (e) {
                         console.error(`エクスポート中に画像(ID: ${imageId})の処理に失敗しました:`, e);
                     }
+                    processedCount++;
+                    uiUtils.updateProgressMessage(`画像データを収集中... (${processedCount} / ${allImageIds.size})`);
                 }
-                elements.loadingIndicator.classList.add('hidden');
             }
     
-            // persistentMemory をエクスポートするロジックを修正
+            uiUtils.updateProgressMessage('テキストデータを生成中...');
             if (chatToExport.persistentMemory && Object.keys(chatToExport.persistentMemory).length > 0) {
                 try {
-                    // character_memory 以外のデータもエクスポート対象にする
                     const metadataToExport = { ...chatToExport.persistentMemory };
                     const metadataJson = JSON.stringify(metadataToExport, null, 2);
                     exportText += `<|#|metadata|#|>\n${metadataJson}\n<|#|/metadata|#|>\n\n`;
@@ -4649,6 +4685,7 @@ const appLogic = {
                 exportText += `<|#|imagedata|#|>\n${JSON.stringify(imageDataBlock, null, 2)}\n<|#|/imagedata|#|>\n`;
             }
     
+            uiUtils.updateProgressMessage('ファイルをダウンロード中...');
             const blob = new Blob([exportText.trim()], { type: 'text/plain;charset=utf-8' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -4663,9 +4700,10 @@ const appLogic = {
         } catch (error) {
             await uiUtils.showCustomAlert(`エクスポートエラー: ${error}`);
         } finally {
-            elements.loadingIndicator.classList.add('hidden');
+            uiUtils.hideProgressDialog();
         }
     },
+
 
 
 
@@ -6107,7 +6145,7 @@ const appLogic = {
                 state.currentMessages.push(modelMessage);
                 const modelMessageIndex = state.currentMessages.length - 1;
                 uiUtils.appendMessage(modelMessage.role, modelMessage.content, modelMessageIndex, true);
-                this.scrollToBottom(); // ★★★ 修正点 ★★★
+                this.scrollToBottom();
 
                 const generationConfig = {};
                 if (state.settings.temperature !== null) generationConfig.temperature = state.settings.temperature;
@@ -6141,7 +6179,7 @@ const appLogic = {
 
                 state.currentMessages.splice(modelMessageIndex, 1, ...originalResponses, newAggregatedMessage);
                 uiUtils.renderChatMessages(); // renderChatMessages自体はスクロールをトリガーしない
-                this.scrollToBottom(); // ★★★ 修正点 ★★★ (念のため再実行)
+                this.scrollToBottom();
                 await dbUtils.saveChat();
 
             } catch(error) {
@@ -6153,14 +6191,14 @@ const appLogic = {
                     state.currentMessages[errorIndex] = { role: 'error', content: errorMessage, timestamp: Date.now() };
                 }
                 uiUtils.renderChatMessages();
-                this.scrollToBottom(); // ★★★ 修正点 ★★★
+                this.scrollToBottom();
                 await dbUtils.saveChat();
             } finally {
                 uiUtils.setSendingState(false);
                 state.abortController = null; 
                 if (state.settings.autoScroll) {
                     requestAnimationFrame(() => {
-                        this.scrollToBottom(); // ★★★ 修正点 ★★★
+                        this.scrollToBottom();
                     });
                 }
             }
@@ -6894,20 +6932,20 @@ const appLogic = {
     },
 
     handleAssetExport: async function() {
+        uiUtils.showProgressDialog('エクスポート準備中...');
         try {
             const assets = await dbUtils.getAllAssets();
             if (assets.length === 0) {
+                uiUtils.hideProgressDialog();
                 return uiUtils.showCustomAlert("エクスポートするアセットがありません。");
             }
 
-            uiUtils.setLoadingIndicatorText('Zipファイルを生成中...');
-            elements.loadingIndicator.classList.remove('hidden');
+            uiUtils.updateProgressMessage('Zipファイルを生成中...');
 
             const zip = new JSZip();
             const manifest = [];
             const usedFileNames = new Set();
 
-            // ファイル名として使えない文字を置換するヘルパー関数
             const sanitizeFileName = (name) => {
                 return name.replace(/[\\/:*?"<>|]/g, '_');
             };
@@ -6916,10 +6954,9 @@ const appLogic = {
                 let baseName = sanitizeFileName(asset.name);
                 let fileName = `${baseName}.webp`;
                 let count = 1;
-                // ファイル名の重複を避ける
                 while (usedFileNames.has(fileName)) {
                     count++;
-                    fileName = `${baseName}_${count}.webp`;
+                    fileName = `${baseName}_${count}`;
                 }
                 usedFileNames.add(fileName);
                 
@@ -6931,6 +6968,7 @@ const appLogic = {
 
             const content = await zip.generateAsync({ type: "blob" });
             
+            uiUtils.updateProgressMessage('ファイルをダウンロード中...');
             const a = document.createElement("a");
             const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
             a.download = `Gemini_PWA_Assets_${date}.zip`;
@@ -6944,9 +6982,10 @@ const appLogic = {
             console.error("アセットのエクスポートに失敗:", error);
             await uiUtils.showCustomAlert(`エクスポート中にエラーが発生しました: ${error.message}`);
         } finally {
-            elements.loadingIndicator.classList.add('hidden');
+            uiUtils.hideProgressDialog();
         }
     },
+
 
 
     handleAssetImport: async function(file) {
@@ -6955,8 +6994,7 @@ const appLogic = {
             return uiUtils.showCustomAlert("Zip処理ライブラリが読み込まれていません。");
         }
 
-        uiUtils.setLoadingIndicatorText('Zipファイルを展開中...');
-        elements.loadingIndicator.classList.remove('hidden');
+        uiUtils.showProgressDialog('Zipファイルを展開中...');
         console.log(`[Import] インポート処理開始: ${file.name}`);
 
         try {
@@ -6995,6 +7033,7 @@ const appLogic = {
             assetsToImport.push(...imageFilePromises);
 
             if (assetsToImport.length === 0) {
+                uiUtils.hideProgressDialog();
                 return uiUtils.showCustomAlert("Zipファイル内にインポート可能な画像が見つかりませんでした。");
             }
             console.log(`[Import] ${assetsToImport.length}件のインポート対象画像をリストアップしました。`);
@@ -7006,15 +7045,16 @@ const appLogic = {
             for (let i = 0; i < assetsToImport.length; i++) {
                 const item = assetsToImport[i];
                 let assetName = item.name;
-                uiUtils.setLoadingIndicatorText(`アセットを処理中 (${i + 1}/${assetsToImport.length}): ${assetName}`);
+                uiUtils.updateProgressMessage(`アセットを処理中 (${i + 1}/${assetsToImport.length}): ${assetName}`);
 
                 const existingAsset = await dbUtils.getAsset(assetName);
                 
                 if (existingAsset) {
                     console.log(`[Import] 競合を検出: アセット「${assetName}」は既に存在します。`);
                     if (!applyToAll) {
-                        // 新しいカスタムダイアログを表示して結果を待つ
+                        uiUtils.hideProgressDialog(); // 確認ダイアログ表示のため一時的に隠す
                         const userDecision = await this.showAssetConflictDialog(assetName);
+                        uiUtils.showProgressDialog(`アセットを処理中 (${i + 1}/${assetsToImport.length}): ${assetName}`); // 再表示
                         conflictChoice = userDecision.choice;
                         applyToAll = userDecision.applyToAll;
                         console.log(`[Import] ユーザーの選択: ${conflictChoice}, 全てに適用: ${applyToAll}`);
@@ -7044,6 +7084,7 @@ const appLogic = {
                 importedCount++;
             }
             
+            uiUtils.hideProgressDialog();
             await uiUtils.showCustomAlert(`${importedCount}件のアセットのインポート処理が完了しました。`);
             await this.updateAssetCount();
 
@@ -7051,9 +7092,10 @@ const appLogic = {
             console.error("アセットのインポートに失敗:", error);
             await uiUtils.showCustomAlert(`インポート中にエラーが発生しました: ${error.message}`);
         } finally {
-            elements.loadingIndicator.classList.add('hidden');
+            uiUtils.hideProgressDialog();
         }
     },
+
 
     async openAssetManagementDialog() {
         try {
@@ -7476,6 +7518,23 @@ const appLogic = {
         elements.summarizeHistoryBtn.disabled = messageCount < 50;
     },
 
+    applyFloatingPanelBehavior() {
+        const behavior = state.settings.floatingPanelBehavior;
+        const panel = elements.floatingActionPanel;
+
+        // 既存のタイマーがあればクリア
+        clearTimeout(state.panelFadeOutTimer);
+
+        if (behavior === 'always') {
+            panel.classList.add('visible');
+        } else if (behavior === 'hidden') {
+            panel.classList.remove('visible');
+        } else { // 'on-click'
+            // on-clickの場合は、最初は非表示にしておく
+            panel.classList.remove('visible');
+        }
+    },
+
     async startSummaryProcess() {
         if (state.isSending || state.editingMessageIndex !== null || state.isEditingSystemPrompt) {
             uiUtils.showCustomAlert("他の処理が完了してから、再度お試しください。");
@@ -7672,10 +7731,19 @@ const appLogic = {
     },
 
     showActionPanel() {
+        const behavior = state.settings.floatingPanelBehavior;
+        const panel = elements.floatingActionPanel;
+
+        // 'always' または 'hidden' の場合は何もしない
+        if (behavior === 'always' || behavior === 'hidden') {
+            return;
+        }
+
+        // 'on-click' の場合の挙動
         clearTimeout(state.panelFadeOutTimer);
-        elements.floatingActionPanel.classList.add('visible');
+        panel.classList.add('visible');
         state.panelFadeOutTimer = setTimeout(() => {
-            elements.floatingActionPanel.classList.remove('visible');
+            panel.classList.remove('visible');
         }, 5000); // 5秒後にフェードアウト
     },
 

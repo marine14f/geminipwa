@@ -1668,20 +1668,6 @@ body.dark-mode #assetConflictDialog .dialog-actions-main .dialog-button {
     color: var(--badge-color);
 }
 
-/* --- Header Layout Adjustments --- */
-.app-header {
-    gap: 4px; /* ヘッダー内の要素間のデフォルト間隔を詰める */
-}
-
-#chat-screen .app-header h1 {
-    margin-left: 0; /* 不要になったマージンをリセット */
-}
-
-
-#memory-toggle-btn .material-symbols-outlined {
-    font-size: 22px; /* メモリボタンのアイコンサイズを小さくする */
-}
-
 /* --- Header Auto-Hide Feature --- */
 
 /* 機能が有効な時の基本設定 */
@@ -1902,6 +1888,17 @@ body.dark-mode .floating-action-panel .floating-action-button:disabled {
     color: var(--text-disabled);
     border-color: var(--border-secondary);
 }
+
+.floating-action-panel .floating-action-button.active {
+    color: var(--badge-color);
+    /* アクティブ状態が分かりやすいように、少し背景を濃くする */
+    background-color: rgba(255, 255, 255, 0.9); 
+}
+
+body.dark-mode .floating-action-panel .floating-action-button.active {
+    background-color: rgba(60, 60, 60, 0.9);
+}
+
 
 /* --- Asset Management Dialog --- */
 #assetManagementDialog {
