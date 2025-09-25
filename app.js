@@ -3188,23 +3188,20 @@ const appLogic = {
      * @param {Blob} blob - 保存対象の画像Blob
      * @returns {Promise<string>} 保存された画像のユニークID
      */
-    async saveImageBlob(blob) {
+     async saveImageBlob(blob) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = (e) => {
                 const img = new Image();
                 img.onload = async () => {
                     const canvas = document.createElement('canvas');
-                    // オリジナルと同じサイズで描画
                     canvas.width = img.width;
                     canvas.height = img.height;
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0);
 
-                    // WebPに変換 (品質0.9)
                     canvas.toBlob(async (webpBlob) => {
                         if (!webpBlob) {
-                            // WebP変換に失敗した場合(Safariの古いバージョンなど)は元のBlobを保存
                             console.warn("WebPへの変換に失敗しました。元の形式で保存します。");
                             webpBlob = blob;
                         }
@@ -3213,6 +3210,8 @@ const appLogic = {
                         const imageData = {
                             id: imageId,
                             blob: webpBlob,
+                            width: img.naturalWidth,  // 幅を追加
+                            height: img.naturalHeight, // 高さを追加
                             createdAt: new Date()
                         };
 
@@ -3235,6 +3234,7 @@ const appLogic = {
         });
     },
 
+
     imageObserver: null, // 画像遅延読み込み用のIntersectionObserver
 
     /**
@@ -3249,7 +3249,7 @@ const appLogic = {
             return new Promise((resolve, reject) => {
                 const request = store.get(id);
                 request.onsuccess = (event) => {
-                    resolve(event.target.result ? event.target.result.blob : null);
+                    resolve(event.target.result || null); // オブジェクト全体を返す
                 };
                 request.onerror = (event) => reject(event.target.error);
             });
@@ -3258,6 +3258,7 @@ const appLogic = {
             return null;
         }
     },
+
 
 
     /**
@@ -3362,15 +3363,18 @@ const appLogic = {
                 if (entry.isIntersecting) {
                     const img = entry.target;
                     const imageId = img.dataset.imageId;
-                    observer.unobserve(img); // 一度だけ処理
+                    observer.unobserve(img);
 
-                    const blob = await this.getImageBlobById(imageId);
-                    if (blob) {
-                        const objectURL = URL.createObjectURL(blob);
-
+                    const imageData = await this.getImageBlobById(imageId); // imageDataオブジェクト全体を取得
+                    if (imageData && imageData.blob) {
+                        // widthとheight属性を設定してレイアウトシフトを防ぐ
+                        if (imageData.width && imageData.height) {
+                            img.width = imageData.width;
+                            img.height = imageData.height;
+                        }
+                        const objectURL = URL.createObjectURL(imageData.blob);
                         img.src = objectURL;
                         img.alt = '生成された画像';
-
                     } else {
                         img.alt = '画像の読み込みに失敗しました';
                         img.classList.add('load-error');
@@ -3378,6 +3382,7 @@ const appLogic = {
                 }
             }
         }, { rootMargin: '200px' });
+
 
         // MutationObserverの初期化 (オブジェクトURLのメモリ解放用)
         const mutationObserver = new MutationObserver((mutationsList) => {
@@ -6076,17 +6081,17 @@ const appLogic = {
             });
             state.currentMessages.splice(index + 1);
 
-            let modelMessage; // ★★★★★ tryブロックの外で変数を宣言 ★★★★★
+            let modelMessage;
 
             try {
                 const baseHistory = state.currentMessages.filter(msg => !msg.isCascaded || msg.isSelected);
                 const historyForApi = this._prepareApiHistory(baseHistory);
 
-                modelMessage = { role: 'model', content: '', timestamp: Date.now() }; // ★★★★★ ここで代入 ★★★★★
+                modelMessage = { role: 'model', content: '', timestamp: Date.now() };
                 state.currentMessages.push(modelMessage);
                 const modelMessageIndex = state.currentMessages.length - 1;
                 uiUtils.appendMessage(modelMessage.role, modelMessage.content, modelMessageIndex, true);
-                uiUtils.scrollToBottom();
+                this.scrollToBottom(); // ★★★ 修正点 ★★★
 
                 const generationConfig = {};
                 if (state.settings.temperature !== null) generationConfig.temperature = state.settings.temperature;
@@ -6119,32 +6124,33 @@ const appLogic = {
                 newAggregatedMessage.siblingGroupId = siblingGroupId;
 
                 state.currentMessages.splice(modelMessageIndex, 1, ...originalResponses, newAggregatedMessage);
-                uiUtils.renderChatMessages(() => uiUtils.scrollToBottom());
+                uiUtils.renderChatMessages(); // renderChatMessages自体はスクロールをトリガーしない
+                this.scrollToBottom(); // ★★★ 修正点 ★★★ (念のため再実行)
                 await dbUtils.saveChat();
 
             } catch(error) {
                 console.error("--- retryFromMessage: 最終catchブロックでエラー捕捉 ---", error);
                 const errorMessage = (error.name !== 'AbortError') ? (error.message || "不明なエラーが発生しました。") : "リクエストがキャンセルされました。";
                 
-                // ★★★★★ catchブロックからmodelMessageに安全にアクセスできる ★★★★★
                 const errorIndex = state.currentMessages.findIndex(m => m.timestamp === modelMessage.timestamp);
                 if (errorIndex !== -1) {
                     state.currentMessages[errorIndex] = { role: 'error', content: errorMessage, timestamp: Date.now() };
                 }
                 uiUtils.renderChatMessages();
-                this.scrollToBottom();
+                this.scrollToBottom(); // ★★★ 修正点 ★★★
                 await dbUtils.saveChat();
             } finally {
                 uiUtils.setSendingState(false);
                 state.abortController = null; 
                 if (state.settings.autoScroll) {
                     requestAnimationFrame(() => {
-                        this.scrollToBottom();
+                        this.scrollToBottom(); // ★★★ 修正点 ★★★
                     });
                 }
             }
         }
     },
+
 
 
 
@@ -7530,15 +7536,39 @@ const appLogic = {
 
     scrollToTop() {
         const mainContent = elements.chatScreen.querySelector('.main-content');
-        if (mainContent) {
-            mainContent.scrollTo({
-                top: 0,
-                behavior: 'smooth'
-            });
-        }
+        if (!mainContent) return;
+
+        const startY = mainContent.scrollTop;
+        const endY = 0;
+        const distance = endY - startY;
+        const duration = 300; // 300ミリ秒で完了
+        let startTime = null;
+
+        if (distance === 0) return;
+
+        const step = (currentTime) => {
+            if (startTime === null) startTime = currentTime;
+            const elapsed = currentTime - startTime;
+            const t = Math.min(elapsed / duration, 1);
+            // easeOutCubic イージング関数で滑らかな動きに
+            const easedT = 1 - Math.pow(1 - t, 3);
+
+            mainContent.scrollTop = startY + (distance * easedT);
+
+            if (elapsed < duration) {
+                requestAnimationFrame(step);
+            } else {
+                // アニメーション終了後、確実に最終位置に設定
+                mainContent.scrollTop = endY;
+            }
+        };
+
+        requestAnimationFrame(step);
     },
 
-        scrollToBottom(force = false) {
+
+
+    scrollToBottom(force = false) {
         const mainContent = elements.chatScreen.querySelector('.main-content');
         if (!mainContent) return;
 
@@ -7546,60 +7576,33 @@ const appLogic = {
             return;
         }
 
-        if (force) {
-            // ▼▼▼ ログ出力 ▼▼▼
-            console.log("--- [Scroll Start Log] ---");
-            console.log(`[Before] scrollHeight: ${mainContent.scrollHeight}, scrollTop: ${mainContent.scrollTop}`);
-            // ▲▲▲ ログ出力 ▲▲▲
+        const startY = mainContent.scrollTop;
+        const duration = 300; // 300ミリ秒で完了
+        let startTime = null;
 
-            const startY = mainContent.scrollTop;
-            const endY = mainContent.scrollHeight; 
+        const step = (currentTime) => {
+            if (startTime === null) startTime = currentTime;
+            const elapsed = currentTime - startTime;
+            
+            // アニメーションの各フレームでscrollHeightを再取得
+            const endY = mainContent.scrollHeight - mainContent.clientHeight;
             const distance = endY - startY;
-            const duration = 500; 
-            let startTime = null;
 
-            if (distance <= 0) {
-                console.log("[Scroll Log] Already at bottom.");
-                return;
+            const t = Math.min(elapsed / duration, 1);
+            const easedT = 1 - Math.pow(1 - t, 3);
+
+            mainContent.scrollTop = startY + (distance * easedT);
+
+            if (elapsed < duration) {
+                requestAnimationFrame(step);
+            } else {
+                // アニメーション終了後、その時点での最新のscrollHeightを使って確実に最下部に設定
+                mainContent.scrollTop = mainContent.scrollHeight;
             }
+        };
 
-            const step = (currentTime) => {
-                if (startTime === null) startTime = currentTime;
-                const elapsed = currentTime - startTime;
-                
-                const t = Math.min(elapsed / duration, 1);
-                const easedT = 1 - Math.pow(1 - t, 3);
-
-                mainContent.scrollTop = startY + (distance * easedT);
-
-                if (elapsed < duration) {
-                    requestAnimationFrame(step);
-                } else {
-                    mainContent.scrollTop = endY;
-                    // ▼▼▼ ログ出力 ▼▼▼
-                    // アニメーション完了直後に、再度scrollHeightを計測
-                    requestAnimationFrame(() => {
-                        console.log("--- [Scroll End Log] ---");
-                        console.log(`[After] scrollHeight: ${mainContent.scrollHeight}, scrollTop: ${mainContent.scrollTop}`);
-                        console.log(`[Result] Goal was ${endY}, but final scrollHeight is ${mainContent.scrollHeight}.`);
-                    });
-                    // ▲▲▲ ログ出力 ▲▲▲
-                }
-            };
-
-            requestAnimationFrame(step);
-
-        } else {
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    mainContent.scrollTop = mainContent.scrollHeight;
-                });
-            });
-        }
-        console.log(`[Debug Scroll] scrollToBottom: 実行 (Force: ${force})`);
+        requestAnimationFrame(step);
     },
-
-
 
 
 }; // appLogic終了
