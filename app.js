@@ -5796,7 +5796,7 @@ const appLogic = {
             this.cancelEditMessage(index, messageElement);
             return;
         }
-        const newRawContent = textarea.value.trim();
+        const newRawContent = textarea.value; // trim() を削除し、空白のみの保存も許可
         const originalMessage = state.currentMessages[index];
 
         if (newRawContent === originalMessage.content) {
@@ -5832,53 +5832,41 @@ const appLogic = {
         }
 
         // 4. 画像が存在する場合、画像を再注入
-        if (updatedMessage.role === 'model' && updatedMessage.generated_images && updatedMessage.generated_images.length > 0) {
-            // (この部分は前回の修正と同じなので省略)
-            const imagePlaceholderRegex = /<p>\[IMAGE_HERE\]<\/p>|\[IMAGE_HERE\]/g;
-            const processImages = async () => {
-                const imageElements = [];
-                const imageCacheKeyPrefix = `image-${index}`;
-                for (let i = 0; i < updatedMessage.generated_images.length; i++) {
-                    const imageData = updatedMessage.generated_images[i];
-                    const key = `${imageCacheKeyPrefix}-${i}`;
+        const imagePlaceholderRegex = /<p>\[IMAGE_HERE\]<\/p>|\[IMAGE_HERE\]/g;
+        if (updatedMessage.role === 'model' && updatedMessage.imageIds && updatedMessage.imageIds.length > 0) {
+            let imageIndex = 0;
+            // プレースホルダーを<img>タグに置換
+            const replacedHtml = contentDiv.innerHTML.replace(imagePlaceholderRegex, () => {
+                if (imageIndex < updatedMessage.imageIds.length) {
+                    const imageId = updatedMessage.imageIds[imageIndex++];
+                    // createMessageElementと同様の遅延読み込み用のimgタグを生成
+                    return `<img class="lazy-load-image" alt="生成画像（読み込み中...）" data-image-id="${imageId}">`;
+                }
+                return ''; // プレースホルダーが画像の数より多い場合は空文字に
+            });
+            contentDiv.innerHTML = replacedHtml;
+
+            // プレースホルダーが足りなかった場合、残りの画像を末尾に追加
+            if (imageIndex < updatedMessage.imageIds.length) {
+                const fragment = document.createDocumentFragment();
+                for (let i = imageIndex; i < updatedMessage.imageIds.length; i++) {
+                    const imageId = updatedMessage.imageIds[i];
                     const img = document.createElement('img');
-                    img.alt = '生成された画像';
-                    img.style.maxWidth = '100%';
-                    img.style.borderRadius = 'var(--border-radius-md)';
-                    img.style.marginTop = '8px';
-                    if (state.imageUrlCache.has(key)) {
-                        img.src = state.imageUrlCache.get(key);
-                    } else {
-                        try {
-                            const blob = await base64ToBlob(imageData.data, imageData.mimeType);
-                            const url = URL.createObjectURL(blob);
-                            state.imageUrlCache.set(key, url);
-                            img.src = url;
-                        } catch (e) {
-                            console.error(`[Memory] BlobまたはObjectURLの生成に失敗しました (Key: ${key}):`, e);
-                            img.alt = '画像表示エラー';
-                        }
-                    }
-                    imageElements.push(img.outerHTML);
+                    img.className = 'lazy-load-image';
+                    img.alt = '生成画像（読み込み中...）';
+                    img.dataset.imageId = imageId;
+                    fragment.appendChild(img);
                 }
-                let imageIndex = 0;
-                const replacedHtml = contentDiv.innerHTML.replace(imagePlaceholderRegex, () => {
-                    return imageIndex < imageElements.length ? imageElements[imageIndex++] : '';
-                });
-                contentDiv.innerHTML = replacedHtml;
-                if (imageIndex < imageElements.length) {
-                    const fragment = document.createDocumentFragment();
-                    for (let i = imageIndex; i < imageElements.length; i++) {
-                        const tempDiv = document.createElement('div');
-                        tempDiv.innerHTML = imageElements[i];
-                        fragment.appendChild(tempDiv.firstChild);
-                    }
-                    contentDiv.appendChild(fragment);
-                }
-            };
-            await processImages();
+                contentDiv.appendChild(fragment);
+            }
+            
+            // 新しく追加された画像をIntersectionObserverの監視対象に追加
+            requestAnimationFrame(() => {
+                const newImages = contentDiv.querySelectorAll('.lazy-load-image[data-image-id]');
+                newImages.forEach(img => this.imageObserver.observe(img));
+            });
         }
-        
+
         // 5. メタ情報（ツール使用履歴など）を再生成して追加
         if (updatedMessage.role === 'model') {
             const detailsFragment = document.createDocumentFragment();
@@ -5959,6 +5947,7 @@ const appLogic = {
             await uiUtils.showCustomAlert("メッセージ編集後のチャット保存に失敗しました。");
         }
     },
+
 
 
     // メッセージ編集をキャンセル
