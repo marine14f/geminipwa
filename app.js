@@ -3742,7 +3742,6 @@ const appLogic = {
         elements.closeProfileDialogBtn.addEventListener('click', () => elements.characterProfileDialog.close());
         elements.profileBackBtn.addEventListener('click', () => {
             elements.characterProfileDialog.classList.remove('details-visible');
-            elements.profileBackBtn.classList.add('hidden');
         });
 
         // スライダーの数値表示をリアルタイムで更新するリスナー
