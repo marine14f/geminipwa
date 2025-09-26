@@ -7288,11 +7288,19 @@ const appLogic = {
                 <textarea id="profile-goal">${data.short_term_goal || ''}</textarea>
             </div>
             <div class="profile-detail-section">
-                <label>他キャラクターとの関係</label>
+                <div class="profile-detail-section-header">
+                    <label>他キャラクターとの関係</label>
+                    <button id="add-relationship-btn" class="add-relationship-btn">＋ 追加</button>
+                </div>
                 <div id="profile-relationships-grid" class="profile-relationships-grid">
                     ${Object.keys(data.relationships || {}).map(targetName => `
-                        <div class="profile-relationship-card">
-                            <h5>${targetName}</h5>
+                        <div class="profile-relationship-card" data-target-name="${targetName}">
+                            <div class="profile-relationship-card-header">
+                                <h5>${targetName}</h5>
+                                <button class="delete-relationship-btn" title="この関係性を削除">
+                                    <span class="material-symbols-outlined">delete</span>
+                                </button>
+                            </div>
                             <label for="affinity-${targetName}">親密度</label>
                             <input type="number" id="affinity-${targetName}" value="${(data.relationships[targetName].affinity || 0)}">
                             <label for="context-${targetName}" style="margin-top:10px;">関係性の文脈</label>
@@ -7309,11 +7317,16 @@ const appLogic = {
         detailPane.querySelector('#profile-summary').addEventListener('blur', createFieldUpdater(['summary']));
         detailPane.querySelector('#profile-goal').addEventListener('blur', createFieldUpdater(['short_term_goal']));
         
+        detailPane.querySelector('#add-relationship-btn').addEventListener('click', () => this.addRelationship(characterName));
+
         Object.keys(data.relationships || {}).forEach(targetName => {
-            detailPane.querySelector(`#affinity-${targetName}`).addEventListener('blur', createFieldUpdater(['relationships', targetName, 'affinity']));
-            detailPane.querySelector(`#context-${targetName}`).addEventListener('blur', createFieldUpdater(['relationships', targetName, 'context']));
+            const card = detailPane.querySelector(`.profile-relationship-card[data-target-name="${targetName}"]`);
+            card.querySelector(`#affinity-${targetName}`).addEventListener('blur', createFieldUpdater(['relationships', targetName, 'affinity']));
+            card.querySelector(`#context-${targetName}`).addEventListener('blur', createFieldUpdater(['relationships', targetName, 'context']));
+            card.querySelector('.delete-relationship-btn').addEventListener('click', () => this.deleteRelationship(characterName, targetName));
         });
     },
+
 
     async handleProfileFieldUpdate(characterName, fieldPath, newValue) {
         const memoryKey = `character_memory_${characterName}`;
@@ -7341,6 +7354,50 @@ const appLogic = {
             await dbUtils.saveChat();
         } catch (error) {
             console.error("キャラクタープロファイルの自動保存に失敗:", error);
+        }
+    },
+
+    async addRelationship(characterName) {
+        const targetName = await uiUtils.showCustomPrompt("関係を追加する相手のキャラクター名を入力してください:");
+        if (!targetName || !targetName.trim()) return;
+
+        const memoryKey = `character_memory_${characterName}`;
+        const memory = state.currentPersistentMemory[memoryKey];
+        if (!memory) return;
+        if (!memory.relationships) memory.relationships = {};
+
+        if (memory.relationships[targetName]) {
+            await uiUtils.showCustomAlert(`キャラクター「${targetName}」との関係は既に存在します。`);
+            return;
+        }
+
+        // 新しい空の関係を追加
+        memory.relationships[targetName] = { affinity: 0, context: "" };
+        
+        try {
+            await dbUtils.saveChat();
+            // UIを再描画して新しいカードを表示
+            this.renderCharacterDetails(characterName);
+        } catch (error) {
+            console.error("関係性の追加に失敗:", error);
+        }
+    },
+
+    async deleteRelationship(characterName, targetName) {
+        const confirmed = await uiUtils.showCustomConfirm(`「${characterName}」から「${targetName}」への関係性を削除しますか？`);
+        if (!confirmed) return;
+
+        const memoryKey = `character_memory_${characterName}`;
+        const memory = state.currentPersistentMemory[memoryKey];
+        if (memory && memory.relationships && memory.relationships[targetName]) {
+            delete memory.relationships[targetName];
+            try {
+                await dbUtils.saveChat();
+                // UIを再描画してカードを消す
+                this.renderCharacterDetails(characterName);
+            } catch (error) {
+                console.error("関係性の削除に失敗:", error);
+            }
         }
     },
 
