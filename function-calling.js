@@ -1534,8 +1534,15 @@ async function generate_image(args = {}) {
 
                 // relationships の処理 (contextの追記ロジックを含む)
                 if (update_data.relationships && typeof update_data.relationships === 'object') {
-                    if (!memory.relationships) memory.relationships = {};
+                    const reservedKeys = ['affinity', 'context']; // 予約語リスト
+
                     for (const targetName in update_data.relationships) {
+                        // 渡されたキーが予約語リストに含まれていないかチェック
+                        if (reservedKeys.includes(targetName)) {
+                            console.warn(`[Validation] 不正なキー「${targetName}」がキャラクター名として渡されたため、この更新をスキップします。`);
+                            continue; // このキーの処理をスキップして次のループへ
+                        }
+
                         if (!memory.relationships[targetName]) memory.relationships[targetName] = {};
                         const update = update_data.relationships[targetName];
                         
@@ -2175,7 +2182,7 @@ window.functionDeclarations = [
                             },
                             "relationships": {
                                 "type": "OBJECT",
-                                "description": "他キャラクターとの関係性を管理します。キーは相手のキャラクター名です。",
+                                "description": "他キャラクターとの関係性を管理します。このオブジェクトのキーは、必ず相手のキャラクター名でなければなりません。例: { \"主人公\": { \"affinity\": 80, \"context\": \"...\" } }",
                                 "properties": {
                                     "affinity": {
                                         "type": "NUMBER",
