@@ -1983,3 +1983,132 @@ body.dark-mode .dialog-delete-btn {
     /* ダークモード時は、背景が明るい赤になるため、文字色を暗くする */
     color: var(--text-light); /* In dark mode, this variable is a dark color */
 }
+
+/* --- Character Profile Dialog --- */
+#characterProfileDialog {
+    width: 95%;
+    max-width: 800px;
+    height: 80%;
+    max-height: 700px;
+}
+
+.profile-dialog-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+.profile-dialog-header .dialog-title {
+    margin-bottom: 0;
+}
+.profile-dialog-header .header-button {
+    color: var(--text-primary);
+    box-shadow: none;
+    padding: 4px;
+}
+body.dark-mode .profile-dialog-header .header-button {
+    color: var(--text-light);
+}
+
+.profile-dialog-layout {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 16px;
+    height: calc(100% - 16px);
+}
+
+.profile-character-list {
+    border: 1px solid var(--border-primary);
+    border-radius: var(--border-radius-sm);
+    padding: 8px;
+    background-color: var(--bg-secondary);
+    overflow-y: auto;
+}
+
+.profile-character-item {
+    padding: 10px;
+    border-radius: var(--border-radius-sm);
+    cursor: pointer;
+    font-weight: 500;
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.profile-character-item:hover {
+    background-color: var(--border-primary);
+}
+.profile-character-item.active {
+    background-color: var(--bg-button);
+    color: var(--text-light);
+}
+
+.profile-detail-pane {
+    overflow-y: auto;
+    padding-right: 8px; /* スクロールバーのスペース */
+}
+
+.profile-detail-section {
+    margin-bottom: 20px;
+}
+.profile-detail-section label {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+.profile-detail-section input,
+.profile-detail-section textarea,
+.profile-detail-section select {
+    margin-bottom: 0;
+}
+.profile-detail-section textarea {
+    min-height: 80px;
+}
+
+.profile-relationships-grid {
+    display: grid;
+    gap: 12px;
+}
+.profile-relationship-card {
+    border: 1px solid var(--border-primary);
+    border-radius: var(--border-radius-sm);
+    padding: 12px;
+    background-color: var(--bg-secondary);
+}
+.profile-relationship-card h5 {
+    font-size: 0.9rem;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--border-primary);
+    padding-bottom: 6px;
+}
+
+.dialog-note {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+/* Responsive for Mobile */
+@media screen and (max-width: 600px) {
+    .profile-dialog-layout {
+        display: block;
+    }
+    .profile-detail-pane {
+        display: none; /* 初期状態では詳細を隠す */
+    }
+    #characterProfileDialog.details-visible .profile-character-list {
+        display: none; /* 詳細表示中はリストを隠す */
+    }
+    #characterProfileDialog.details-visible .profile-detail-pane {
+        display: block; /* 詳細表示 */
+    }
+    .profile-character-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .profile-character-item::after {
+        content: '>';
+        color: var(--text-secondary);
+    }
+}

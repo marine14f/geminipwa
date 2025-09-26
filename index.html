@@ -64,6 +64,9 @@
                 <button id="memory-toggle-btn" class="floating-action-button hidden" title="このチャットの長期記憶を切り替え">
                     <span class="material-symbols-outlined">auto_stories</span>
                 </button>
+                <button id="character-profile-btn" class="floating-action-button" title="キャラクタープロファイル">
+                    <span class="material-symbols-outlined">group</span>
+                </button>
                 <button id="scroll-to-top-btn" class="floating-action-button" title="最上部へ">
                     <span class="material-symbols-outlined">arrow_upward</span>
                 </button>
@@ -669,7 +672,8 @@
                     <button id="add-memory-btn">追加</button>
                 </div>
             </div>
-            <div class="dialog-actions">
+            <div class="dialog-actions" style="justify-content: space-between; align-items: center;">
+                <button id="delete-all-memory-btn" value="delete_all" class="dialog-delete-btn">全て削除</button>
                 <button id="close-memory-dialog-btn" value="close">閉じる</button>
             </div>
         </dialog>
@@ -728,6 +732,27 @@
                 <button id="close-asset-dialog-btn" value="close">閉じる</button>
             </div>
         </dialog>
+
+        <!-- Character Profile Dialog -->
+        <dialog id="characterProfileDialog" class="custom-dialog">
+            <div class="profile-dialog-header">
+                <button id="profile-back-btn" class="header-button hidden" title="リストに戻る"><span class="material-symbols-outlined">arrow_back_ios</span></button>
+                <h3 class="dialog-title">キャラクタープロファイル</h3>
+            </div>
+            <div class="dialog-content profile-dialog-layout">
+                <div id="character-list-pane" class="profile-character-list">
+                    <!-- キャラクターリストがここに表示されます -->
+                </div>
+                <div id="character-detail-pane" class="profile-detail-pane">
+                    <!-- キャラクター詳細がここに表示されます -->
+                </div>
+            </div>
+            <div class="dialog-actions" style="justify-content: space-between; align-items: center;">
+                <span class="dialog-note">※編集内容は自動的に保存されます</span>
+                <button id="close-profile-dialog-btn" value="close">閉じる</button>
+            </div>
+        </dialog>
+
 
     <script src="prism.js" data-autoloader-path="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>

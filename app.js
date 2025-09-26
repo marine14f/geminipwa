@@ -236,6 +236,7 @@ const elements = {
     newMemoryInput: document.getElementById('new-memory-input'),
     addMemoryBtn: document.getElementById('add-memory-btn'),
     closeMemoryDialogBtn: document.getElementById('close-memory-dialog-btn'),
+    deleteAllMemoryBtn: document.getElementById('delete-all-memory-btn'),
     headerAutoHideToggle: document.getElementById('header-auto-hide-toggle'),
     headerTriggerArea: document.getElementById('header-trigger-area'),
     summarizeHistoryBtn: document.getElementById('summarize-history-btn'),
@@ -252,7 +253,13 @@ const elements = {
     floatingActionPanel: document.getElementById('floating-action-panel'),
     scrollToTopBtn: document.getElementById('scroll-to-top-btn'),
     scrollToBottomBtn: document.getElementById('scroll-to-bottom-btn'),
-    floatingPanelBehaviorSelect: document.getElementById('floating-panel-behavior')
+    floatingPanelBehaviorSelect: document.getElementById('floating-panel-behavior'),
+    characterProfileBtn: document.getElementById('character-profile-btn'),
+    characterProfileDialog: document.getElementById('character-profile-dialog'),
+    profileBackBtn: document.getElementById('profile-back-btn'),
+    characterListPane: document.getElementById('character-list-pane'),
+    characterDetailPane: document.getElementById('character-detail-pane'),
+    closeProfileDialogBtn: document.getElementById('close-profile-dialog-btn')
 };
 
 // --- アプリ状態 ---
@@ -347,7 +354,8 @@ const state = {
     isTemporaryBackgroundActive: false,
     currentScene: null,
     currentStyleProfiles: {},
-    isMemoryEnabledForChat: true
+    isMemoryEnabledForChat: true,
+    characterProfileVisibleCharacter: null
 };
 
 function updateMessageMaxWidthVar() {
@@ -3721,6 +3729,14 @@ const appLogic = {
         elements.manageMemoryBtn.addEventListener('click', () => this.openMemoryManagementDialog());
         elements.closeMemoryDialogBtn.addEventListener('click', () => elements.memoryManagementDialog.close());
         elements.addMemoryBtn.addEventListener('click', () => this.addMemoryItem());
+        elements.deleteAllMemoryBtn.addEventListener('click', () => this.confirmDeleteAllMemory());
+
+        elements.characterProfileBtn.addEventListener('click', () => this.openCharacterProfileDialog());
+        elements.closeProfileDialogBtn.addEventListener('click', () => elements.characterProfileDialog.close());
+        elements.profileBackBtn.addEventListener('click', () => {
+            elements.characterProfileDialog.classList.remove('details-visible');
+            elements.profileBackBtn.classList.add('hidden');
+        });
 
         // スライダーの数値表示をリアルタイムで更新するリスナー
         elements.overlayOpacitySlider.addEventListener('input', (event) => {
@@ -4309,6 +4325,7 @@ const appLogic = {
         elements.userInput.value = '';
         uiUtils.adjustTextareaHeight();
         uiUtils.setSendingState(false);
+        this.updateCharacterProfileButtonVisibility();
         state.currentStyleProfiles = {};
     },
 
@@ -4366,6 +4383,8 @@ const appLogic = {
                 // チャットごとのメモリ有効状態を読み込む (未定義ならtrue)
                 state.isMemoryEnabledForChat = chat.isMemoryEnabledForChat !== false;
                 this.toggleMemoryIconVisibility();
+
+                this.updateCharacterProfileButtonVisibility();
 
                 let needsSave = false;
                 const groupIds = new Set(state.currentMessages.filter(m => m.siblingGroupId).map(m => m.siblingGroupId));
@@ -5194,6 +5213,8 @@ const appLogic = {
             uiUtils.renderChatMessages(() => uiUtils.scrollToBottom());
 
             await dbUtils.saveChat();
+
+            this.updateCharacterProfileButtonVisibility();
 
             // --- 自動学習トリガー ---
             const interval = parseInt(state.settings.memoryAutoSaveInterval, 10);
@@ -7176,6 +7197,146 @@ const appLogic = {
         }
     },
 
+    // --- ここから Character Profile Dialog Functions ---
+    updateCharacterProfileButtonVisibility() {
+        const memory = state.currentPersistentMemory || {};
+        const hasCharacterData = Object.keys(memory).some(key => key.startsWith('character_memory_'));
+        
+        elements.characterProfileBtn.disabled = !hasCharacterData;
+        if (!hasCharacterData) {
+            elements.characterProfileBtn.title = "キャラクターデータがありません";
+        } else {
+            elements.characterProfileBtn.title = "キャラクタープロファイル";
+        }
+    },
+
+    async openCharacterProfileDialog() {
+        const memory = state.currentPersistentMemory || {};
+        const characterKeys = Object.keys(memory).filter(key => key.startsWith('character_memory_'));
+
+        if (characterKeys.length === 0) return;
+
+        const listContainer = elements.characterListPane;
+        listContainer.innerHTML = '';
+        
+        const characterNames = characterKeys.map(key => key.replace('character_memory_', ''));
+        
+        characterNames.forEach(name => {
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'profile-character-item';
+            itemDiv.textContent = name;
+            itemDiv.dataset.characterName = name;
+            itemDiv.onclick = () => {
+                this.renderCharacterDetails(name);
+                // for Mobile
+                if (window.innerWidth < 600) {
+                    elements.characterProfileDialog.classList.add('details-visible');
+                    elements.profileBackBtn.classList.remove('hidden');
+                }
+            };
+            listContainer.appendChild(itemDiv);
+        });
+
+        // 最初のキャラクターをデフォルトで表示
+        this.renderCharacterDetails(characterNames[0]);
+
+        elements.characterProfileDialog.showModal();
+    },
+
+    renderCharacterDetails(characterName) {
+        state.characterProfileVisibleCharacter = characterName;
+
+        // リストのアクティブ表示を更新
+        document.querySelectorAll('.profile-character-item').forEach(item => {
+            item.classList.toggle('active', item.dataset.characterName === characterName);
+        });
+
+        const detailPane = elements.characterDetailPane;
+        const memoryKey = `character_memory_${characterName}`;
+        const data = state.currentPersistentMemory[memoryKey] || {};
+
+        // 汎用的なフィールド更新関数
+        const createFieldUpdater = (fieldPath) => {
+            return (event) => {
+                const newValue = event.target.value;
+                this.handleProfileFieldUpdate(characterName, fieldPath, newValue);
+            };
+        };
+
+        detailPane.innerHTML = `
+            <div class="profile-detail-section">
+                <label for="profile-status">状態</label>
+                <input type="text" id="profile-status" value="${data.status || ''}">
+            </div>
+            <div class="profile-detail-section">
+                <label for="profile-location">現在地</label>
+                <input type="text" id="profile-location" value="${data.current_location || ''}">
+            </div>
+            <div class="profile-detail-section">
+                <label for="profile-summary">概要</label>
+                <textarea id="profile-summary">${data.summary || ''}</textarea>
+            </div>
+            <div class="profile-detail-section">
+                <label for="profile-goal">短期目標</label>
+                <textarea id="profile-goal">${data.short_term_goal || ''}</textarea>
+            </div>
+            <div class="profile-detail-section">
+                <label>他キャラクターとの関係</label>
+                <div id="profile-relationships-grid" class="profile-relationships-grid">
+                    ${Object.keys(data.relationships || {}).map(targetName => `
+                        <div class="profile-relationship-card">
+                            <h5>${targetName}</h5>
+                            <label for="affinity-${targetName}">親密度</label>
+                            <input type="number" id="affinity-${targetName}" value="${(data.relationships[targetName].affinity || 0)}">
+                            <label for="context-${targetName}" style="margin-top:10px;">関係性の文脈</label>
+                            <textarea id="context-${targetName}">${(data.relationships[targetName].context || '')}</textarea>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+
+        // イベントリスナーを設定
+        detailPane.querySelector('#profile-status').addEventListener('blur', createFieldUpdater(['status']));
+        detailPane.querySelector('#profile-location').addEventListener('blur', createFieldUpdater(['current_location']));
+        detailPane.querySelector('#profile-summary').addEventListener('blur', createFieldUpdater(['summary']));
+        detailPane.querySelector('#profile-goal').addEventListener('blur', createFieldUpdater(['short_term_goal']));
+        
+        Object.keys(data.relationships || {}).forEach(targetName => {
+            detailPane.querySelector(`#affinity-${targetName}`).addEventListener('blur', createFieldUpdater(['relationships', targetName, 'affinity']));
+            detailPane.querySelector(`#context-${targetName}`).addEventListener('blur', createFieldUpdater(['relationships', targetName, 'context']));
+        });
+    },
+
+    async handleProfileFieldUpdate(characterName, fieldPath, newValue) {
+        const memoryKey = `character_memory_${characterName}`;
+        const memory = state.currentPersistentMemory[memoryKey];
+        if (!memory) return;
+
+        // パスに基づいて値を更新
+        let current = memory;
+        for (let i = 0; i < fieldPath.length - 1; i++) {
+            current = current[fieldPath[i]];
+        }
+        const finalKey = fieldPath[fieldPath.length - 1];
+        
+        // affinityは数値に変換
+        if (finalKey === 'affinity') {
+            newValue = parseInt(newValue, 10) || 0;
+        }
+
+        if (current[finalKey] === newValue) return; // 変更がなければ何もしない
+
+        console.log(`Updating profile for ${characterName}: ${fieldPath.join('.')} = ${newValue}`);
+        current[finalKey] = newValue;
+
+        try {
+            await dbUtils.saveChat();
+        } catch (error) {
+            console.error("キャラクタープロファイルの自動保存に失敗:", error);
+        }
+    },
+
     async confirmDeleteAsset(assetName) {
         const confirmed = await uiUtils.showCustomConfirm(`アセット「${assetName}」を削除しますか？\nこの操作は元に戻せません。`);
         if (confirmed) {
@@ -7388,6 +7549,33 @@ const appLogic = {
         } catch (error) {
             console.error("記憶の削除に失敗:", error);
             await uiUtils.showCustomAlert("記憶の削除に失敗しました。");
+        }
+    },
+
+    async confirmDeleteAllMemory() {
+        if (!state.activeProfileId) return;
+
+        const memoryData = await dbUtils.getMemory(state.activeProfileId);
+        if (!memoryData || !memoryData.items || memoryData.items.length === 0) {
+            await uiUtils.showCustomAlert("削除する記憶はありません。");
+            return;
+        }
+
+        const confirmed = await uiUtils.showCustomConfirm(`現在アクティブなプロファイル「${state.activeProfile.name}」に保存されている ${memoryData.items.length} 個のすべての記憶を削除しますか？\nこの操作は元に戻せません。`);
+        if (confirmed) {
+            try {
+                // 項目だけを空の配列にして保存する
+                memoryData.items = [];
+                await dbUtils.saveMemory(state.activeProfileId, memoryData);
+                console.log(`プロファイル「${state.activeProfile.name}」のすべての記憶を削除しました。`);
+                
+                // UIを再描画
+                this.renderMemoryList(memoryData.items);
+
+            } catch (error) {
+                console.error("すべての記憶の削除に失敗:", error);
+                await uiUtils.showCustomAlert("すべての記憶の削除に失敗しました。");
+            }
         }
     },
 
