@@ -546,13 +546,15 @@ body.dark-mode #attach-file-btn {
     background-color: rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(2px);
 }
-.custom-dialog[open] {
+
+.custom-dialog.animating {
     animation: dialog-fade-in 0.2s ease-out;
 }
 @keyframes dialog-fade-in {
     from { opacity: 0; transform: translate(-50%, -45%); }
     to { opacity: 1; transform: translate(-50%, -50%); }
 }
+
 .custom-dialog .dialog-message {
     margin: 0 0 20px 0;
     font-size: 1rem;
@@ -1990,13 +1992,26 @@ body.dark-mode .dialog-delete-btn {
     max-width: 800px;
     height: 80%;
     max-height: 700px;
+    padding: 0; /* dialog自体のpaddingは不要 */
+    overflow: hidden; /* ラッパーの角丸を有効にするため */
+}
+
+/* 新しいラッパーにFlexboxレイアウトを適用 */
+.dialog-layout-wrapper {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    background-color: var(--bg-primary); /* 背景色をラッパーに移動 */
 }
 
 .profile-dialog-header {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 16px;
+    padding: calc(var(--spacing-unit) * 2) calc(var(--spacing-unit) * 3);
+    border-bottom: 1px solid var(--border-primary);
+    flex-shrink: 0;
 }
 .profile-dialog-header .dialog-title {
     margin-bottom: 0;
@@ -2010,11 +2025,18 @@ body.dark-mode .profile-dialog-header .header-button {
     color: var(--text-light);
 }
 
+#characterProfileDialog .dialog-content {
+    padding: calc(var(--spacing-unit) * 2) calc(var(--spacing-unit) * 3);
+    overflow-y: auto;
+    flex-grow: 1;
+    min-height: 0;
+}
+
 .profile-dialog-layout {
     display: grid;
     grid-template-columns: 200px 1fr;
     gap: 16px;
-    height: calc(100% - 16px);
+    height: 100%;
 }
 
 .profile-character-list {
@@ -2023,6 +2045,7 @@ body.dark-mode .profile-dialog-header .header-button {
     padding: 8px;
     background-color: var(--bg-secondary);
     overflow-y: auto;
+    height: 100%;
 }
 
 .profile-character-item {
@@ -2045,7 +2068,8 @@ body.dark-mode .profile-dialog-header .header-button {
 
 .profile-detail-pane {
     overflow-y: auto;
-    padding-right: 8px; /* スクロールバーのスペース */
+    padding-right: 8px;
+    height: 100%;
 }
 
 .profile-detail-section {
@@ -2083,6 +2107,15 @@ body.dark-mode .profile-dialog-header .header-button {
     padding-bottom: 6px;
 }
 
+#characterProfileDialog .dialog-actions {
+    padding: calc(var(--spacing-unit) * 2) calc(var(--spacing-unit) * 3);
+    border-top: 1px solid var(--border-primary);
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
 .dialog-note {
     font-size: 0.75rem;
     color: var(--text-secondary);
@@ -2092,15 +2125,19 @@ body.dark-mode .profile-dialog-header .header-button {
 @media screen and (max-width: 600px) {
     .profile-dialog-layout {
         display: block;
+        height: auto;
+    }
+    .profile-character-list, .profile-detail-pane {
+        height: auto;
     }
     .profile-detail-pane {
-        display: none; /* 初期状態では詳細を隠す */
+        display: none;
     }
     #characterProfileDialog.details-visible .profile-character-list {
-        display: none; /* 詳細表示中はリストを隠す */
+        display: none;
     }
     #characterProfileDialog.details-visible .profile-detail-pane {
-        display: block; /* 詳細表示 */
+        display: block;
     }
     .profile-character-item {
         display: flex;
@@ -2112,3 +2149,4 @@ body.dark-mode .profile-dialog-header .header-button {
         color: var(--text-secondary);
     }
 }
+

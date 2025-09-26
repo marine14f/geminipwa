@@ -735,24 +735,26 @@
 
         <!-- Character Profile Dialog -->
         <dialog id="characterProfileDialog" class="custom-dialog">
-            <div class="profile-dialog-header">
-                <button id="profile-back-btn" class="header-button hidden" title="リストに戻る"><span class="material-symbols-outlined">arrow_back_ios</span></button>
-                <h3 class="dialog-title">キャラクタープロファイル</h3>
-            </div>
-            <div class="dialog-content profile-dialog-layout">
-                <div id="character-list-pane" class="profile-character-list">
-                    <!-- キャラクターリストがここに表示されます -->
+            <!-- このラッパーdivを追加 -->
+            <div class="dialog-layout-wrapper">
+                <div class="profile-dialog-header">
+                    <button id="profile-back-btn" class="header-button hidden" title="リストに戻る"><span class="material-symbols-outlined">arrow_back_ios</span></button>
+                    <h3 class="dialog-title">キャラクタープロファイル</h3>
                 </div>
-                <div id="character-detail-pane" class="profile-detail-pane">
-                    <!-- キャラクター詳細がここに表示されます -->
+                <div class="dialog-content profile-dialog-layout">
+                    <div id="character-list-pane" class="profile-character-list">
+                        <!-- キャラクターリストがここに表示されます -->
+                    </div>
+                    <div id="character-detail-pane" class="profile-detail-pane">
+                        <!-- キャラクター詳細がここに表示されます -->
+                    </div>
                 </div>
-            </div>
-            <div class="dialog-actions" style="justify-content: space-between; align-items: center;">
-                <span class="dialog-note">※編集内容は自動的に保存されます</span>
-                <button id="close-profile-dialog-btn" value="close">閉じる</button>
+                <div class="dialog-actions">
+                    <span class="dialog-note">※編集内容は自動的に保存されます</span>
+                    <button id="close-profile-dialog-btn" value="close">閉じる</button>
+                </div>
             </div>
         </dialog>
-
 
     <script src="prism.js" data-autoloader-path="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>

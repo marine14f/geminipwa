@@ -255,7 +255,7 @@ const elements = {
     scrollToBottomBtn: document.getElementById('scroll-to-bottom-btn'),
     floatingPanelBehaviorSelect: document.getElementById('floating-panel-behavior'),
     characterProfileBtn: document.getElementById('character-profile-btn'),
-    characterProfileDialog: document.getElementById('character-profile-dialog'),
+    characterProfileDialog: document.getElementById('characterProfileDialog'),
     profileBackBtn: document.getElementById('profile-back-btn'),
     characterListPane: document.getElementById('character-list-pane'),
     characterDetailPane: document.getElementById('character-detail-pane'),
@@ -2089,21 +2089,28 @@ const uiUtils = {
 
 
     // --- カスタムダイアログ関数 ---
-    // ダイアログを表示し、閉じられるまで待機
     showCustomDialog(dialogElement, focusElement) {
         return new Promise((resolve) => {
             const closeListener = () => {
                 dialogElement.removeEventListener('close', closeListener);
-                resolve(dialogElement.returnValue); // 閉じたときの値を返す
+                resolve(dialogElement.returnValue);
             };
             dialogElement.addEventListener('close', closeListener);
-            dialogElement.showModal(); // モーダルダイアログとして表示
-            // 指定された要素にフォーカス
+
+            // アニメーションクラスを追加
+            dialogElement.classList.add('animating');
+            dialogElement.addEventListener('animationend', () => {
+                dialogElement.classList.remove('animating');
+            }, { once: true });
+
+            dialogElement.showModal();
+            
             if (focusElement) {
                 requestAnimationFrame(() => { focusElement.focus(); });
             }
         });
     },
+
     // アラートダイアログ表示
     async showCustomAlert(message) {
         elements.alertMessage.textContent = message;
