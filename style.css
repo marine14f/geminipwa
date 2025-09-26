@@ -2021,9 +2021,6 @@ body.dark-mode .dialog-delete-btn {
     box-shadow: none;
     padding: 4px;
 }
-body.dark-mode .profile-dialog-header .header-button {
-    color: var(--text-light);
-}
 
 #characterProfileDialog .dialog-content {
     padding: calc(var(--spacing-unit) * 2) calc(var(--spacing-unit) * 3);
@@ -2121,6 +2118,19 @@ body.dark-mode .profile-dialog-header .header-button {
     color: var(--text-secondary);
 }
 
+/* --- 戻るボタンの表示制御 --- */
+/* デフォルト（PC含む）では、戻るボタンを非表示にする */
+#profile-back-btn {
+    display: none;
+}
+/* スマホサイズで、かつ詳細表示中の場合のみ、表示するように上書きする */
+@media screen and (max-width: 600px) {
+    #characterProfileDialog.details-visible #profile-back-btn {
+        display: inline-flex;
+    }
+}
+
+
 /* Responsive for Mobile */
 @media screen and (max-width: 600px) {
     .profile-dialog-layout {
@@ -2148,11 +2158,13 @@ body.dark-mode .profile-dialog-header .header-button {
         content: '>';
         color: var(--text-secondary);
     }
-    #characterProfileDialog .profile-dialog-header .header-button {
-        display: none; /* PCでは戻るボタンを隠す */
+
+    #profile-back-btn {
+        display: none;
     }
-    #characterProfileDialog.details-visible .profile-dialog-header .header-button {
-        display: inline-flex; /* スマホで詳細表示中のみ戻るボタンを表示 */
+    /* スマホで詳細表示中のみ、表示するように上書きする */
+    #characterProfileDialog.details-visible #profile-back-btn {
+        display: inline-flex;
     }
 }
 
