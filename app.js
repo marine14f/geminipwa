@@ -7222,6 +7222,12 @@ const appLogic = {
 
         if (characterKeys.length === 0) return;
 
+        // ダイアログの状態をリセット
+        elements.characterProfileDialog.classList.remove('details-visible');
+        state.characterProfileVisibleCharacter = null;
+        elements.characterDetailPane.innerHTML = '';
+
+
         const listContainer = elements.characterListPane;
         listContainer.innerHTML = '';
         
@@ -7237,17 +7243,19 @@ const appLogic = {
                 // for Mobile
                 if (window.innerWidth < 600) {
                     elements.characterProfileDialog.classList.add('details-visible');
-                    elements.profileBackBtn.classList.remove('hidden');
                 }
             };
             listContainer.appendChild(itemDiv);
         });
 
-        // 最初のキャラクターをデフォルトで表示
-        this.renderCharacterDetails(characterNames[0]);
+        // PC表示の場合のみ、最初のキャラクターをデフォルトで表示する
+        if (window.innerWidth >= 600) {
+            this.renderCharacterDetails(characterNames[0]);
+        }
 
         elements.characterProfileDialog.showModal();
     },
+
 
     renderCharacterDetails(characterName) {
         state.characterProfileVisibleCharacter = characterName;
