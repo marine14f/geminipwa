@@ -1490,14 +1490,22 @@ async function generate_image(args = {}) {
 /**
  * キャラクターの記憶、関係性、状態を統合的に管理する関数
  * @param {object} args - AIによって提供される引数オブジェクト
- * @param {string} args.character_name - 操作対象のキャラクター名
- * @param {string} args.action - "get", "update", "delete" のいずれか
- * @param {object} [args.update_data] - "update"アクションで使用するデータ
- * @param {object} chat - 現在のチャットデータ
  * @returns {Promise<object>} 操作結果を含むオブジェクトを返すPromise
  */
- async function manage_character_memory({ character_name, action, update_data }, chat) {
-    console.log(`[Function Calling] manage_character_memoryが呼び出されました。`, { character_name, action, update_data });
+ async function manage_character_memory(args, chat) {
+    const {
+        character_name,
+        action,
+        status,
+        current_location,
+        summary,
+        short_term_goal,
+        relationship_target,
+        relationship_affinity,
+        relationship_context
+    } = args;
+
+    console.log(`[Function Calling] manage_character_memoryが呼び出されました。`, args);
 
     if (!character_name || !action) {
         return { error: "引数 'character_name' と 'action' は必須です。" };
@@ -1517,46 +1525,32 @@ async function generate_image(args = {}) {
             }
 
             case "update": {
-                if (!update_data || typeof update_data !== 'object') {
-                    return { error: "アクション 'update' にはオブジェクト型の 'update_data' が必要です。" };
-                }
-
                 if (!chat.persistentMemory[memoryKey]) {
                     chat.persistentMemory[memoryKey] = {}; // 新規作成
                 }
                 const memory = chat.persistentMemory[memoryKey];
 
-                // 各キーを上書きまたは追記で更新
-                if (update_data.status !== undefined) memory.status = update_data.status;
-                if (update_data.current_location !== undefined) memory.current_location = update_data.current_location;
-                if (update_data.summary !== undefined) memory.summary = update_data.summary;
-                if (update_data.short_term_goal !== undefined) memory.short_term_goal = update_data.short_term_goal;
+                // 各キーを上書き
+                if (status !== undefined) memory.status = status;
+                if (current_location !== undefined) memory.current_location = current_location;
+                if (summary !== undefined) memory.summary = summary;
+                if (short_term_goal !== undefined) memory.short_term_goal = short_term_goal;
 
-                // relationships の処理 (contextの追記ロジックを含む)
-                if (update_data.relationships && typeof update_data.relationships === 'object') {
-                    const reservedKeys = ['affinity', 'context']; // 予約語リスト
+                // 関係性の処理 (フラットな引数から階層構造へ変換)
+                if (relationship_target) {
+                    if (!memory.relationships) memory.relationships = {};
+                    if (!memory.relationships[relationship_target]) memory.relationships[relationship_target] = {};
+                    
+                    const targetRelation = memory.relationships[relationship_target];
 
-                    for (const targetName in update_data.relationships) {
-                        // 渡されたキーが予約語リストに含まれていないかチェック
-                        if (reservedKeys.includes(targetName)) {
-                            console.warn(`[Validation] 不正なキー「${targetName}」がキャラクター名として渡されたため、この更新をスキップします。`);
-                            continue; // このキーの処理をスキップして次のループへ
-                        }
-
-                        if (!memory.relationships[targetName]) memory.relationships[targetName] = {};
-                        const update = update_data.relationships[targetName];
-                        
-                        // affinity は上書き
-                        if (update.affinity !== undefined) {
-                            memory.relationships[targetName].affinity = update.affinity;
-                        }
-                        // context は追記
-                        if (update.context !== undefined && String(update.context).trim() !== '') {
-                            if (memory.relationships[targetName].context) {
-                                memory.relationships[targetName].context += `\n${update.context}`;
-                            } else {
-                                memory.relationships[targetName].context = update.context;
-                            }
+                    if (relationship_affinity !== undefined) {
+                        targetRelation.affinity = relationship_affinity;
+                    }
+                    if (relationship_context !== undefined && String(relationship_context).trim() !== '') {
+                        if (targetRelation.context) {
+                            targetRelation.context += `\n${relationship_context}`;
+                        } else {
+                            targetRelation.context = relationship_context;
                         }
                     }
                 }
@@ -1581,6 +1575,7 @@ async function generate_image(args = {}) {
         return { error: `内部エラーが発生しました: ${error.message}` };
     }
 }
+
 
 
 
@@ -2164,32 +2159,33 @@ window.functionDeclarations = [
                         "type": "STRING",
                         "description": "実行する操作を選択します。'get': 記憶を取得, 'update': 記憶を更新, 'delete': 記憶を削除。"
                     },
-                    "update_data": {
-                        "type": "OBJECT",
-                        "description": "'update'アクション時に使用する、更新する記憶データ。",
-                        "properties": {
-                            "status": {
-                                "type": "STRING",
-                                "description": "キャラクターの生死や健康状態を管理します。例: '生存', '死亡', '足を負傷'"
-                            },
-                            "current_location": {
-                                "type": "STRING",
-                                "description": "キャラクターの物理的な現在地を記録します。例: '王都の広場', '森の中の小屋'"
-                            },
-                            "summary": {
-                                "type": "STRING",
-                                "description": "キャラクターの性格、価値観、長期的な目標など、人格の根幹をなす普遍的な設定を記述します。他者との具体的な思い出や一時的な感情はここには含めません。"
-                            },
-                            "relationships": {
-                                "type": "OBJECT",
-                                "description": "他キャラクターとの関係性を管理します。このオブジェクトのキーは、必ず相手のキャラクター名でなければなりません。例: { \"主人公\": { \"affinity\": 80, \"context\": \"...\" }, \"リリア\": { \"context\": \"...\" } }",
-                                "properties": {} 
-                            },
-                            "short_term_goal": {
-                                "type": "STRING",
-                                "description": "キャラクターが「次に何をすべきか」という短期的な行動目標を記録します。目標が達成されたり変化したりした場合は、速やかに更新してください。例: '主人公にペンダントのお礼を言う'"
-                            }
-                        }
+                    "status": {
+                        "type": "STRING",
+                        "description": "キャラクターの生死や健康状態を更新する場合に指定します。例: '生存', '死亡', '負傷'"
+                    },
+                    "current_location": {
+                        "type": "STRING",
+                        "description": "キャラクターの現在地を更新する場合に指定します。例: '王都の広場'"
+                    },
+                    "summary": {
+                        "type": "STRING",
+                        "description": "キャラクターの性格や価値観など、人格の根幹をなす普遍的な設定を更新する場合に指定します。他者との具体的な思い出はここには含めません。"
+                    },
+                    "short_term_goal": {
+                        "type": "STRING",
+                        "description": "キャラクターの短期的な行動目標を更新する場合に指定します。例: '主人公にペンダントのお礼を言う'"
+                    },
+                    "relationship_target": {
+                        "type": "STRING",
+                        "description": "関係性を更新する相手のキャラクター名を指定します。'relationship_affinity'または'relationship_context'と合わせて使用します。"
+                    },
+                    "relationship_affinity": {
+                        "type": "NUMBER",
+                        "description": "相手への好感度(数値)を更新する場合に指定します。この値は上書きされます。"
+                    },
+                    "relationship_context": {
+                        "type": "STRING",
+                        "description": "相手との会話内容、思い出、感情の履歴などを追記する場合に指定します。箇条書きでの記述を推奨します。"
                     }
                 },
                 "required": ["character_name", "action"]
