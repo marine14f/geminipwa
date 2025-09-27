@@ -7316,6 +7316,14 @@ const appLogic = {
                     `).join('')}
                 </div>
             </div>
+            <!-- ここから追加 -->
+            <div class="profile-detail-section profile-delete-character-section">
+                <button id="delete-character-btn" class="delete-character-btn">
+                    <span class="material-symbols-outlined">person_remove</span>
+                    このキャラクターを削除
+                </button>
+            </div>
+            <!-- ここまで追加 -->
         `;
 
         // イベントリスナーを設定
@@ -7325,6 +7333,7 @@ const appLogic = {
         detailPane.querySelector('#profile-goal').addEventListener('blur', createFieldUpdater(['short_term_goal']));
         
         detailPane.querySelector('#add-relationship-btn').addEventListener('click', () => this.addRelationship(characterName));
+        detailPane.querySelector('#delete-character-btn').addEventListener('click', () => this.confirmDeleteCharacter(characterName)); // 追加
 
         Object.keys(data.relationships || {}).forEach(targetName => {
             const card = detailPane.querySelector(`.profile-relationship-card[data-target-name="${targetName}"]`);
@@ -7333,6 +7342,7 @@ const appLogic = {
             card.querySelector('.delete-relationship-btn').addEventListener('click', () => this.deleteRelationship(characterName, targetName));
         });
     },
+
 
 
     async handleProfileFieldUpdate(characterName, fieldPath, newValue) {
@@ -7405,6 +7415,44 @@ const appLogic = {
             } catch (error) {
                 console.error("関係性の削除に失敗:", error);
             }
+        }
+    },
+
+    async confirmDeleteCharacter(characterName) {
+        const confirmed = await uiUtils.showCustomConfirm(`キャラクター「${characterName}」のすべてのデータを削除しますか？\nこの操作は元に戻せません。`);
+        if (!confirmed) return;
+
+        const normalizedCharName = normalizeCharacterName(characterName);
+        let keyToDelete = null;
+
+        // 正規化された名前で一致するキーを探す
+        for (const key in state.currentPersistentMemory) {
+            if (key.startsWith('character_memory_')) {
+                const existingName = key.replace('character_memory_', '');
+                if (normalizeCharacterName(existingName) === normalizedCharName) {
+                    keyToDelete = key;
+                    break;
+                }
+            }
+        }
+
+        if (keyToDelete && state.currentPersistentMemory[keyToDelete]) {
+            delete state.currentPersistentMemory[keyToDelete];
+            try {
+                await dbUtils.saveChat();
+                console.log(`キャラクター「${characterName}」のデータを削除しました。`);
+                
+                // ダイアログを再オープンしてリストを更新
+                this.openCharacterProfileDialog();
+                // フローティングボタンの状態も更新
+                this.updateCharacterProfileButtonVisibility();
+
+            } catch (error) {
+                console.error("キャラクターデータの削除に失敗:", error);
+                await uiUtils.showCustomAlert("キャラクターデータの削除に失敗しました。");
+            }
+        } else {
+            console.warn(`削除対象のキャラクター「${characterName}」が見つかりませんでした。`);
         }
     },
 

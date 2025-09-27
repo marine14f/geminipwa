@@ -2215,3 +2215,20 @@ body.dark-mode .dialog-delete-btn {
 .delete-relationship-btn .material-symbols-outlined {
     font-size: 18px;
 }
+
+.profile-delete-character-section {
+    margin-top: 30px;
+    padding-top: 15px;
+    border-top: 1px solid var(--border-danger);
+}
+.delete-character-btn {
+    width: 100%;
+    background-color: var(--bg-button-delete);
+    color: var(--text-light);
+}
+.delete-character-btn:hover {
+    background-color: var(--bg-button-delete-hover);
+}
+body.dark-mode .delete-character-btn {
+    color: var(--text-light);
+}
