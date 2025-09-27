@@ -2225,7 +2225,7 @@ window.functionDeclarations = [
                     },
                     "relationship_context": {
                         "type": "STRING",
-                        "description": "相手との会話内容、思い出、感情の履歴などを追記する場合に指定します。箇条書きでの記述を推奨します。"
+                        "description": "相手との会話内容、思い出、感情の履歴などを追記する場合に指定します。重要：既に記載されている内容と重複しない、新しい出来事や感情の変化のみを箇条書きで簡潔に記述してください。"
                     }
                 },
                 "required": ["character_name", "action"]
