@@ -31,6 +31,20 @@
 };
 
 /**
+ * キャラクター名を正規化（統一形式に変換）するヘルパー関数
+ * @param {string} name - 正規化するキャラクター名
+ * @returns {string} 正規化されたキャラクター名
+ */
+ function normalizeCharacterName(name) {
+    if (typeof name !== 'string') return '';
+    return name
+        .trim() // 前後の空白を削除
+        .replace(/\s+/g, ' ') // 連続する空白を半角スペース1つに統一
+        .replace(/・/g, '･'); // 全角中点を半角中点に統一
+}
+
+
+/**
  * メッセージオブジェクトから画像データをBlob形式で抽出するヘルパー
  * 添付画像(attachments)と生成画像(imageIds)の両方に対応
  * @param {object} message - 抽出元のメッセージオブジェクト
@@ -1513,11 +1527,29 @@ async function generate_image(args = {}) {
 
     try {
         if (!chat.persistentMemory) chat.persistentMemory = {};
-        const memoryKey = `character_memory_${character_name}`;
+        
+        // --- ★★★ ここからが修正箇所 ★★★ ---
+        const normalizedCharName = normalizeCharacterName(character_name);
+        const memoryKey = `character_memory_${normalizedCharName}`;
+
+        // persistentMemory内をループして、正規化後の名前が一致する既存のキーを探す
+        let existingKey = null;
+        for (const key in chat.persistentMemory) {
+            if (key.startsWith('character_memory_')) {
+                const existingName = key.replace('character_memory_', '');
+                if (normalizeCharacterName(existingName) === normalizedCharName) {
+                    existingKey = key;
+                    break;
+                }
+            }
+        }
+        
+        const finalMemoryKey = existingKey || memoryKey;
+        // --- ★★★ ここまでが修正箇所 ★★★ ---
 
         switch (action) {
             case "get": {
-                const memory = chat.persistentMemory[memoryKey] || null;
+                const memory = chat.persistentMemory[finalMemoryKey] || null;
                 if (!memory) {
                     return { success: false, message: `キャラクター「${character_name}」の記憶はまだありません。` };
                 }
@@ -1525,10 +1557,10 @@ async function generate_image(args = {}) {
             }
 
             case "update": {
-                if (!chat.persistentMemory[memoryKey]) {
-                    chat.persistentMemory[memoryKey] = {}; // 新規作成
-                }
-                const memory = chat.persistentMemory[memoryKey];
+                // --- ★★★ ここからが修正箇所 ★★★ ---
+                // 既存のデータを取得するか、なければ新規作成する
+                const memory = chat.persistentMemory[finalMemoryKey] || {};
+                // --- ★★★ ここまでが修正箇所 ★★★ ---
 
                 // 各キーを上書き
                 if (status !== undefined) memory.status = status;
@@ -1536,12 +1568,14 @@ async function generate_image(args = {}) {
                 if (summary !== undefined) memory.summary = summary;
                 if (short_term_goal !== undefined) memory.short_term_goal = short_term_goal;
 
-                // 関係性の処理 (フラットな引数から階層構造へ変換)
+                // 関係性の処理
                 if (relationship_target) {
                     if (!memory.relationships) memory.relationships = {};
-                    if (!memory.relationships[relationship_target]) memory.relationships[relationship_target] = {};
                     
-                    const targetRelation = memory.relationships[relationship_target];
+                    const normalizedTargetName = normalizeCharacterName(relationship_target);
+                    if (!memory.relationships[normalizedTargetName]) memory.relationships[normalizedTargetName] = {};
+                    
+                    const targetRelation = memory.relationships[normalizedTargetName];
 
                     if (relationship_affinity !== undefined) {
                         targetRelation.affinity = relationship_affinity;
@@ -1555,12 +1589,17 @@ async function generate_image(args = {}) {
                     }
                 }
                 
+                // --- ★★★ ここからが修正箇所 ★★★ ---
+                // 最終的なキーでデータを保存
+                chat.persistentMemory[finalMemoryKey] = memory;
+                // --- ★★★ ここまでが修正箇所 ★★★ ---
+                
                 return { success: true, message: `キャラクター「${character_name}」の記憶を更新しました。`, updated_memory: memory };
             }
 
             case "delete": {
-                if (chat.persistentMemory[memoryKey]) {
-                    delete chat.persistentMemory[memoryKey];
+                if (chat.persistentMemory[finalMemoryKey]) {
+                    delete chat.persistentMemory[finalMemoryKey];
                     return { success: true, message: `キャラクター「${character_name}」の記憶を削除しました。` };
                 } else {
                     return { success: false, message: `キャラクター「${character_name}」の記憶は存在しません。` };
@@ -1575,6 +1614,7 @@ async function generate_image(args = {}) {
         return { error: `内部エラーが発生しました: ${error.message}` };
     }
 }
+
 
 
 
