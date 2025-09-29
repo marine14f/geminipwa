@@ -1121,14 +1121,12 @@ const uiUtils = {
         });
 
         const summaryEndIndex = state.currentSummarizedContext?.summaryRange?.end;
-        let markerInserted = false; // 区切り線が挿入されたかを管理するフラグ
+        let markerInserted = false;
 
         visibleMessages.forEach(msg => {
             const index = state.currentMessages.indexOf(msg);
             if (index === -1 || msg.role === 'tool') return;
             
-            // 新しい区切り線表示ロジック
-            // まだ区切り線が挿入されておらず、現在のメッセージのインデックスが要約範囲の終端インデックス以上の場合に挿入
             if (!markerInserted && summaryEndIndex !== undefined && index >= summaryEndIndex) {
                 const markerDiv = document.createElement('div');
                 markerDiv.className = 'summary-marker';
@@ -1138,7 +1136,7 @@ const uiUtils = {
                 markerText.textContent = `ここまで要約済み (${summarizedDate})`;
                 markerDiv.appendChild(markerText);
                 fragment.appendChild(markerDiv);
-                markerInserted = true; // 一度挿入したら、それ以降は挿入しない
+                markerInserted = true;
             }
 
             let cascadeInfo = null;
@@ -1158,6 +1156,18 @@ const uiUtils = {
             }
         });
         
+        if (!markerInserted && summaryEndIndex !== undefined && state.currentMessages.length === summaryEndIndex) {
+            const markerDiv = document.createElement('div');
+            markerDiv.className = 'summary-marker';
+            const markerText = document.createElement('span');
+            markerText.className = 'summary-marker-text';
+            const summarizedDate = new Date(state.currentSummarizedContext.summarizedAt).toLocaleString('ja-JP');
+            markerText.textContent = `ここまで要約済み (${summarizedDate})`;
+            markerDiv.appendChild(markerText);
+            fragment.appendChild(markerDiv);
+            markerInserted = true;
+        }
+
         container.appendChild(fragment);
         
         if (window.Prism) {
@@ -1176,6 +1186,7 @@ const uiUtils = {
         const renderEndTime = performance.now();
         console.log(`[PERF_DEBUG] renderChatMessages 完了 (合計所要時間: ${renderEndTime - renderStartTime}ms)`);
     },
+
 
 
     createMessageElement(role, content, index, isStreamingPlaceholder = false, cascadeInfo = null, attachments = null) {
@@ -8017,7 +8028,6 @@ const appLogic = {
             return;
         }
         
-        // 既存の要約があれば追記、なければ新規作成
         const existingSummary = chatToSave.summarizedContext ? chatToSave.summarizedContext.summaryText : "";
         const newSummaryText = existingSummary ? `${existingSummary}\n\n${summaryText}` : summaryText;
         
@@ -8025,19 +8035,29 @@ const appLogic = {
             summaryText: newSummaryText,
             originalMessageCount: (chatToSave.summarizedContext?.originalMessageCount || 0) + originalMessageCount,
             summarizedAt: new Date().toISOString(),
-            summaryRange: { start: 0, end: end } // 範囲は常に最初から現在の最後までを記録
+            summaryRange: { start: 0, end: end }
         };
 
         try {
             await dbUtils.saveChat(chatToSave.title, chatToSave);
             state.currentSummarizedContext = chatToSave.summarizedContext;
             elements.summaryDialog.close('confirm');
+            
+            // 画面を即座に再描画して、罫線と操作禁止を反映させる
+            uiUtils.renderChatMessages();
+            // 罫線の位置が分かりやすいように、罫線の少し上までスクロールする
+            const marker = elements.messageContainer.querySelector('.summary-marker');
+            if (marker) {
+                marker.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+
             await uiUtils.showCustomAlert(`履歴の要約を保存しました。\n次回以降のメッセージ送信から、この要約がコンテキストとして使用されます。`);
         } catch (error) {
             console.error("要約の保存エラー:", error);
             await uiUtils.showCustomAlert(`要約の保存に失敗しました: ${error.message}`);
         }
     },
+
     toggleSummaryButtonVisibility() {
         elements.summarizeHistoryBtn.classList.toggle('hidden', !state.settings.enableSummaryButton);
     },
