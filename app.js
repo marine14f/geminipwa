@@ -3186,26 +3186,8 @@ const appLogic = {
     },
 
     _prepareApiHistory(baseMessages) {
-        let messagesForApi;
-
-        if (state.currentSummarizedContext) {
-            console.log("[API Prep] 要約済みコンテキストを検出。履歴を再構築します。");
-            const headMessages = baseMessages.slice(0, 5);
-            const tailMessages = baseMessages.slice(-15);
-            
-            const summaryMessage = {
-                role: 'user',
-                content: `【これまでのあらすじ】\n${state.currentSummarizedContext.summaryText}`,
-                attachments: [] // 要約メッセージに添付ファイルは含めない
-            };
-
-            messagesForApi = [...headMessages, summaryMessage, ...tailMessages];
-            console.log(`[API Prep] 履歴を ${baseMessages.length}件 → ${messagesForApi.length}件に圧縮しました。`);
-
-        } else {
-            console.log("[API Prep] 要約データなし。通常の履歴を使用します。");
-            messagesForApi = [...baseMessages];
-        }
+        console.log("[API Prep] 通常の履歴をAPIフォーマットに変換します。");
+        const messagesForApi = [...baseMessages];
 
         // ダミープロンプトの追加処理は共通
         if (state.settings.dummyUser) {
@@ -3215,11 +3197,27 @@ const appLogic = {
             messagesForApi.push({ role: 'model', content: state.settings.dummyModel, attachments: [] });
         }
         
+        // --- ここにデバッグログを再挿入します ---
+        console.log('--- [DEBUG] API送信前の履歴チェック ---');
+        console.log(`APIに送信されるメッセージ件数: ${messagesForApi.length}件`);
+        // ------------------------------------
+
         return messagesForApi.map(msg => {
             const parts = [];
-            if (msg.content && msg.content.trim() !== '') {
-                parts.push({ text: msg.content });
+
+            // ユーザーメッセージに添付ファイル情報を含める処理を簡略化
+            let contentText = msg.content || '';
+            if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
+                const fileNames = msg.attachments.map(att => att.name).join(', ');
+                const attachmentText = `\n\n[添付ファイル: ${fileNames}]`;
+                // コンテンツが空でも添付ファイル情報だけは含めるように修正
+                contentText = (contentText.trim() ? contentText : '') + attachmentText;
             }
+
+            if (contentText.trim() !== '') {
+                parts.push({ text: contentText });
+            }
+
             if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
                 msg.attachments.forEach(att => parts.push({ inlineData: { mimeType: att.mimeType, data: att.base64Data } }));
             }
@@ -3239,6 +3237,7 @@ const appLogic = {
             return { role: msg.role === 'tool' ? 'tool' : (msg.role === 'model' ? 'model' : 'user'), parts };
         }).filter(c => c.parts.length > 0);
     },
+
 
 
     /**
@@ -7977,7 +7976,7 @@ const appLogic = {
 
 
     _showSummaryDialog(summaryText, originalLength) {
-        // 統計情報を更新 (計算式を修正)
+        // 統計情報を更新
         const reductionRate = (100 - (summaryText.length / originalLength * 100)).toFixed(1);
         elements.summaryStats.textContent = `原文: ${originalLength.toLocaleString()}文字 → 要約: ${summaryText.length.toLocaleString()}文字 (${reductionRate} %削減)`;
         // テキストエリアに結果を表示し、編集可能にする
@@ -8017,46 +8016,51 @@ const appLogic = {
             return;
         }
 
-        const start = parseInt(elements.summaryDialog.dataset.summaryRangeStart, 10);
         const end = parseInt(elements.summaryDialog.dataset.summaryRangeEnd, 10);
-        const originalMessageCount = end - start;
-
-        // チャットデータに要約コンテキストを保存
-        const chatToSave = await dbUtils.getChat(state.currentChatId);
-        if (!chatToSave) {
-            uiUtils.showCustomAlert("チャットデータの保存に失敗しました。");
-            return;
-        }
-        
-        const existingSummary = chatToSave.summarizedContext ? chatToSave.summarizedContext.summaryText : "";
-        const newSummaryText = existingSummary ? `${existingSummary}\n\n${summaryText}` : summaryText;
-        
-        chatToSave.summarizedContext = {
-            summaryText: newSummaryText,
-            originalMessageCount: (chatToSave.summarizedContext?.originalMessageCount || 0) + originalMessageCount,
-            summarizedAt: new Date().toISOString(),
-            summaryRange: { start: 0, end: end }
-        };
 
         try {
-            await dbUtils.saveChat(chatToSave.title, chatToSave);
-            state.currentSummarizedContext = chatToSave.summarizedContext;
+            // 1. 既存の要約テキストを取得（あれば）
+            const existingSummary = state.currentSummarizedContext ? state.currentSummarizedContext.summaryText : "";
+            const newSummaryText = existingSummary ? `${existingSummary}\n\n${summaryText}` : summaryText;
+
+            // 2. 新しい履歴を構築
+            const headMessages = state.currentMessages.slice(0, 5);
+            // tailの開始位置を計算。headと重複せず、かつ配列の範囲を超えないようにする
+            const tailStart = Math.max(5, end - 15);
+            const tailMessages = state.currentMessages.slice(tailStart, end);
+            
+            const summaryMessage = {
+                role: 'user',
+                content: `【これまでのあらすじ】\n${newSummaryText}`,
+                timestamp: Date.now(),
+                isHidden: true // このメッセージはUI上には表示しない
+            };
+
+            // 3. 現在のメッセージ配列を、圧縮された新しい配列で完全に置き換える
+            const originalCount = state.currentMessages.length;
+            const newMessages = [...headMessages, summaryMessage, ...tailMessages];
+            state.currentMessages = newMessages;
+
+            // 4. summarizedContext を確実に null にリセット
+            state.currentSummarizedContext = null;
+
+            // 5. 変更をDBに保存
+            await dbUtils.saveChat();
+
             elements.summaryDialog.close('confirm');
             
-            // 画面を即座に再描画して、罫線と操作禁止を反映させる
+            // 6. UIを再描画
             uiUtils.renderChatMessages();
-            // 罫線の位置が分かりやすいように、罫線の少し上までスクロールする
-            const marker = elements.messageContainer.querySelector('.summary-marker');
-            if (marker) {
-                marker.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
+            
+            await uiUtils.showCustomAlert(`履歴を圧縮しました。\nメッセージ件数が ${originalCount}件 から ${newMessages.length}件 になりました。`);
 
-            await uiUtils.showCustomAlert(`履歴の要約を保存しました。\n次回以降のメッセージ送信から、この要約がコンテキストとして使用されます。`);
         } catch (error) {
             console.error("要約の保存エラー:", error);
             await uiUtils.showCustomAlert(`要約の保存に失敗しました: ${error.message}`);
         }
     },
+
+
 
     toggleSummaryButtonVisibility() {
         elements.summarizeHistoryBtn.classList.toggle('hidden', !state.settings.enableSummaryButton);

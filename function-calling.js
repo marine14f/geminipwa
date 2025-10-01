@@ -1528,7 +1528,6 @@ async function generate_image(args = {}) {
     try {
         if (!chat.persistentMemory) chat.persistentMemory = {};
         
-        // --- ★★★ ここからが修正箇所 ★★★ ---
         const normalizedCharName = normalizeCharacterName(character_name);
         const memoryKey = `character_memory_${normalizedCharName}`;
 
@@ -1545,7 +1544,6 @@ async function generate_image(args = {}) {
         }
         
         const finalMemoryKey = existingKey || memoryKey;
-        // --- ★★★ ここまでが修正箇所 ★★★ ---
 
         switch (action) {
             case "get": {
@@ -1557,10 +1555,8 @@ async function generate_image(args = {}) {
             }
 
             case "update": {
-                // --- ★★★ ここからが修正箇所 ★★★ ---
                 // 既存のデータを取得するか、なければ新規作成する
                 const memory = chat.persistentMemory[finalMemoryKey] || {};
-                // --- ★★★ ここまでが修正箇所 ★★★ ---
 
                 // 各キーを上書き
                 if (status !== undefined) memory.status = status;
@@ -1589,10 +1585,8 @@ async function generate_image(args = {}) {
                     }
                 }
                 
-                // --- ★★★ ここからが修正箇所 ★★★ ---
                 // 最終的なキーでデータを保存
                 chat.persistentMemory[finalMemoryKey] = memory;
-                // --- ★★★ ここまでが修正箇所 ★★★ ---
                 
                 return { success: true, message: `キャラクター「${character_name}」の記憶を更新しました。`, updated_memory: memory };
             }
