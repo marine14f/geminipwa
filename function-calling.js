@@ -162,13 +162,11 @@ async function manage_image_assets({ action, asset_name, source_image_message_in
                 
                 const tempImageId = await window.appLogic.saveImageBlob(asset.blob);
 
+                // UIアクションを削除し、代わりにimageIdを返す
                 result = {
                     success: true,
                     message: `画像アセット「${asset_name}」を取得しました。`,
-                    _internal_ui_action: {
-                        type: "display_generated_images",
-                        imageIds: [tempImageId]
-                    }
+                    imageId: tempImageId
                 };
                 break;
             }
@@ -1397,6 +1395,11 @@ async function generate_image(args = {}) {
         return { error: "引数 'source_images' は必須であり、少なくとも1つの画像ソースを含む配列である必要があります。" };
     }
 
+    // --- [DEBUG] ログ追加 START ---
+    const logPrefix = "[edit_image DEBUG]";
+    console.log(`${logPrefix} 処理開始。プロンプト: "${prompt}"`);
+    // --- [DEBUG] ログ追加 END ---
+
     try {
         const ai = (window.ai instanceof GoogleGenAI)
             ? window.ai
@@ -1404,12 +1407,14 @@ async function generate_image(args = {}) {
         
         const imageParts = [];
 
-        for (const source of source_images) {
+        for (const [index, source] of source_images.entries()) {
             let imageBlob = null;
-            if (typeof source.message_index === 'number') {
-                const messages = chat.messages || [];
+            let sourceType = '';
 
-                // AIが指定したインデックスをそのまま使用する
+            if (typeof source.message_index === 'number') {
+                sourceType = `message_index: ${source.message_index}`;
+                console.log(`${logPrefix} [${index+1}/${source_images.length}] 画像ソース (${sourceType}) の処理を開始...`);
+                const messages = chat.messages || [];
                 const targetIndex = messages.length - 1 - source.message_index;
 
                 if (targetIndex < 0 || targetIndex >= messages.length) {
@@ -1422,12 +1427,15 @@ async function generate_image(args = {}) {
                 if (!imageBlob) throw new Error(`指定されたメッセージ(インデックス: ${source.message_index})から画像が見つかりません。`);
 
             } else if (typeof source.asset_name === 'string') {
+                sourceType = `asset_name: "${source.asset_name}"`;
+                console.log(`${logPrefix} [${index+1}/${source_images.length}] 画像ソース (${sourceType}) の処理を開始...`);
                 const asset = await assetDB.get(source.asset_name);
                 if (!asset || !asset.blob) throw new Error(`画像アセット「${source.asset_name}」が見つかりません。`);
                 imageBlob = asset.blob;
             }
 
             if (imageBlob) {
+                console.log(`${logPrefix} [${index+1}/${source_images.length}] 画像Blobの取得に成功。サイズ: ${imageBlob.size} bytes, タイプ: ${imageBlob.type}`);
                 const base64Data = await window.appLogic.fileToBase64(imageBlob);
                 imageParts.push({
                     inlineData: {
@@ -1435,20 +1443,24 @@ async function generate_image(args = {}) {
                         data: base64Data
                     }
                 });
+            } else {
+                console.warn(`${logPrefix} [${index+1}/${source_images.length}] 有効な画像ソースが見つかりませんでした。`);
             }
         }
 
         if (imageParts.length === 0) {
+            console.error(`${logPrefix} 処理可能な画像ソースが0件でした。処理を中断します。`);
             return { error: "編集対象の有効な画像ソースが見つかりませんでした。" };
         }
 
-        // 画像パーツの配列に、テキストプロンプトも追加する
         imageParts.push({ text: prompt });
 
+        console.log(`${logPrefix} APIリクエストを送信します。画像パーツ数: ${imageParts.length - 1}`);
         const resp = await ai.models.generateContent({
             model: "gemini-2.5-flash-image-preview",
             contents: imageParts
         });
+        console.log(`${logPrefix} APIから応答を受信しました。`, resp);
 
         const editedImagesBase64 = [];
         const gen = resp?.candidates?.[0]?.content?.parts || [];
@@ -1461,17 +1473,24 @@ async function generate_image(args = {}) {
             }
         }
 
+        console.log(`${logPrefix} API応答から ${editedImagesBase64.length} 件の画像データを抽出しました。`);
+
         if (editedImagesBase64.length === 0) {
+            console.error(`${logPrefix} API応答に画像データが含まれていませんでした。処理を終了します。`);
             return { success: false, error: { message: "画像の編集に失敗しました。APIからの応答に画像が含まれていません。" } };
         }
 
         const imageIds = [];
-        for (const imgData of editedImagesBase64) {
+        for (const [index, imgData] of editedImagesBase64.entries()) {
+            console.log(`${logPrefix} [${index+1}/${editedImagesBase64.length}] Base64からBlobへの変換を開始...`);
             const imageBlob = await window.appLogic.base64ToBlob(imgData.data, imgData.mimeType);
+            console.log(`${logPrefix} [${index+1}/${editedImagesBase64.length}] Blob変換成功。DBへの保存を開始...`);
             const newImageId = await window.appLogic.saveImageBlob(imageBlob);
+            console.log(`${logPrefix} [${index+1}/${editedImagesBase64.length}] DB保存成功。新しいID: ${newImageId}`);
             imageIds.push(newImageId);
         }
 
+        console.log(`${logPrefix} 全ての処理が成功しました。UI更新アクションを返します。`);
         return {
             success: true,
             message: "画像の編集と保存に成功しました。",
@@ -1487,7 +1506,7 @@ async function generate_image(args = {}) {
         };
 
     } catch (err) {
-        console.error("[edit_image] error object:", err);
+        console.error(`${logPrefix} エラーが発生しました:`, err);
         let errorMessage = "An unknown error occurred.";
         if (err.message) errorMessage = err.message;
         
@@ -1671,7 +1690,7 @@ window.functionDeclarations = [
       "function_declarations": [
         {
             "name": "manage_image_assets",
-            "description": "ユーザーが提供した画像を、後から再利用できるように名前を付けてアプリ内に永続的に保存・管理します。キャラクターの立ち絵や背景など、繰り返し使用する画像を保存するのに使用します。",
+            "description": "ユーザーが提供した画像を、後から再利用できるように名前を付けてアプリ内に永続的に保存・管理します。キャラクターの立ち絵や背景など、繰り返し使用する画像を保存するのに使用します。'get'アクションで画像を取得した場合、モデルは応答テキスト内の画像を表示したい位置に `[IMAGE_HERE]` という目印を必ず配置してください。",
             "parameters": {
                 "type": "OBJECT",
                 "properties": {
