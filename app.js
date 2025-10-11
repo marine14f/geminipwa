@@ -9138,12 +9138,10 @@ const appLogic = {
             const addAsset = (assetId, blob) => {
                 if (!assetId || !blob) return;
                 localAssets.set(assetId, { blob, hash: null });
-                console.log(`%c[DEBUG_SYNC] addAsset: Added asset with ID -> ${assetId}`, 'color: green;');
             };
 
             for (const profile of profiles) {
                 if (profile.icon instanceof Blob) {
-                    // プロファイルアイコンのIDは毎回同じでOK
                     const assetId = `profile_${profile.id}_icon.webp`;
                     addAsset(assetId, profile.icon);
                     profile.iconAssetId = assetId;
@@ -9151,11 +9149,9 @@ const appLogic = {
                 }
             }
             for (const asset of imageAssets) {
-                // ★修正点1: assetIdがなければ生成し、オブジェクトに保存
                 if (!asset.assetId) {
                     const safeName = asset.name.replace(/[^a-zA-Z0-9]/g, '_');
                     asset.assetId = `asset_${safeName}_${new Date(asset.createdAt).getTime()}.webp`;
-                    // DBに書き戻す必要があることを示すフラグ（今回は直接保存はしない）
                     asset._needsUpdate = true;
                 }
                 addAsset(asset.assetId, asset.blob);
@@ -9179,10 +9175,8 @@ const appLogic = {
                             const newImageIdsForMessage = [];
                             for (const attachment of message.attachments) {
                                 if (attachment.base64Data) {
-                                    // ★修正点2: attachmentにassetIdがなければ生成
                                     if (!attachment.assetId) {
                                         attachment.assetId = `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-                                        // このメッセージが属するチャットを後で保存する必要がある
                                         if (!chat._needsUpdate) chat._needsUpdate = true;
                                     }
                                     try {
@@ -9206,14 +9200,13 @@ const appLogic = {
             }
             console.log("[Data Export V2] アセット化とクレンジングが完了しました。");
 
-            // ★修正点3: assetIdが追加されたオブジェクトをDBに書き戻す
             const assetsToUpdate = imageAssets.filter(a => a._needsUpdate);
             if (assetsToUpdate.length > 0) {
                 console.log(`[Data Export V2] ${assetsToUpdate.length}件のimage_assetsにassetIdを永続化します。`);
                 const tx = state.db.transaction('image_assets', 'readwrite');
                 const store = tx.objectStore('image_assets');
                 for (const asset of assetsToUpdate) {
-                    delete asset._needsUpdate; // 一時的なフラグを削除
+                    delete asset._needsUpdate;
                     store.put(asset);
                 }
             }
@@ -9223,8 +9216,22 @@ const appLogic = {
                 const tx = state.db.transaction(CHATS_STORE, 'readwrite');
                 const store = tx.objectStore(CHATS_STORE);
                 for (const chat of chatsToUpdate) {
-                    delete chat._needsUpdate; // 一時的なフラグを削除
+                    delete chat._needsUpdate;
                     store.put(chat);
+
+                    // ★★★ ここからが今回の最重要修正点 ★★★
+                    // もし更新したチャットが現在アクティブなチャットなら、メモリ上のstateも更新する
+                    if (chat.id === state.currentChatId) {
+                        console.log(`%c[DEBUG_SYNC_STATE] アクティブなチャット(ID: ${chat.id})のメモリ上のデータをDBと同期します。`, 'color: red; font-weight: bold;');
+                        // state.currentMessages をDBから読み込んだ最新の chat.messages で置き換える
+                        state.currentMessages = chat.messages;
+                        // ★デバッグログ: 更新後のstateの内容を確認
+                        const updatedAttachments = state.currentMessages
+                            .flatMap(m => m.attachments || [])
+                            .filter(a => a.assetId);
+                        console.log(`%c[DEBUG_SYNC_STATE] メモリ更新完了。現在state内のattachmentsに存在するassetIdの数: ${updatedAttachments.length}`, 'color: red;');
+                    }
+                    // ★★★ ここまで ★★★
                 }
             }
 
@@ -9266,6 +9273,7 @@ const appLogic = {
             throw new Error("データのエクスポート準備に失敗しました。");
         }
     },
+
 
 
     async importDataFromString(jsonString) {
