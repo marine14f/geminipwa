@@ -4152,11 +4152,21 @@ const appLogic = {
             const cloudAssetsList = await window.dropboxApi.listAssets();
             const cloudAssetIds = new Set(cloudAssetsList.map(asset => asset.name));
 
+            // ★デバッグログ: ローカルとクラウドのアセットIDリストを比較
+            console.log('%c[DEBUG_SYNC] --- Asset ID Comparison ---', 'color: red; font-weight: bold;');
+            console.log(`%c[DEBUG_SYNC] Local Asset IDs (${localAssetIds.size} items):`, 'color: blue;', Array.from(localAssetIds).sort());
+            console.log(`%c[DEBUG_SYNC] Cloud Asset IDs (${cloudAssetIds.size} items):`, 'color: orange;', Array.from(cloudAssetIds).sort());
+
             const assetsToUploadArray = Array.from(localAssets.entries())
                 .filter(([assetId]) => !cloudAssetIds.has(assetId))
                 .map(([assetId, asset]) => ({ assetId, asset }));
                 
             const assetsToDelete = Array.from(cloudAssetIds).filter(id => !localAssetIds.has(id));
+
+            // ★デバッグログ: 差分計算の結果
+            console.log(`%c[DEBUG_SYNC] Assets to Upload (${assetsToUploadArray.length} items):`, 'color: green;', assetsToUploadArray.map(a => a.assetId).sort());
+            console.log(`%c[DEBUG_SYNC] Assets to Delete (${assetsToDelete.length} items):`, 'color: magenta;', assetsToDelete.sort());
+            console.log('%c[DEBUG_SYNC] --- End Comparison ---', 'color: red; font-weight: bold;');
 
             // --- Step 3: アセットのアップロード（バッチ処理） ---
             if (assetsToUploadArray.length > 0) {
@@ -9099,6 +9109,8 @@ const appLogic = {
      */
     async _prepareExportData() {
         console.log("[Data Export V2] 分離形式でのデータエクスポートを開始します。");
+        // ★デバッグログ: 処理開始のタイムスタンプ
+        console.log(`%c[DEBUG_SYNC] _prepareExportData CALLED at ${new Date().toISOString()}`, 'color: blue; font-weight: bold;');
 
         try {
             // 1. データベースから全ての関連データを並行して取得
@@ -9129,7 +9141,9 @@ const appLogic = {
             const addAsset = (assetId, blob) => {
                 if (!assetId || !blob) return;
                 localAssets.set(assetId, { blob, hash: null });
-                console.log(`[Data Export V2] アセットリストにID: ${assetId} を追加しました。`);
+                // ★デバッグログ: どのアセットIDがMapに追加されたか確認
+                console.log(`%c[DEBUG_SYNC] addAsset: Added asset with ID -> ${assetId}`, 'color: green;');
+                //console.log(`[Data Export V2] アセットリストにID: ${assetId} を追加しました。`);
             };
 
             // 2. 各種アセットを収集し、アセットリストに追加
