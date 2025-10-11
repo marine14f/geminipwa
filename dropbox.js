@@ -192,13 +192,38 @@
     },
 
     async listAssets() {
+        let allEntries = [];
+        let hasMore = true;
+        let cursor = null;
+        let path = this.ASSETS_DIR_PATH;
+
         try {
-            const result = await this._request('api', '/files/list_folder', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path: this.ASSETS_DIR_PATH, recursive: false }),
-            });
-            return result.entries || [];
+            while (hasMore) {
+                let response;
+                if (cursor) {
+                    // 2回目以降はカーソルを使って続きを取得
+                    response = await this._request('api', '/files/list_folder/continue', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ cursor: cursor }),
+                    });
+                } else {
+                    // 初回のリクエスト
+                    response = await this._request('api', '/files/list_folder', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ path: path, recursive: false, limit: 2000 }), // limitをAPIの最大値に設定
+                    });
+                }
+
+                if (response.entries) {
+                    allEntries = allEntries.concat(response.entries);
+                }
+                
+                hasMore = response.has_more;
+                cursor = response.cursor;
+            }
+            return allEntries;
         } catch (error) {
             if (error.message.includes('path/not_found')) {
                 return []; // フォルダが存在しない場合は空配列を返す

@@ -4509,9 +4509,9 @@ const appLogic = {
                     state.activeProfile.settings[key] = value;
                     
                     await dbUtils.updateProfile(state.activeProfile);
-                    appLogic.markAsDirtyAndSchedulePush(true);
+                    // ★ 修正点: 強制Pushフラグ(true)を削除
+                    appLogic.markAsDirtyAndSchedulePush();
                     
-                    // 汎用的なUI更新コールバックを実行
                     if (onUpdate) {
                         onUpdate(value);
                     }
@@ -4520,6 +4520,7 @@ const appLogic = {
                 console.warn(`❌ [Debug Settings] '${key}' に対応するDOM要素が見つかりません。`);
             }
         };
+
 
         
         const settingsMap = {
