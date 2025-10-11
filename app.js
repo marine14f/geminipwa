@@ -9111,6 +9111,7 @@ const appLogic = {
         console.log(`%c[DEBUG_SYNC] _prepareExportData CALLED at ${new Date().toISOString()}`, 'color: blue; font-weight: bold;');
 
         try {
+            // 既存のPromise.allによるデータ取得部分は変更なし
             const [profiles, chats, memories, imageAssets, chatImages, allSettings] = await Promise.all([
                 dbUtils.getAllProfiles(),
                 dbUtils.getAllChats(),
@@ -9140,6 +9141,7 @@ const appLogic = {
                 localAssets.set(assetId, { blob, hash: null });
             };
 
+            // profiles, imageAssets, chatImages の処理は変更なし
             for (const profile of profiles) {
                 if (profile.icon instanceof Blob) {
                     const assetId = `profile_${profile.id}_icon.webp`;
@@ -9156,7 +9158,6 @@ const appLogic = {
                 }
                 addAsset(asset.assetId, asset.blob);
             }
-
             for (const image of chatImages) {
                 if (image.id && image.blob) {
                     addAsset(image.id, image.blob);
@@ -9164,6 +9165,9 @@ const appLogic = {
             }
 
             console.log("[Data Export V2] チャット履歴内の添付ファイルのアセット化とデータクレンジングを開始します...");
+            // ★★★ ここからが今回の最重要修正点 ★★★
+            const imageStoreBlobs = new Map(chatImages.map(img => [img.id, img.blob]));
+
             for (const chat of chats) {
                 if (chat.messages) {
                     for (const message of chat.messages) {
@@ -9174,32 +9178,42 @@ const appLogic = {
                         if (message.attachments && message.attachments.length > 0) {
                             const newImageIdsForMessage = [];
                             for (const attachment of message.attachments) {
-                                if (attachment.base64Data) {
-                                    if (!attachment.assetId) {
-                                        attachment.assetId = `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-                                        if (!chat._needsUpdate) chat._needsUpdate = true;
-                                    }
+                                // ケース1: 新規アセット (assetIdなし, base64Dataあり)
+                                if (!attachment.assetId && attachment.base64Data) {
+                                    attachment.assetId = `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+                                    if (!chat._needsUpdate) chat._needsUpdate = true;
+                                    
                                     try {
                                         const blob = await this.base64ToBlob(attachment.base64Data, attachment.mimeType);
                                         addAsset(attachment.assetId, blob);
                                         newImageIdsForMessage.push(attachment.assetId);
                                     } catch (e) {
-                                        console.error(`[Data Export V2] 添付ファイル(name: ${attachment.name})のアセット化に失敗:`, e);
+                                        console.error(`[Data Export V2] 新規添付ファイルのアセット化に失敗:`, e);
+                                    }
+                                } 
+                                // ケース2: 既存アセット (assetIdあり, base64Dataなし)
+                                else if (attachment.assetId && !attachment.base64Data) {
+                                    const blob = imageStoreBlobs.get(attachment.assetId);
+                                    if (blob) {
+                                        addAsset(attachment.assetId, blob);
+                                    } else {
+                                        console.warn(`[Data Export V2] 既存アセット(ID: ${attachment.assetId})のBlobがimage_storeに見つかりません。`);
                                     }
                                 }
                             }
+                            // 新しく生成されたIDをメッセージのimageIdsに追加
                             if (newImageIdsForMessage.length > 0) {
-                                if (!message.imageIds) {
-                                    message.imageIds = [];
-                                }
+                                if (!message.imageIds) message.imageIds = [];
                                 message.imageIds.push(...newImageIdsForMessage);
                             }
                         }
                     }
                 }
             }
+            // ★★★ ここまで ★★★
             console.log("[Data Export V2] アセット化とクレンジングが完了しました。");
 
+            // DBへの書き戻し処理は変更なし
             const assetsToUpdate = imageAssets.filter(a => a._needsUpdate);
             if (assetsToUpdate.length > 0) {
                 console.log(`[Data Export V2] ${assetsToUpdate.length}件のimage_assetsにassetIdを永続化します。`);
@@ -9218,23 +9232,14 @@ const appLogic = {
                 for (const chat of chatsToUpdate) {
                     delete chat._needsUpdate;
                     store.put(chat);
-
-                    // ★★★ ここからが今回の最重要修正点 ★★★
-                    // もし更新したチャットが現在アクティブなチャットなら、メモリ上のstateも更新する
                     if (chat.id === state.currentChatId) {
                         console.log(`%c[DEBUG_SYNC_STATE] アクティブなチャット(ID: ${chat.id})のメモリ上のデータをDBと同期します。`, 'color: red; font-weight: bold;');
-                        // state.currentMessages をDBから読み込んだ最新の chat.messages で置き換える
                         state.currentMessages = chat.messages;
-                        // ★デバッグログ: 更新後のstateの内容を確認
-                        const updatedAttachments = state.currentMessages
-                            .flatMap(m => m.attachments || [])
-                            .filter(a => a.assetId);
-                        console.log(`%c[DEBUG_SYNC_STATE] メモリ更新完了。現在state内のattachmentsに存在するassetIdの数: ${updatedAttachments.length}`, 'color: red;');
                     }
-                    // ★★★ ここまで ★★★
                 }
             }
 
+            // エクスポートデータからbase64Dataを削除する処理は変更なし
             chats.forEach(chat => {
                 if (chat.messages) {
                     chat.messages.forEach(message => {
@@ -9248,6 +9253,7 @@ const appLogic = {
                 }
             });
 
+            // メタデータ生成と返却は変更なし
             const syncId = 'sync_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
             const metadata = {
                 version: "2.0",
@@ -9273,6 +9279,7 @@ const appLogic = {
             throw new Error("データのエクスポート準備に失敗しました。");
         }
     },
+
 
 
 
