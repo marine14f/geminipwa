@@ -195,33 +195,24 @@
         let allEntries = [];
         let hasMore = true;
         let cursor = null;
-        let path = this.ASSETS_DIR_PATH;
-        let loopCount = 0; // ★デバッグ用ループカウンター
+        const path = this.ASSETS_DIR_PATH;
 
         try {
             while (hasMore) {
-                loopCount++; // ★デバッグ用
                 let response;
                 if (cursor) {
-                    // ★デバッグログ: 2回目以降のリクエスト情報を表示
-                    console.log(`%c[DEBUG_SYNC_PAGINATION] Loop ${loopCount}: Continuing with cursor -> ${cursor}`, 'color: purple; font-weight: bold;');
                     response = await this._request('api', '/files/list_folder/continue', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ cursor: cursor }),
                     });
                 } else {
-                    // ★デバッグログ: 初回リクエスト情報を表示
-                    console.log(`%c[DEBUG_SYNC_PAGINATION] Loop ${loopCount}: Starting with path -> ${path}`, 'color: purple; font-weight: bold;');
                     response = await this._request('api', '/files/list_folder', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ path: path, recursive: false, limit: 500 }), // ★デバッグのため上限を500に設定
+                        body: JSON.stringify({ path: path, recursive: false, limit: 2000 }),
                     });
                 }
-
-                // ★デバッグログ: APIからの生の応答をすべて表示
-                console.log(`%c[DEBUG_SYNC_PAGINATION] Loop ${loopCount} RAW RESPONSE:`, 'color: purple;', response);
 
                 if (response.entries) {
                     allEntries = allEntries.concat(response.entries);
@@ -229,18 +220,16 @@
                 
                 hasMore = response.has_more;
                 cursor = response.cursor;
-
-                // ★デバッグログ: ループ継続判定の直後の状態を表示
-                console.log(`%c[DEBUG_SYNC_PAGINATION] Loop ${loopCount} End State: has_more = ${hasMore}, new cursor = ${cursor}, total entries = ${allEntries.length}`, 'color: purple; font-weight: bold;');
             }
             return allEntries;
         } catch (error) {
             if (error.message.includes('path/not_found')) {
-                return [];
+                return []; // フォルダが存在しない場合は空配列を返す
             }
             throw error;
         }
     },
+
 
     async ensureAssetsFolderExists() {
         try {

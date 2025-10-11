@@ -767,26 +767,24 @@ const dbUtils = {
                 timestamp: msg.timestamp,
                 thoughtSummary: msg.thoughtSummary || null,
                 tool_calls: msg.tool_calls || null,
-                ...(msg.imageIds && { imageIds: msg.imageIds }),
-                ...(msg.finishReason && { finishReason: msg.finishReason }),
-                ...(msg.safetyRatings && { safetyRatings: msg.safetyRatings }),
-                ...(msg.error && { error: msg.error }),
-                ...(msg.isCascaded !== undefined && { isCascaded: msg.isCascaded }),
-                ...(msg.isSelected !== undefined && { isSelected: msg.isSelected }),
-                ...(msg.siblingGroupId !== undefined && { siblingGroupId: msg.siblingGroupId }),
-                ...(msg.groundingMetadata && { groundingMetadata: msg.groundingMetadata }),
-                ...(msg.attachments && msg.attachments.length > 0 && { attachments: msg.attachments }),
-                ...(msg.usageMetadata && { usageMetadata: msg.usageMetadata }),
-                ...(msg.executedFunctions && { executedFunctions: msg.executedFunctions }),
-                ...(msg.generated_images && msg.generated_images.length > 0 && { generated_images: msg.generated_images }),
-                ...(msg.generated_videos && msg.generated_videos.length > 0 && { 
-                    generated_videos: msg.generated_videos.map(video => ({
+                imageIds: msg.imageIds, // undefinedでもそのまま渡す
+                finishReason: msg.finishReason,
+                safetyRatings: msg.safetyRatings,
+                error: msg.error,
+                isCascaded: msg.isCascaded,
+                isSelected: msg.isSelected,
+                siblingGroupId: msg.siblingGroupId,
+                groundingMetadata: msg.groundingMetadata,
+                attachments: msg.attachments, // ★修正点4: スプレッド構文をやめ、完全なオブジェクトを渡す
+                usageMetadata: msg.usageMetadata,
+                executedFunctions: msg.executedFunctions,
+                generated_images: msg.generated_images,
+                generated_videos: msg.generated_videos ? msg.generated_videos.map(video => ({
                         base64Data: video.base64Data,
                         prompt: video.prompt
-                    }))
-                }),
-                ...(msg.isHidden === true && { isHidden: true }),
-                ...(msg.isAutoTrigger === true && { isAutoTrigger: true })
+                    })) : undefined,
+                isHidden: msg.isHidden,
+                isAutoTrigger: msg.isAutoTrigger
             }));
             messagesForStats = messagesToSave;
     
@@ -824,7 +822,6 @@ const dbUtils = {
                     const chatIdForOperation = existingChatData ? existingChatData.id : state.currentChatId;
                     const finalChatData = {
                         ...chatDataToSave,
-
                         updatedAt: chatObjectToSave && chatObjectToSave.updatedAt ? chatObjectToSave.updatedAt : now,
                         createdAt: existingChatData ? existingChatData.createdAt : now,
                         title: title,
@@ -851,7 +848,7 @@ const dbUtils = {
                     };
                 };
     
-                if (state.currentChatId) {
+                if (state.currentChatId && !chatObjectToSave) { // chatObjectToSaveがある場合はそれをそのまま使う
                     const getRequest = store.get(state.currentChatId);
                     getRequest.onsuccess = (event) => {
                         const existingChat = event.target.result;
@@ -867,7 +864,7 @@ const dbUtils = {
                         processSave(null);
                     };
                 } else {
-                    processSave(null);
+                    processSave(chatObjectToSave); // chatObjectToSaveを渡すことで既存データを引き継ぐ
                 }
     
                 transaction.oncomplete = () => {
@@ -884,6 +881,7 @@ const dbUtils = {
             }
         });
     },
+
 
 
     async _calculateChatStats(messages) {
@@ -9110,11 +9108,9 @@ const appLogic = {
      */
     async _prepareExportData() {
         console.log("[Data Export V2] 分離形式でのデータエクスポートを開始します。");
-        // ★デバッグログ: 処理開始のタイムスタンプ
         console.log(`%c[DEBUG_SYNC] _prepareExportData CALLED at ${new Date().toISOString()}`, 'color: blue; font-weight: bold;');
 
         try {
-            // 1. データベースから全ての関連データを並行して取得
             const [profiles, chats, memories, imageAssets, chatImages, allSettings] = await Promise.all([
                 dbUtils.getAllProfiles(),
                 dbUtils.getAllChats(),
@@ -9142,14 +9138,12 @@ const appLogic = {
             const addAsset = (assetId, blob) => {
                 if (!assetId || !blob) return;
                 localAssets.set(assetId, { blob, hash: null });
-                // ★デバッグログ: どのアセットIDがMapに追加されたか確認
                 console.log(`%c[DEBUG_SYNC] addAsset: Added asset with ID -> ${assetId}`, 'color: green;');
-                //console.log(`[Data Export V2] アセットリストにID: ${assetId} を追加しました。`);
             };
 
-            // 2. 各種アセットを収集し、アセットリストに追加
             for (const profile of profiles) {
                 if (profile.icon instanceof Blob) {
+                    // プロファイルアイコンのIDは毎回同じでOK
                     const assetId = `profile_${profile.id}_icon.webp`;
                     addAsset(assetId, profile.icon);
                     profile.iconAssetId = assetId;
@@ -9157,25 +9151,26 @@ const appLogic = {
                 }
             }
             for (const asset of imageAssets) {
-                const safeName = asset.name.replace(/[^a-zA-Z0-9]/g, '_');
-                const assetId = `asset_${safeName}_${new Date(asset.createdAt).getTime()}.webp`;
-                addAsset(assetId, asset.blob);
-                asset.assetId = assetId;
+                // ★修正点1: assetIdがなければ生成し、オブジェクトに保存
+                if (!asset.assetId) {
+                    const safeName = asset.name.replace(/[^a-zA-Z0-9]/g, '_');
+                    asset.assetId = `asset_${safeName}_${new Date(asset.createdAt).getTime()}.webp`;
+                    // DBに書き戻す必要があることを示すフラグ（今回は直接保存はしない）
+                    asset._needsUpdate = true;
+                }
+                addAsset(asset.assetId, asset.blob);
             }
 
-            // chatImages (img_... ファイル) をアセットリストに追加する
             for (const image of chatImages) {
                 if (image.id && image.blob) {
                     addAsset(image.id, image.blob);
                 }
             }
 
-            // 3. チャット履歴内の「添付画像」をアセットとして分離・収集し、不正なimageIdsをクレンジング
             console.log("[Data Export V2] チャット履歴内の添付ファイルのアセット化とデータクレンジングを開始します...");
             for (const chat of chats) {
                 if (chat.messages) {
                     for (const message of chat.messages) {
-                        // imageIds 配列内の不正な値 (空文字列など) をここで完全に除去
                         if (message.imageIds && Array.isArray(message.imageIds)) {
                             message.imageIds = message.imageIds.filter(id => id && typeof id === 'string' && id.trim() !== '');
                         }
@@ -9184,11 +9179,16 @@ const appLogic = {
                             const newImageIdsForMessage = [];
                             for (const attachment of message.attachments) {
                                 if (attachment.base64Data) {
+                                    // ★修正点2: attachmentにassetIdがなければ生成
+                                    if (!attachment.assetId) {
+                                        attachment.assetId = `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+                                        // このメッセージが属するチャットを後で保存する必要がある
+                                        if (!chat._needsUpdate) chat._needsUpdate = true;
+                                    }
                                     try {
-                                        const newAssetId = `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
                                         const blob = await this.base64ToBlob(attachment.base64Data, attachment.mimeType);
-                                        addAsset(newAssetId, blob);
-                                        newImageIdsForMessage.push(newAssetId);
+                                        addAsset(attachment.assetId, blob);
+                                        newImageIdsForMessage.push(attachment.assetId);
                                     } catch (e) {
                                         console.error(`[Data Export V2] 添付ファイル(name: ${attachment.name})のアセット化に失敗:`, e);
                                     }
@@ -9206,7 +9206,28 @@ const appLogic = {
             }
             console.log("[Data Export V2] アセット化とクレンジングが完了しました。");
 
-            // 4. メタデータに含める前に、チャット履歴内の添付ファイルからBlobとBase64データを削除する
+            // ★修正点3: assetIdが追加されたオブジェクトをDBに書き戻す
+            const assetsToUpdate = imageAssets.filter(a => a._needsUpdate);
+            if (assetsToUpdate.length > 0) {
+                console.log(`[Data Export V2] ${assetsToUpdate.length}件のimage_assetsにassetIdを永続化します。`);
+                const tx = state.db.transaction('image_assets', 'readwrite');
+                const store = tx.objectStore('image_assets');
+                for (const asset of assetsToUpdate) {
+                    delete asset._needsUpdate; // 一時的なフラグを削除
+                    store.put(asset);
+                }
+            }
+            const chatsToUpdate = chats.filter(c => c._needsUpdate);
+            if (chatsToUpdate.length > 0) {
+                console.log(`[Data Export V2] ${chatsToUpdate.length}件のチャットにattachmentのassetIdを永続化します。`);
+                const tx = state.db.transaction(CHATS_STORE, 'readwrite');
+                const store = tx.objectStore(CHATS_STORE);
+                for (const chat of chatsToUpdate) {
+                    delete chat._needsUpdate; // 一時的なフラグを削除
+                    store.put(chat);
+                }
+            }
+
             chats.forEach(chat => {
                 if (chat.messages) {
                     chat.messages.forEach(message => {
@@ -9220,7 +9241,6 @@ const appLogic = {
                 }
             });
 
-            // 5. 最終的なメタデータを生成
             const syncId = 'sync_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
             const metadata = {
                 version: "2.0",
@@ -9246,6 +9266,7 @@ const appLogic = {
             throw new Error("データのエクスポート準備に失敗しました。");
         }
     },
+
 
     async importDataFromString(jsonString) {
         console.log("[Data Import V2] 文字列からのデータインポートを開始します。");
