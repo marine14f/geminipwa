@@ -1408,7 +1408,7 @@ const uiUtils = {
         const processedGroupIds = new Set();
 
         state.currentMessages.forEach((msg) => {
-            if (msg.isHidden) return;
+            if (msg.isHidden) return; // isHiddenフラグを持つメッセージは表示しない
             if (msg.isCascaded && msg.siblingGroupId) {
                 if (!processedGroupIds.has(msg.siblingGroupId)) {
                     const siblings = state.currentMessages.filter(m => m.siblingGroupId === msg.siblingGroupId && !m.isHidden);
@@ -1423,6 +1423,7 @@ const uiUtils = {
             }
         });
 
+        // 要約マーカー表示ロジック
         const summaryEndIndex = state.currentSummarizedContext?.summaryRange?.end;
         let markerInserted = false;
 
@@ -1430,6 +1431,7 @@ const uiUtils = {
             const index = state.currentMessages.indexOf(msg);
             if (index === -1 || msg.role === 'tool') return;
             
+            // メッセージのインデックスが要約範囲の終端と一致したらマーカーを挿入
             if (!markerInserted && summaryEndIndex !== undefined && index >= summaryEndIndex) {
                 const markerDiv = document.createElement('div');
                 markerDiv.className = 'summary-marker';
@@ -1459,6 +1461,7 @@ const uiUtils = {
             }
         });
         
+        // ループ後にマーカーが挿入されなかった場合（＝全履歴が要約対象だった場合）の処理
         if (!markerInserted && summaryEndIndex !== undefined && state.currentMessages.length === summaryEndIndex) {
             const markerDiv = document.createElement('div');
             markerDiv.className = 'summary-marker';
@@ -1489,8 +1492,6 @@ const uiUtils = {
         const renderEndTime = performance.now();
         console.log(`[PERF_DEBUG] renderChatMessages 完了 (合計所要時間: ${renderEndTime - renderStartTime}ms)`);
     },
-
-
 
     createMessageElement(role, content, index, isStreamingPlaceholder = false, cascadeInfo = null, attachments = null) {
         const messageData = state.currentMessages[index];
@@ -3381,7 +3382,6 @@ const appLogic = {
         }
         
         const updatedProfile = { ...state.activeProfile };
-        updatedProfile.settings = this.getCurrentUiSettings();
 
         try {
             await dbUtils.updateProfile(updatedProfile);
@@ -3390,7 +3390,7 @@ const appLogic = {
             if (index !== -1) {
                 state.profiles[index] = updatedProfile;
             }
-            state.activeProfile = updatedProfile; // アクティブなプロファイルも更新
+            // activeProfile は既に更新されているので再代入は不要
 
             this.markAsDirtyAndSchedulePush(true);
             
@@ -3399,7 +3399,7 @@ const appLogic = {
             uiUtils.updateProfileSwitcherUI();
         } catch (error) {
             console.error("[Profile] プロファイルの更新に失敗しました:", error);
-            await uiUtils.showCustomAlert(`プロファイルの更新に失敗しました: ${error}`);
+            await uiUtils.showCustomAlert(`プロファイルの更新に失敗しました: ${error.message}`);
         }
     },
     
@@ -3485,10 +3485,19 @@ const appLogic = {
 
     getCurrentUiSettings() {
         const settings = {};
-        const stringKeys = ['apiKey', 'modelName', 'systemPrompt', 'dummyUser', 'dummyModel', 'additionalModels', 'historySortOrder', 'fontFamily', 'proofreadingModelName', 'proofreadingSystemInstruction', 'googleSearchApiKey', 'googleSearchEngineId', 'headerColor', 'thoughtTranslationModel', 'summarySystemPrompt'];
-        const numberKeys = ['temperature', 'maxTokens', 'topK', 'topP', 'thinkingBudget', 'maxRetries', 'fixedRetryDelaySeconds', 'maxBackoffDelaySeconds', 'overlayOpacity', 'messageOpacity'];
-        const booleanKeys = ['enterToSend', 'darkMode', 'hideSystemPromptInChat', 'geminiEnableGrounding', 'geminiEnableFunctionCalling', 'enableSwipeNavigation', 'enableProofreading', 'enableAutoRetry', 'useFixedRetryDelay', 'concatDummyModel', 'includeThoughts', 'enableThoughtTranslation', 'applyDummyToProofread', 'applyDummyToTranslate', 'allowPromptUiChanges', 'forceFunctionCalling', 'autoScroll', 'enableWideMode', 'enableSummaryButton'];
+        const stringKeys = ['apiKey', 'modelName', 'dummyUser', 'dummyModel', 'additionalModels', 'historySortOrder', 'fontFamily', 'proofreadingModelName', 'proofreadingSystemInstruction', 'googleSearchApiKey', 'googleSearchEngineId', 'headerColor', 'thoughtTranslationModel', 'summarySystemPrompt'];
+        const numberKeys = ['temperature', 'maxTokens', 'topK', 'topP', 'thinkingBudget', 'maxRetries', 'maxBackoffDelaySeconds', 'overlayOpacity', 'messageOpacity'];
+        const booleanKeys = ['enterToSend', 'darkMode', 'geminiEnableGrounding', 'geminiEnableFunctionCalling', 'enableSwipeNavigation', 'enableProofreading', 'enableAutoRetry', 'useFixedRetryDelay', 'concatDummyModel', 'includeThoughts', 'enableThoughtTranslation', 'applyDummyToProofread', 'applyDummyToTranslate', 'forceFunctionCalling', 'autoScroll', 'enableWideMode', 'enableSummaryButton'];
         
+        settings.systemPrompt = elements.systemPromptDefaultTextarea.value.trim();
+        settings.fixedRetryDelaySeconds = parseFloat(elements.fixedRetryDelayInput.value) || null;
+        settings.hideSystemPromptInChat = elements.hideSystemPromptToggle.checked;
+        settings.floatingPanelBehavior = elements.floatingPanelBehaviorSelect.value;
+        const allowUiChangesEl = document.getElementById('allow-prompt-ui-changes');
+        if (allowUiChangesEl) {
+            settings.allowPromptUiChanges = allowUiChangesEl.checked;
+        }
+
         stringKeys.forEach(key => {
             const element = elements[key + 'Input'] || elements[key + 'Select'] || elements[key + 'Textarea'];
             if (element) settings[key] = element.value.trim();
@@ -3517,7 +3526,6 @@ const appLogic = {
         return settings;
     },
 
-
     fileToBase64(file) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -3535,8 +3543,36 @@ const appLogic = {
     },
 
     _prepareApiHistory(baseMessages) {
-        console.log("[API Prep] 通常の履歴をAPIフォーマットに変換します。");
-        const messagesForApi = [...baseMessages];
+        console.log("[API Prep] 履歴をAPIフォーマットに変換します。");
+
+        let messagesForApi;
+
+        // ★ 変更点: 要約コンテキストが存在する場合、API送信用の履歴を動的に構築する
+        if (state.currentSummarizedContext && state.currentSummarizedContext.summaryText) {
+            console.log("[API Prep] 要約コンテキストを検出。API履歴を圧縮します。");
+            const { summaryText, summaryRange } = state.currentSummarizedContext;
+            const headCount = 5;
+            const tailCount = 15;
+
+            const headMessages = baseMessages.slice(0, headCount);
+            const tailMessages = baseMessages.slice(Math.max(headCount, baseMessages.length - tailCount));
+            
+            const summaryMessage = {
+                role: 'user',
+                content: `【これまでの会話の要約】\n${summaryText}`,
+                timestamp: Date.now(),
+                isHidden: true, // UIには表示されない内部的なメッセージ
+                attachments: []
+            };
+            
+            // head, summary, tail を結合してAPI用の履歴を作成
+            messagesForApi = [...headMessages, summaryMessage, ...tailMessages];
+            console.log(`[API Prep] 履歴を圧縮しました: Head(${headMessages.length}) + Summary(1) + Tail(${tailMessages.length}) = ${messagesForApi.length}件`);
+
+        } else {
+            // 通常の履歴
+            messagesForApi = [...baseMessages];
+        }
 
         // ダミープロンプトの追加処理は共通
         if (state.settings.dummyUser) {
@@ -3546,27 +3582,21 @@ const appLogic = {
             messagesForApi.push({ role: 'model', content: state.settings.dummyModel, attachments: [] });
         }
         
-        // --- ここにデバッグログを再挿入します ---
         console.log('--- [DEBUG] API送信前の履歴チェック ---');
         console.log(`APIに送信されるメッセージ件数: ${messagesForApi.length}件`);
-        // ------------------------------------
 
         return messagesForApi.map(msg => {
+            // 添付ファイルやFunction Callのpartsを生成するロジックは変更なし
             const parts = [];
-
-            // ユーザーメッセージに添付ファイル情報を含める処理を簡略化
             let contentText = msg.content || '';
             if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
                 const fileNames = msg.attachments.map(att => att.name).join(', ');
                 const attachmentText = `\n\n[添付ファイル: ${fileNames}]`;
-                // コンテンツが空でも添付ファイル情報だけは含めるように修正
                 contentText = (contentText.trim() ? contentText : '') + attachmentText;
             }
-
-            if (contentText.trim() !== '') {
+            if (contentText.trim() !== '' || msg.isHidden) { // isHiddenのメッセージもcontentが空でもpartsに含める
                 parts.push({ text: contentText });
             }
-
             if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
                 msg.attachments.forEach(att => parts.push({ inlineData: { mimeType: att.mimeType, data: att.base64Data } }));
             }
@@ -3586,6 +3616,7 @@ const appLogic = {
             return { role: msg.role === 'tool' ? 'tool' : (msg.role === 'model' ? 'model' : 'user'), parts };
         }).filter(c => c.parts.length > 0);
     },
+
 
 
 
@@ -3882,37 +3913,46 @@ const appLogic = {
             await this.initializeSyncState();
             await this.updateDropboxUIState();
 
-            // --- ステップ4.5: 同期ロックを確認し、復旧フローを開始 ---
+            // ★★★ ここからが今回の最重要修正点 ★★★
             const tokenData = await dbUtils.getSetting('dropboxTokens');
+            let recoveryFlowExecuted = false; // リカバリーフローが実行されたかどうかのフラグ
             if (tokenData && tokenData.value) {
-                const lockFileExists = await window.dropboxApi.checkLockFile();
-                if (lockFileExists) {
-                    console.warn("[Sync Recovery] 同期ロックファイルが残存しています。前回の同期が異常終了した可能性があります。");
-                    const choice = await this.showRecoveryDialog();
+                const lockData = await window.dropboxApi.checkLockFile();
+                if (lockData && lockData.operation) {
+                    recoveryFlowExecuted = true;
+                    console.warn(`[Sync Recovery] 同期ロックファイルを検出。中断された操作: ${lockData.operation}`);
+                    this.updateSyncStatusUI('syncing', `中断された${lockData.operation === 'push' ? '同期' : '復元'}を再開中...`);
 
+                    if (lockData.operation === 'push') {
+                        // isDirtyフラグを強制的に立ててからPushを実行
+                        state.sync.isDirty = true;
+                        await this.handlePush(false);
+                    } else if (lockData.operation === 'pull') {
+                        await this.handlePull(false);
+                    }
+                } else if (lockData) {
+                    // 旧形式のロックファイル、または内容が不正な場合
+                    recoveryFlowExecuted = true;
+                    console.warn("[Sync Recovery] 操作タイプ不明のロックファイルを検出。ユーザーに選択を促します。");
+                    const choice = await this.showRecoveryDialog();
                     if (choice === 'pull') {
-                        console.log("[Sync Recovery] ユーザーがクラウドからの復元を選択しました。");
                         await this.handlePull(true);
                     } else if (choice === 'push') {
-                        console.log("[Sync Recovery] ユーザーがローカルでの上書きを選択しました。");
                         state.sync.isDirty = true;
                         await this.handlePush(true);
                     } else {
-                        console.log("[Sync Recovery] ユーザーが復旧をキャンセルしました。");
                         await window.dropboxApi.deleteLockFile();
                     }
                 }
             }
+            // ★★★ ここまで ★★★
 
-            // 起動時にPull処理を実行 (OAuthコールバックがなく、ロックファイルもなかった場合)
-            if (!new URLSearchParams(window.location.search).has('code')) {
-                const lockFileStillExists = tokenData?.value ? await window.dropboxApi.checkLockFile() : false;
-                if (!lockFileStillExists) {
-                    console.log("[SYNC_DEBUG] initializeApp: 通常起動のため、handlePull(false)を呼び出します。");
-                    await this.handlePull(false);
-                } else {
-                    console.log("[SYNC_DEBUG] initializeApp: 復旧フローが実行されたため、通常のPullはスキップします。");
-                }
+            // 起動時にPull処理を実行 (OAuthコールバックがなく、リカバリーフローも実行されなかった場合)
+            if (!new URLSearchParams(window.location.search).has('code') && !recoveryFlowExecuted) {
+                console.log("[SYNC_DEBUG] initializeApp: 通常起動のため、handlePull(false)を呼び出します。");
+                await this.handlePull(false);
+            } else {
+                console.log("[SYNC_DEBUG] initializeApp: OAuthコールバックまたは復旧フローが実行されたため、通常のPullはスキップします。");
             }
 
             await this.updateDropboxUIState();
@@ -4108,8 +4148,8 @@ const appLogic = {
         updateProgress('同期準備中...');
 
         try {
-            // --- Step 0: Create Lock File ---
-            await window.dropboxApi.uploadLockFile();
+            // ★修正点: 操作タイプ 'push' を渡す
+            await window.dropboxApi.uploadLockFile('push');
 
             // --- Step 1: 競合検知 ---
             updateProgress('クラウドの状態を確認中...');
@@ -4223,7 +4263,6 @@ const appLogic = {
         }
     },
 
-
     /**
      * [Push Gatekeeper] ローカルの変更をDropboxにアップロードする処理の呼び出しを管理する
      */
@@ -4275,8 +4314,8 @@ const appLogic = {
         }
 
         try {
-            // --- Step 0: Create Lock File ---
-            await window.dropboxApi.uploadLockFile();
+            // ★修正点: 操作タイプ 'pull' を渡す
+            await window.dropboxApi.uploadLockFile('pull');
 
             const cloudMetadataString = await window.dropboxApi.downloadMetadata();
 
@@ -4495,8 +4534,12 @@ const appLogic = {
                             break;
                         case 'number':
                         case 'select-one':
-                            value = parseFloat(element.value);
-                            if (isNaN(value)) value = element.value;
+                            const rawValue = element.value;
+                            value = parseFloat(rawValue);
+                            if (isNaN(value)) {
+                                // 空文字列の場合はnullに、それ以外の文字列（selectなど）はそのまま
+                                value = rawValue === '' ? null : rawValue;
+                            }
                             break;
                         default:
                             value = element.value;
@@ -4567,7 +4610,10 @@ const appLogic = {
             enableMemory: { element: elements.enableMemoryToggle, event: 'change', onUpdate: (value) => this.toggleMemoryOptions(value) },
             memoryAutoSaveInterval: { element: elements.memoryAutoSaveIntervalSelect, event: 'change' },
             headerAutoHide: { element: elements.headerAutoHideToggle, event: 'change', onUpdate: (value) => document.body.classList.toggle('header-auto-hide', value) },
-            dropboxSyncFrequency: { element: elements.dropboxSyncFrequencySelect, event: 'change' }
+            dropboxSyncFrequency: { element: elements.dropboxSyncFrequencySelect, event: 'change' },
+            summarySystemPrompt: { element: elements.summarySystemPromptTextarea, event: 'input' },
+            enableSummaryButton: { element: elements.enableSummaryButtonToggle, event: 'change', onUpdate: () => this.toggleSummaryButtonVisibility() },
+            floatingPanelBehavior: { element: elements.floatingPanelBehaviorSelect, event: 'change', onUpdate: () => this.applyFloatingPanelBehavior() }
         };
     
         for (const key in settingsMap) {
@@ -4881,15 +4927,6 @@ const appLogic = {
 
         // --- History Summary ---
         elements.summarizeHistoryBtn.addEventListener('click', () => this.startSummaryProcess());
-        elements.summarySystemPromptTextarea.addEventListener('input', () => {
-            state.settings.summarySystemPrompt = elements.summarySystemPromptTextarea.value;
-            this.updateCurrentProfile(); // 設定変更を即時保存
-        });
-        elements.enableSummaryButtonToggle.addEventListener('change', () => {
-            state.settings.enableSummaryButton = elements.enableSummaryButtonToggle.checked;
-            this.updateCurrentProfile();
-            this.toggleSummaryButtonVisibility();
-        });
         elements.summaryCancelBtn.addEventListener('click', () => elements.summaryDialog.close('cancel'));
         elements.summaryRegenerateBtn.addEventListener('click', () => this.regenerateSummary());
         elements.summaryConfirmBtn.addEventListener('click', () => this.confirmSummary());
@@ -5611,12 +5648,28 @@ const appLogic = {
     
             let exportText = '';
             const imageDataBlock = {};
+            const attachmentDataBlock = {};
             const allImageIds = new Set();
 
             if (chatToExport.messages) {
+                // 先に全メッセージを走査して、必要な画像IDと添付ファイルIDを収集
                 chatToExport.messages.forEach(msg => {
                     if (msg.imageIds && msg.imageIds.length > 0) {
                         msg.imageIds.forEach(id => allImageIds.add(id));
+                    }
+                    // 添付ファイルにもユニークIDを割り振り、データ収集の準備
+                    if (msg.attachments && msg.attachments.length > 0) {
+                        msg.attachments.forEach(att => {
+                            if (att.base64Data) {
+                                const attachmentId = `att_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+                                att.attachmentId = attachmentId; // 一時的にIDを付与
+                                attachmentDataBlock[attachmentId] = {
+                                    name: att.name,
+                                    mimeType: att.mimeType,
+                                    data: att.base64Data
+                                };
+                            }
+                        });
                     }
                 });
             }
@@ -5679,9 +5732,12 @@ const appLogic = {
                                 attributes += ` imageIds="${msg.imageIds.join(',')}"`;
                             }
                         }
+                        // ファイル名ではなく、割り振ったattachmentIdを記録する
                         if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
-                            const fileNames = msg.attachments.map(a => a.name).join(';');
-                            attributes += ` attachments="${fileNames.replace(/"/g, '&quot;')}"`;
+                            const attachmentIds = msg.attachments.map(a => a.attachmentId).filter(Boolean).join(',');
+                            if (attachmentIds) {
+                                attributes += ` attachments="${attachmentIds}"`;
+                            }
                         }
                         exportText += `<|#|${msg.role}|#|${attributes.trim()}>\n${msg.content}\n<|#|/${msg.role}|#|>\n\n`;
                     }
@@ -5689,7 +5745,12 @@ const appLogic = {
             }
 
             if (Object.keys(imageDataBlock).length > 0) {
-                exportText += `<|#|imagedata|#|>\n${JSON.stringify(imageDataBlock, null, 2)}\n<|#|/imagedata|#|>\n`;
+                exportText += `<|#|imagedata|#|>\n${JSON.stringify(imageDataBlock, null, 2)}\n<|#|/imagedata|#|>\n\n`;
+            }
+
+            // 新しくattachmentdataブロックを書き出す
+            if (Object.keys(attachmentDataBlock).length > 0) {
+                exportText += `<|#|attachmentdata|#|>\n${JSON.stringify(attachmentDataBlock, null, 2)}\n<|#|/attachmentdata|#|>\n`;
             }
     
             uiUtils.updateProgressMessage('ファイルをダウンロード中...');
@@ -5710,11 +5771,6 @@ const appLogic = {
             uiUtils.hideProgressDialog();
         }
     },
-
-
-
-
-
 
     // チャット削除の確認と実行 (メッセージペア全体)
     async confirmDeleteChat(id, title) {
@@ -6366,52 +6422,43 @@ const appLogic = {
         reader.readAsText(file);
     },
 
-
-    // インポートされたテキストをパースする
     parseImportedHistory(text) {
         const messages = [];
         let systemPrompt = '';
         let persistentMemory = {};
         let summarizedContext = null;
         const imageData = {};
+        const attachmentData = {}; // 添付ファイルデータ保持用オブジェクト
 
-        // メタデータブロック
-        const metadataRegex = /<\|#\|metadata\|#\|>([\s\S]*?)<\|#\|\/metadata\|#\|>\s*/;
-        const metadataMatch = text.match(metadataRegex);
         let remainingText = text;
-        if (metadataMatch) {
-            try {
-                persistentMemory = JSON.parse(metadataMatch[1].trim());
-            } catch (e) {
-                console.error("インポートされたmetadataのJSONパースに失敗:", e);
-                persistentMemory = {};
-            }
-            remainingText = remainingText.replace(metadataRegex, '');
-        }
 
-        // 要約データブロックを先に抽出
-        const summaryRegex = /<\|#\|summary\|#\|>([\s\S]*?)<\|#\|\/summary\|#\|>\s*/;
-        const summaryMatch = remainingText.match(summaryRegex);
-        if (summaryMatch) {
+        // 正規表現を更新し、attachmentdataも捕捉できるようにする
+        const dataBlockRegex = /<\|#\|(metadata|summary|imagedata|attachmentdata)\|#\|>([\s\S]*?)<\|#\|\/\1\|#\|>\s*/g;
+        let dataMatch;
+        while ((dataMatch = dataBlockRegex.exec(text)) !== null) {
+            const blockType = dataMatch[1];
+            const blockContent = dataMatch[2].trim();
             try {
-                summarizedContext = JSON.parse(summaryMatch[1].trim());
+                const jsonData = JSON.parse(blockContent);
+                switch (blockType) {
+                    case 'metadata':
+                        persistentMemory = jsonData;
+                        break;
+                    case 'summary':
+                        summarizedContext = jsonData;
+                        break;
+                    case 'imagedata':
+                        Object.assign(imageData, jsonData);
+                        break;
+                    case 'attachmentdata': // attachmentdataブロックの処理を追加
+                        Object.assign(attachmentData, jsonData);
+                        break;
+                }
             } catch (e) {
-                console.error("インポートされたsummaryのJSONパースに失敗:", e);
-                summarizedContext = null;
+                console.error(`インポートされた ${blockType} のJSONパースに失敗:`, e);
             }
-            remainingText = remainingText.replace(summaryRegex, '');
-        }
-
-        const imageDataRegex = /<\|#\|imagedata\|#\|>([\s\S]*?)<\|#\|\/imagedata\|#\|>\s*/;
-        const imageDataMatch = remainingText.match(imageDataRegex);
-        if (imageDataMatch) {
-            try {
-                const imageDataJson = imageDataMatch[1].trim();
-                Object.assign(imageData, JSON.parse(imageDataJson));
-            } catch (e) {
-                console.error("インポートされたimagedataのJSONパースに失敗:", e);
-            }
-            remainingText = remainingText.replace(imageDataRegex, '');
+            // パースしたブロックを元のテキストから削除
+            remainingText = remainingText.replace(dataMatch[0], '');
         }
     
         const blockRegex = /<\|#\|(system|user|model)\|#\|([^>]*)>([\s\S]*?)<\|#\|\/\1\|#\|>/g;
@@ -6439,9 +6486,20 @@ const appLogic = {
                         const key = attrMatch[1];
                         const value = attrMatch[2].replace(/&quot;/g, '"');
                         if (key === 'attachments') {
-                            messageData.attachments = value.split(';').map(name => ({
-                                name: name, mimeType: 'unknown/unknown', base64Data: ''
-                            }));
+                            // attachmentIdを元に、保持しておいたデータから完全なオブジェクトを復元
+                            const attachmentIds = value.split(',');
+                            messageData.attachments = attachmentIds.map(id => {
+                                const data = attachmentData[id];
+                                if (data) {
+                                    return {
+                                        name: data.name,
+                                        mimeType: data.mimeType,
+                                        base64Data: data.data,
+                                        // fileオブジェクトはインポート時には復元しない
+                                    };
+                                }
+                                return null; // データが見つからない場合はnull
+                            }).filter(Boolean); // nullを除外
                         } else if (key === 'imageIds') {
                             messageData.imageIds = value.split(',');
                         }
@@ -6454,8 +6512,10 @@ const appLogic = {
         }
         console.log(`インポートテキストから ${messages.length} 件のメッセージとシステムプロンプト(${systemPrompt ? 'あり' : 'なし'})、要約データ(${summarizedContext ? 'あり' : 'なし'})をパースしました。`);
 
+        // 返り値にimageDataを追加
         return { messages, systemPrompt, persistentMemory, summarizedContext, imageData };
     },
+
 
 
     // -------------------------------
@@ -8953,49 +9013,37 @@ const appLogic = {
             return;
         }
 
+        const start = parseInt(elements.summaryDialog.dataset.summaryRangeStart, 10);
         const end = parseInt(elements.summaryDialog.dataset.summaryRangeEnd, 10);
 
         try {
-            // 1. 既存の要約テキストを取得（あれば）
+            // 既存の要約と新しい要約を結合する
             const existingSummary = state.currentSummarizedContext ? state.currentSummarizedContext.summaryText : "";
             const newSummaryText = existingSummary ? `${existingSummary}\n\n${summaryText}` : summaryText;
 
-            // 2. 新しい履歴を構築
-            const headMessages = state.currentMessages.slice(0, 5);
-            // tailの開始位置を計算。headと重複せず、かつ配列の範囲を超えないようにする
-            const tailStart = Math.max(5, end - 15);
-            const tailMessages = state.currentMessages.slice(tailStart, end);
-            
-            const summaryMessage = {
-                role: 'user',
-                content: `【これまでのあらすじ】\n${newSummaryText}`,
-                timestamp: Date.now(),
-                isHidden: true // このメッセージはUI上には表示しない
+            // state.currentMessagesを上書きせず、summarizedContextオブジェクトを更新する
+            state.currentSummarizedContext = {
+                summaryText: newSummaryText,
+                summaryRange: { start: 0, end: end }, // startは常に0、endを更新
+                summarizedAt: Date.now()
             };
 
-            // 3. 現在のメッセージ配列を、圧縮された新しい配列で完全に置き換える
-            const originalCount = state.currentMessages.length;
-            const newMessages = [...headMessages, summaryMessage, ...tailMessages];
-            state.currentMessages = newMessages;
-
-            // 4. summarizedContext を確実に null にリセット
-            state.currentSummarizedContext = null;
-
-            // 5. 変更をDBに保存
+            // 変更されたsummarizedContextを含むチャット全体を保存する
             await dbUtils.saveChat();
 
             elements.summaryDialog.close('confirm');
             
-            // 6. UIを再描画
+            // UIを再描画してサマリーマーカーを表示させる
             uiUtils.renderChatMessages();
             
-            await uiUtils.showCustomAlert(`履歴を圧縮しました。\nメッセージ件数が ${originalCount}件 から ${newMessages.length}件 になりました。`);
+            await uiUtils.showCustomAlert(`履歴の要約を保存しました。\n次回以降、APIには要約された内容が送信されます。`);
 
         } catch (error) {
             console.error("要約の保存エラー:", error);
             await uiUtils.showCustomAlert(`要約の保存に失敗しました: ${error.message}`);
         }
     },
+
 
 
 
@@ -9111,7 +9159,6 @@ const appLogic = {
         console.log(`%c[DEBUG_SYNC] _prepareExportData CALLED at ${new Date().toISOString()}`, 'color: blue; font-weight: bold;');
 
         try {
-            // 既存のPromise.allによるデータ取得部分は変更なし
             const [profiles, chats, memories, imageAssets, chatImages, allSettings] = await Promise.all([
                 dbUtils.getAllProfiles(),
                 dbUtils.getAllChats(),
@@ -9141,7 +9188,6 @@ const appLogic = {
                 localAssets.set(assetId, { blob, hash: null });
             };
 
-            // profiles, imageAssets, chatImages の処理は変更なし
             for (const profile of profiles) {
                 if (profile.icon instanceof Blob) {
                     const assetId = `profile_${profile.id}_icon.webp`;
@@ -9165,8 +9211,9 @@ const appLogic = {
             }
 
             console.log("[Data Export V2] チャット履歴内の添付ファイルのアセット化とデータクレンジングを開始します...");
-            // ★★★ ここからが今回の最重要修正点 ★★★
             const imageStoreBlobs = new Map(chatImages.map(img => [img.id, img.blob]));
+            // ★★★ ここからが今回の最重要修正点 ★★★
+            const blobsToSaveToImageStore = []; // 新しくimage_storeに保存するBlobのリスト
 
             for (const chat of chats) {
                 if (chat.messages) {
@@ -9187,6 +9234,8 @@ const appLogic = {
                                         const blob = await this.base64ToBlob(attachment.base64Data, attachment.mimeType);
                                         addAsset(attachment.assetId, blob);
                                         newImageIdsForMessage.push(attachment.assetId);
+                                        // ★修正点: 生成したBlobをimage_storeに保存するリストに追加
+                                        blobsToSaveToImageStore.push({ id: attachment.assetId, blob: blob });
                                     } catch (e) {
                                         console.error(`[Data Export V2] 新規添付ファイルのアセット化に失敗:`, e);
                                     }
@@ -9201,7 +9250,6 @@ const appLogic = {
                                     }
                                 }
                             }
-                            // 新しく生成されたIDをメッセージのimageIdsに追加
                             if (newImageIdsForMessage.length > 0) {
                                 if (!message.imageIds) message.imageIds = [];
                                 message.imageIds.push(...newImageIdsForMessage);
@@ -9213,7 +9261,16 @@ const appLogic = {
             // ★★★ ここまで ★★★
             console.log("[Data Export V2] アセット化とクレンジングが完了しました。");
 
-            // DBへの書き戻し処理は変更なし
+            // ★修正点: 新しく生成されたBlobをimage_storeに一括で保存
+            if (blobsToSaveToImageStore.length > 0) {
+                console.log(`[Data Export V2] ${blobsToSaveToImageStore.length}件の新規アセットBlobをimage_storeに永続化します。`);
+                const tx = state.db.transaction('image_store', 'readwrite');
+                const store = tx.objectStore('image_store');
+                for (const item of blobsToSaveToImageStore) {
+                    store.put(item);
+                }
+            }
+
             const assetsToUpdate = imageAssets.filter(a => a._needsUpdate);
             if (assetsToUpdate.length > 0) {
                 console.log(`[Data Export V2] ${assetsToUpdate.length}件のimage_assetsにassetIdを永続化します。`);
@@ -9239,7 +9296,6 @@ const appLogic = {
                 }
             }
 
-            // エクスポートデータからbase64Dataを削除する処理は変更なし
             chats.forEach(chat => {
                 if (chat.messages) {
                     chat.messages.forEach(message => {
@@ -9253,7 +9309,6 @@ const appLogic = {
                 }
             });
 
-            // メタデータ生成と返却は変更なし
             const syncId = 'sync_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
             const metadata = {
                 version: "2.0",
@@ -9279,9 +9334,6 @@ const appLogic = {
             throw new Error("データのエクスポート準備に失敗しました。");
         }
     },
-
-
-
 
     async importDataFromString(jsonString) {
         console.log("[Data Import V2] 文字列からのデータインポートを開始します。");
