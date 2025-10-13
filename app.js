@@ -493,7 +493,6 @@ function registerServiceWorker() {
             newWorker.addEventListener('statechange', async () => {
                 if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                     console.log('新しいService Workerがインストールされ、待機状態に入りました。');
-                    // ダイアログで更新を通知・確認
                     const confirmed = await uiUtils.showCustomConfirm(
                         "新しいバージョンが利用可能です。\n\n今すぐ更新しますか？ (アプリがリロードされます)"
                     );
@@ -531,25 +530,37 @@ function registerServiceWorker() {
             const registration = await navigator.serviceWorker.register('./sw.js');
             console.log('ServiceWorker登録成功 スコープ: ', registration.scope);
 
+            // ★★★ ここからが今回の最重要修正点 ★★★
+            const checkForUpdates = () => {
+                // navigator.serviceWorker.ready を使うことで、常にアクティブなregistrationを取得
+                navigator.serviceWorker.ready.then(readyRegistration => {
+                    console.log('Service Worker is ready, checking for updates...');
+                    readyRegistration.update();
+                }).catch(error => {
+                    console.error('navigator.serviceWorker.ready failed:', error);
+                });
+            };
+
             // 1. 定期的なチェック (1時間ごと)
             setInterval(() => {
                 console.log('Service Workerの定期的な更新をチェックします。');
-                registration.update();
+                checkForUpdates();
             }, 60 * 60 * 1000);
 
             // 2. タブがアクティブになった時にチェック
             document.addEventListener('visibilitychange', () => {
                 if (document.visibilityState === 'visible') {
                     console.log('タブがアクティブになったため、Service Workerの更新をチェックします。');
-                    registration.update();
+                    checkForUpdates();
                 }
             });
 
             // 3. ウィンドウがフォーカスされた時にチェック
             window.addEventListener('focus', () => {
                 console.log('ウィンドウがフォーカスされたため、Service Workerの更新をチェックします。');
-                registration.update();
+                checkForUpdates();
             });
+            // ★★★ ここまで ★★★
 
             // 待機中のワーカーがいれば即座に通知
             if (registration.waiting) {
@@ -572,7 +583,6 @@ function registerServiceWorker() {
         }
     });
 }
-
 
 // --- IndexedDBユーティリティ (dbUtils) ---
 const dbUtils = {
