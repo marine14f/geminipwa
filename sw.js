@@ -1,6 +1,6 @@
 // sw.js
-
-const CACHE_NAME = 'gemini-pwa-cache-v0.41'; // 更新後はここも変更
+// version 2
+const CACHE_NAME = 'gemini-pwa-cache-v0.5'; // 更新後はここも変更
 const urlsToCache = [
   './', // ルートパス (index.html を指すことが多い)
   './index.html',

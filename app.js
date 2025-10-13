@@ -486,24 +486,31 @@ function registerServiceWorker() {
         return;
     }
 
-    const showUpdateNotification = (worker) => {
-        const notification = document.getElementById('update-notification');
-        const reloadButton = document.getElementById('reload-for-update-btn');
-        if (!notification || !reloadButton) return;
-
-        reloadButton.onclick = () => {
-            if (state.db) {
-                state.db.close();
-                state.db = null;
-                console.log("Service Worker更新のため、現在のDB接続を閉じました。");
-            }
-            worker.postMessage({ action: 'skipWaiting' });
-        };
-        notification.classList.remove('hidden');
+    const handleUpdateFound = (registration) => {
+        const newWorker = registration.installing;
+        if (newWorker) {
+            console.log('新しいService Workerのインストールを検知しました。');
+            newWorker.addEventListener('statechange', async () => {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    console.log('新しいService Workerがインストールされ、待機状態に入りました。');
+                    // ダイアログで更新を通知・確認
+                    const confirmed = await uiUtils.showCustomConfirm(
+                        "新しいバージョンが利用可能です。\n\n今すぐ更新しますか？ (アプリがリロードされます)"
+                    );
+                    if (confirmed) {
+                        if (state.db) {
+                            state.db.close();
+                            state.db = null;
+                            console.log("Service Worker更新のため、現在のDB接続を閉じました。");
+                        }
+                        newWorker.postMessage({ action: 'skipWaiting' });
+                    }
+                }
+            });
+        }
     };
 
     let isReloading = false;
-
     navigator.serviceWorker.addEventListener('controllerchange', () => {
         if (isReloading) return;
         isReloading = true;
@@ -524,35 +531,48 @@ function registerServiceWorker() {
             const registration = await navigator.serviceWorker.register('./sw.js');
             console.log('ServiceWorker登録成功 スコープ: ', registration.scope);
 
+            // 1. 定期的なチェック (1時間ごと)
             setInterval(() => {
+                console.log('Service Workerの定期的な更新をチェックします。');
                 registration.update();
-                console.log('Service Workerの更新をチェックしました。');
             }, 60 * 60 * 1000);
 
+            // 2. タブがアクティブになった時にチェック
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') {
+                    console.log('タブがアクティブになったため、Service Workerの更新をチェックします。');
+                    registration.update();
+                }
+            });
+
+            // 3. ウィンドウがフォーカスされた時にチェック
+            window.addEventListener('focus', () => {
+                console.log('ウィンドウがフォーカスされたため、Service Workerの更新をチェックします。');
+                registration.update();
+            });
+
+            // 待機中のワーカーがいれば即座に通知
             if (registration.waiting) {
                 console.log('待機中の新しいService Workerが見つかりました。');
-                showUpdateNotification(registration.waiting);
+                const confirmed = await uiUtils.showCustomConfirm(
+                    "新しいバージョンが利用可能です。\n\n今すぐ更新しますか？ (アプリがリロードされます)"
+                );
+                if (confirmed) {
+                    if (state.db) state.db.close();
+                    registration.waiting.postMessage({ action: 'skipWaiting' });
+                }
                 return;
             }
 
-            registration.addEventListener('updatefound', () => {
-                const newWorker = registration.installing;
-                if (newWorker) {
-                    console.log('新しいService Workerのインストールを検知しました。');
-                    newWorker.addEventListener('statechange', () => {
-                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                            console.log('新しいService Workerがインストールされ、待機状態に入りました。');
-                            showUpdateNotification(newWorker);
-                        }
-                    });
-                }
-            });
+            // 新しいワーカーが見つかった際のイベントリスナー
+            registration.addEventListener('updatefound', () => handleUpdateFound(registration));
 
         } catch (error) {
             console.error('ServiceWorker処理中にエラー: ', error);
         }
     });
 }
+
 
 // --- IndexedDBユーティリティ (dbUtils) ---
 const dbUtils = {
@@ -1014,17 +1034,59 @@ const dbUtils = {
     // 指定IDのチャットを削除
     async deleteChat(id) {
         await this.openDB();
+        
+        // Step 1: 削除対象のチャットから画像IDを収集
+        const chatToDelete = await this.getChat(id);
+        const imageIdsToDelete = new Set();
+        if (chatToDelete && chatToDelete.messages) {
+            chatToDelete.messages.forEach(message => {
+                (message.imageIds || []).forEach(imgId => imageIdsToDelete.add(imgId));
+            });
+        }
+
+        // Step 2: 他のチャットで同じ画像IDが使われていないか確認 (安全対策)
+        const allOtherChats = (await this.getAllChats()).filter(chat => chat.id !== id);
+        const activeImageIdsInOtherChats = new Set();
+        allOtherChats.forEach(chat => {
+            (chat.messages || []).forEach(message => {
+                (message.imageIds || []).forEach(imgId => activeImageIdsInOtherChats.add(imgId));
+            });
+        });
+
+        const finalImageIdsToDelete = [...imageIdsToDelete].filter(id => !activeImageIdsInOtherChats.has(id));
+
+        // Step 3: トランザクション内でチャットと画像の削除を実行
         return new Promise((resolve, reject) => {
-            const store = this._getStore(CHATS_STORE, 'readwrite');
-            const request = store.delete(id);
-            request.onsuccess = () => {
-                console.log("チャット削除:", id);
+            const storeNames = [CHATS_STORE];
+            if (finalImageIdsToDelete.length > 0) {
+                storeNames.push(IMAGE_STORE);
+            }
+            
+            const transaction = state.db.transaction(storeNames, 'readwrite');
+            const chatStore = transaction.objectStore(CHATS_STORE);
+
+            // チャットを削除
+            chatStore.delete(id);
+
+            // 孤立した画像を削除
+            if (finalImageIdsToDelete.length > 0) {
+                const imageStore = transaction.objectStore(IMAGE_STORE);
+                console.log(`[Delete Chat] チャット(ID:${id})に関連する ${finalImageIdsToDelete.length}件の画像をimage_storeから削除します。`);
+                finalImageIdsToDelete.forEach(imgId => imageStore.delete(imgId));
+            }
+
+            transaction.oncomplete = () => {
+                console.log(`チャット削除完了 (ID: ${id})`);
                 appLogic.markAsDirtyAndSchedulePush(true);
                 resolve();
             };
-            request.onerror = (event) => reject(`チャット ${id} 削除エラー: ${event.target.error}`);
+            transaction.onerror = (event) => {
+                console.error(`チャット(ID:${id})の削除トランザクション中にエラー:`, event.target.error);
+                reject(`チャット ${id} 削除エラー: ${event.target.error}`);
+            };
         });
     },
+
 
     // 全データ (設定とチャット) をクリア
     async clearAllData() {
@@ -1195,13 +1257,37 @@ const dbUtils = {
     /**
      * [V2] メタデータを受け取り、アセットをDLしてからDBをクリア＆インポートする
      */
-    async clearAndImportData(data, downloadedAssets) {
+     async clearAndImportData(data, localAssetsBeforeClear, downloadedAssets, requiredAssetIds) {
         console.log("[DB Import V2] 安全なデータインポート処理を開始します。");
         uiUtils.showProgressDialog('データベースを準備中...');
 
         const { profiles, chats, memories, assets, settings } = data;
         
-        const allAvailableAssets = new Map(downloadedAssets);
+        const allAvailableAssets = new Map([...localAssetsBeforeClear, ...downloadedAssets]);
+        console.log(`[DB Import V2] 利用可能なアセットの完全なマップを作成しました: ${allAvailableAssets.size}件`);
+
+        // 除去されたIDの情報を記録するオブジェクト
+        const removedAssetInfo = {}; 
+
+        (chats || []).forEach(chat => {
+            let removedIdsForThisChat = [];
+            (chat.messages || []).forEach(message => {
+                if (message.imageIds && message.imageIds.length > 0) {
+                    const originalIds = [...message.imageIds]; // コピーを作成
+                    message.imageIds = originalIds.filter(id => allAvailableAssets.has(id));
+                    
+                    if (originalIds.length !== message.imageIds.length) {
+                        const removedIds = originalIds.filter(id => !allAvailableAssets.has(id));
+                        removedIdsForThisChat.push(...removedIds);
+                    }
+                }
+            });
+            if (removedIdsForThisChat.length > 0) {
+                // Setを使って重複を除去してから記録
+                removedAssetInfo[chat.title || `ID:${chat.id}`] = [...new Set(removedIdsForThisChat)];
+                console.warn(`[DB Import V2] チャット「${chat.title || `ID:${chat.id}`}」から、実体が見つからない画像IDを ${removedAssetInfo[chat.title || `ID:${chat.id}`].length}件除去します。`);
+            }
+        });
 
         const profilesWithBlobs = (profiles || []).map(p => {
             if (p.iconAssetId && allAvailableAssets.has(p.iconAssetId)) {
@@ -1217,22 +1303,14 @@ const dbUtils = {
         })).filter(a => a.blob);
 
         const imagesWithBlobs = [];
-        const processedImageIds = new Set();
-        (chats || []).forEach(c => {
-            (c.messages || []).forEach(m => {
-                if (m.imageIds) {
-                    m.imageIds.forEach(id => {
-                        if (id && allAvailableAssets.has(id) && !processedImageIds.has(id)) {
-                            imagesWithBlobs.push({
-                                id: id,
-                                blob: allAvailableAssets.get(id),
-                                createdAt: new Date()
-                            });
-                            processedImageIds.add(id);
-                        }
-                    });
-                }
-            });
+        requiredAssetIds.forEach(id => {
+            if (allAvailableAssets.has(id)) {
+                imagesWithBlobs.push({
+                    id: id,
+                    blob: allAvailableAssets.get(id),
+                    createdAt: new Date()
+                });
+            }
         });
         
         const tempStoreNames = [
@@ -1244,11 +1322,9 @@ const dbUtils = {
             IMAGE_STORE, 'image_assets', 'memory_store'
         ];
 
-        // ★★★ 修正点: トランザクションの前に認証情報を退避 ★★★
         const currentTokens = await dbUtils.getSetting('dropboxTokens');
 
         try {
-            // --- Step 1: 一時ストアに全てのデータを書き込む ---
             uiUtils.updateProgressMessage('データを一時領域にインポート中...');
             const tempTx = state.db.transaction(tempStoreNames, 'readwrite');
             const tempStores = {
@@ -1280,7 +1356,6 @@ const dbUtils = {
             });
             console.log("[DB Import V2] 一時ストアへのデータ書き込みが完了しました。");
 
-            // --- Step 2: メインのストアを更新する ---
             uiUtils.updateProgressMessage('データベースを更新中...');
             const mainTx = state.db.transaction([...mainStoreNames, ...tempStoreNames], 'readwrite');
             
@@ -1311,7 +1386,6 @@ const dbUtils = {
             });
             await Promise.all(tempClearPromises2);
 
-            // ★★★ 修正点: 退避しておいた認証情報を復元 ★★★
             if (currentTokens) {
                 mainTx.objectStore(SETTINGS_STORE).put(currentTokens);
             }
@@ -1321,6 +1395,9 @@ const dbUtils = {
                 mainTx.onerror = () => reject(mainTx.error);
             });
             console.log("[DB Import V2] メインデータベースの更新が正常に完了しました。");
+
+            // 処理結果を返す
+            return { removedAssetInfo };
 
         } catch (error) {
             console.error("[DB Import V2] 安全なインポート処理中にエラーが発生しました:", error);
@@ -1541,21 +1618,84 @@ const uiUtils = {
             details.appendChild(summary);
             const list = document.createElement('ul');
             list.classList.add('attachment-list');
+            
             attachments.forEach(att => {
                 const listItem = document.createElement('li');
-                listItem.textContent = att.name;
-                listItem.title = `${att.name} (${att.mimeType})`;
+                
+                const mimeType = att.mimeType || '';
+                let previewElement;
+
+                if (mimeType.startsWith('image/')) {
+                    previewElement = document.createElement('img');
+                    previewElement.className = 'attachment-thumbnail';
+                    previewElement.alt = att.name;
+                    // attachment.file は Blob オブジェクト
+                    if (att.file instanceof Blob) {
+                        const objectURL = URL.createObjectURL(att.file);
+                        previewElement.src = objectURL;
+                        state.imageUrlCache.set(objectURL, true); // 解放のためにURLを記録
+                    }
+                } else if (mimeType.startsWith('video/')) {
+                    previewElement = document.createElement('video');
+                    previewElement.className = 'attachment-thumbnail';
+                    previewElement.muted = true;
+                    previewElement.playsInline = true;
+                    if (att.file instanceof Blob) {
+                        const objectURL = URL.createObjectURL(att.file);
+                        previewElement.src = objectURL;
+                        state.videoUrlCache.set(objectURL, true); // 解放のためにURLを記録
+                    }
+                } else {
+                    // 画像・動画以外はアイコンを表示
+                    previewElement = document.createElement('span');
+                    previewElement.className = 'attachment-thumbnail material-symbols-outlined';
+                    previewElement.textContent = 'description'; // ファイルアイコン
+                }
+                
+                // クリックで拡大・再生するモーダルを開くイベント
+                if (previewElement.tagName === 'IMG' || previewElement.tagName === 'VIDEO') {
+                    previewElement.onclick = () => {
+                        const modalOverlay = document.getElementById('image-modal-overlay');
+                        const modalContent = document.getElementById('image-modal-content');
+                        modalContent.innerHTML = ''; // 中身をクリア
+                        
+                        let mediaElement;
+                        if (previewElement.tagName === 'IMG') {
+                            mediaElement = document.createElement('img');
+                            mediaElement.src = previewElement.src;
+                        } else {
+                            mediaElement = document.createElement('video');
+                            mediaElement.src = previewElement.src;
+                            mediaElement.controls = true;
+                            mediaElement.autoplay = true;
+                        }
+                        modalContent.appendChild(mediaElement);
+                        modalOverlay.classList.remove('hidden');
+                    };
+                }
+
+                const filenameSpan = document.createElement('span');
+                filenameSpan.className = 'attachment-filename';
+                filenameSpan.textContent = att.name;
+                filenameSpan.title = `${att.name} (${att.mimeType})`;
+
+                listItem.appendChild(previewElement);
+                listItem.appendChild(filenameSpan);
                 list.appendChild(listItem);
             });
             details.appendChild(list);
             contentDiv.appendChild(details);
+
+            // テキストコンテンツがあれば、それも表示
             if (content && content.trim() !== '') {
                 const pre = document.createElement('pre');
                 pre.textContent = content;
                 pre.style.marginTop = '8px';
                 contentDiv.appendChild(pre);
             }
-        } else {
+        } 
+
+        else {
             try {
                 if (content && (role === 'model' || role === 'user')) {
                      if (role === 'model' && !isStreamingPlaceholder && typeof marked !== 'undefined') {
@@ -1572,7 +1712,7 @@ const uiUtils = {
             }
         }
         messageDiv.appendChild(contentDiv);
-        
+                
         const imagePlaceholderRegex = /<p>\[IMAGE_HERE\]<\/p>|\[IMAGE_HERE\]/g;
         if (role === 'model' && messageData && messageData.imageIds && messageData.imageIds.length > 0) {
             let imageIndex = 0;
@@ -1890,7 +2030,6 @@ const uiUtils = {
                 actionsDiv.appendChild(retrySpan);
             }
             
-            // ボタンやトークン数が一つでもあればactionsDivを追加する
             if (actionsDiv.hasChildNodes()) {
                 messageDiv.appendChild(actionsDiv);
             }
@@ -1901,7 +2040,6 @@ const uiUtils = {
         }
         return messageDiv;
     },
-
 
     // エラーメッセージを表示
     displayError(message, isApiError = false) {
@@ -3547,7 +3685,7 @@ const appLogic = {
 
         let messagesForApi;
 
-        // ★ 変更点: 要約コンテキストが存在する場合、API送信用の履歴を動的に構築する
+        // 要約コンテキストが存在する場合、API送信用の履歴を動的に構築する
         if (state.currentSummarizedContext && state.currentSummarizedContext.summaryText) {
             console.log("[API Prep] 要約コンテキストを検出。API履歴を圧縮します。");
             const { summaryText, summaryRange } = state.currentSummarizedContext;
@@ -3792,6 +3930,66 @@ const appLogic = {
             return;
         }
 
+        // --- 孤児画像データのクリーンアップ処理 (一度だけ実行) ---
+        try {
+            const cleanupFlag = await dbUtils.getSetting('imageStoreCleanup_v1_complete');
+            if (!cleanupFlag || !cleanupFlag.value) {
+                console.log("[Cleanup] 孤児画像データのクリーンアップ処理を開始します...");
+                
+                // 1. 全チャットから有効な画像IDをすべて収集
+                const allChats = await dbUtils.getAllChats();
+                const activeImageIds = new Set();
+                allChats.forEach(chat => {
+                    (chat.messages || []).forEach(message => {
+                        (message.imageIds || []).forEach(id => activeImageIds.add(id));
+                    });
+                });
+                console.log(`[Cleanup] ${activeImageIds.size}件の有効な画像IDを検出しました。`);
+
+                // 2. image_storeに存在するすべての画像IDを取得
+                const allStoredImageIds = await new Promise((resolve, reject) => {
+                    const store = dbUtils._getStore(IMAGE_STORE);
+                    const request = store.getAllKeys(); // キーのみを取得
+                    request.onsuccess = () => resolve(new Set(request.result));
+                    request.onerror = (e) => reject(e.target.error);
+                });
+                console.log(`[Cleanup] image_storeには ${allStoredImageIds.size}件の画像が存在します。`);
+
+                // 3. 孤児IDを特定 (存在するIDのうち、有効でないもの)
+                const orphanImageIds = [];
+                allStoredImageIds.forEach(storedId => {
+                    if (!activeImageIds.has(storedId)) {
+                        orphanImageIds.push(storedId);
+                    }
+                });
+
+                // 4. 孤児データを削除
+                if (orphanImageIds.length > 0) {
+                    console.log(`[Cleanup] ${orphanImageIds.length}件の孤児画像を削除します。`, orphanImageIds);
+                    const tx = state.db.transaction(IMAGE_STORE, 'readwrite');
+                    const store = tx.objectStore(IMAGE_STORE);
+                    orphanImageIds.forEach(id => store.delete(id));
+                    
+                    await new Promise((resolve, reject) => {
+                        tx.oncomplete = resolve;
+                        tx.onerror = () => reject(tx.error);
+                    });
+                    console.log("[Cleanup] 孤児画像の削除が完了しました。");
+                } else {
+                    console.log("[Cleanup] 孤児画像は見つかりませんでした。");
+                }
+
+                // 5. 処理完了フラグを立てる
+                await dbUtils.saveSetting('imageStoreCleanup_v1_complete', true);
+                console.log("[Cleanup] クリーンアップ処理が正常に完了しました。");
+            } else {
+                console.log("[Cleanup] 孤児画像データのクリーンアップは既に完了しています。");
+            }
+        } catch (error) {
+            console.error("[Cleanup] 孤児画像データのクリーンアップ中にエラーが発生しました:", error);
+            // このエラーはアプリの起動を妨げない
+        }
+
         // --- ステップ2: Dropbox OAuthコールバック処理 ---
         const handleAuthCallback = async () => {
             console.log("[SYNC_DEBUG] handleAuthCallback: 開始");
@@ -3913,7 +4111,6 @@ const appLogic = {
             await this.initializeSyncState();
             await this.updateDropboxUIState();
 
-            // ★★★ ここからが今回の最重要修正点 ★★★
             const tokenData = await dbUtils.getSetting('dropboxTokens');
             let recoveryFlowExecuted = false; // リカバリーフローが実行されたかどうかのフラグ
             if (tokenData && tokenData.value) {
@@ -3945,7 +4142,6 @@ const appLogic = {
                     }
                 }
             }
-            // ★★★ ここまで ★★★
 
             // 起動時にPull処理を実行 (OAuthコールバックがなく、リカバリーフローも実行されなかった場合)
             if (!new URLSearchParams(window.location.search).has('code') && !recoveryFlowExecuted) {
@@ -4015,6 +4211,7 @@ const appLogic = {
             this.applyFloatingPanelBehavior();
         }
     },
+
 
     // 復旧ダイアログを表示するヘルパー関数
     async showRecoveryDialog() {
@@ -4291,7 +4488,7 @@ const appLogic = {
     /**
      * [V2 Pull] Dropboxからデータをダウンロードして同期する
      */
-    async handlePull(isManual = false) {
+     async handlePull(isManual = false) {
         console.log(`[SYNC_DEBUG] handlePull: 開始。isManual = ${isManual}`);
 
         if (state.sync.isSyncing) {
@@ -4314,7 +4511,6 @@ const appLogic = {
         }
 
         try {
-            // ★修正点: 操作タイプ 'pull' を渡す
             await window.dropboxApi.uploadLockFile('pull');
 
             const cloudMetadataString = await window.dropboxApi.downloadMetadata();
@@ -4329,7 +4525,7 @@ const appLogic = {
                         uiUtils.updateProgressMessage('初回データをクラウドに保存中...');
                     }
                     
-                    state.sync.isSyncing = false; // _doPushを呼ぶ前にリセット
+                    state.sync.isSyncing = false; 
 
                     await window.dropboxApi.deleteLockFile();
                     console.log(`[SYNC_DEBUG] handlePull: _doPushを呼び出します。isManual = ${isManual}`);
@@ -4363,21 +4559,23 @@ const appLogic = {
                         this.updateSyncStatusUI('dirty');
                         if (isManual) uiUtils.showCustomAlert("同期がキャンセルされました。");
                         state.sync.isSyncing = false;
-                        await window.dropboxApi.deleteLockFile(); // キャンセル時もロックファイルを削除
+                        await window.dropboxApi.deleteLockFile();
                         return;
                     }
                     if (isManual) uiUtils.showProgressDialog('同期を再開しています...');
                 }
 
-                const importedData = await this.importDataFromString(cloudMetadataString);
+                // ★修正点: importDataFromStringの戻り値を受け取る
+                const importResult = await this.importDataFromString(cloudMetadataString);
+                const removedAssetInfo = importResult.removedAssetInfo;
 
-                state.sync.lastSyncId = importedData.syncId;
+                state.sync.lastSyncId = importResult.syncId;
                 state.sync.isDirty = false;
                 state.sync.lastError = null;
                 
-                const syncTimestamp = new Date(importedData.exportedAt).getTime();
+                const syncTimestamp = new Date(importResult.exportedAt).getTime();
                 await Promise.all([
-                    dbUtils.saveSetting('lastSyncId', importedData.syncId),
+                    dbUtils.saveSetting('lastSyncId', importResult.syncId),
                     dbUtils.saveSetting('syncIsDirty', false),
                     dbUtils.saveSetting('syncLastError', null),
                     dbUtils.saveSetting('lastSyncTimestamp', syncTimestamp)
@@ -4386,7 +4584,17 @@ const appLogic = {
                 this.updateSyncStatusUI('idle');
                 if (isManual) uiUtils.hideProgressDialog();
 
-                await uiUtils.showCustomAlert("クラウドからデータを同期しました。アプリを再起動します。");
+                // ★修正点: クレンジング結果があれば通知
+                let finalMessage = "クラウドからデータを同期しました。アプリを再起動します。";
+                if (removedAssetInfo && Object.keys(removedAssetInfo).length > 0) {
+                    let cleanupDetails = "\n\n【通知】\nクラウド上で実体が見つからなかったため、以下のチャットから画像添付の記録を削除しました：\n";
+                    for (const chatTitle in removedAssetInfo) {
+                        cleanupDetails += `・「${chatTitle}」から ${removedAssetInfo[chatTitle].length} 件\n`;
+                    }
+                    finalMessage += cleanupDetails;
+                }
+
+                await uiUtils.showCustomAlert(finalMessage);
                 window.location.reload();
 
             } else {
@@ -4405,7 +4613,7 @@ const appLogic = {
             console.error("[Sync Pull V2] Pull処理中にエラーが発生しました:", error);
             if (isManual) {
                 uiUtils.hideProgressDialog();
-                uiUtils.showCustomAlert(`同期に失敗しました: ${errorMessage}`);
+                await uiUtils.showCustomAlert(`同期に失敗しました: ${errorMessage}`);
             }
         } finally {
             state.sync.isSyncing = false;
@@ -5004,20 +5212,97 @@ const appLogic = {
             }
         });
 
-        elements.dropboxSyncBtn.addEventListener('click', () => {
+        elements.dropboxSyncBtn.addEventListener('click', async () => {
             console.log("手動同期ボタンがクリックされました。");
-            if (state.sync.isDirty) {
-                console.log("[Sync] 未同期の変更があるため、Push処理をバックグラウンドで開始します。");
-                // UIをブロックせずに実行し、エラーはコンソールに出力
-                this._doPush().catch(error => {
-                    console.error("[Sync Push] 手動Push処理でエラー:", error);
-                });
-            } else {
-                console.log("[Sync] 未同期の変更はないため、Pull処理を開始します。");
-                // Pullは従来通りUIをブロックする可能性があるため await を維持
-                this.handlePull(true);
+
+            if (state.sync.isSyncing) {
+                uiUtils.showCustomAlert("現在、別の同期処理が実行中です。");
+                return;
+            }
+        
+            const tokenData = await dbUtils.getSetting('dropboxTokens');
+            if (!tokenData || !tokenData.value) {
+                // このケースはUI上起こらないはずだが、念のため
+                return;
+            }
+            
+            // --- 新しい手動同期ロジック ---
+            state.sync.isSyncing = true;
+            this.updateSyncStatusUI('syncing', 'クラウドの状態を確認中...');
+            uiUtils.showProgressDialog('クラウドの状態を確認中...');
+        
+            try {
+                // Step 1: クラウドのメタデータを取得
+                const cloudMetadataString = await window.dropboxApi.downloadMetadata();
+        
+                // クラウドにデータがない場合 -> 初回Pushの可能性
+                if (!cloudMetadataString) {
+                    console.log("[Manual Sync] クラウドにデータがありません。Push処理を実行します。");
+                    uiUtils.updateProgressMessage('初回データをクラウドに保存中...');
+                    state.sync.isSyncing = false; // _doPushを呼ぶ前にリセット
+                    await this._doPush(true); // isManual=trueで実行
+                    return;
+                }
+        
+                const cloudData = JSON.parse(cloudMetadataString);
+                const cloudSyncId = cloudData.syncId;
+                const localSyncId = state.sync.lastSyncId;
+        
+                console.log(`[Manual Sync] Cloud syncId: ${cloudSyncId}, Local syncId: ${localSyncId}`);
+        
+                // Step 2: syncIdを比較
+                // syncIdが異なる -> 他のデバイスが更新した可能性 -> Pullを実行
+                if (cloudSyncId !== localSyncId) {
+                    console.log("[Manual Sync] syncIdが異なります。Pull処理を実行します。");
+                    uiUtils.updateProgressMessage('他の端末の変更を同期中...');
+                    state.sync.isSyncing = false; // handlePullを呼ぶ前にリセット
+                    await this.handlePull(true);
+                    return;
+                }
+        
+                // Step 3: syncIdが一致する場合 -> アセットの不整合やローカルの変更をチェック
+                console.log("[Manual Sync] syncIdは一致しています。アセットの整合性を確認します。");
+                uiUtils.updateProgressMessage('アセットの整合性を確認中...');
+        
+                const { localAssets } = await this._prepareExportData();
+                const cloudAssetsList = await window.dropboxApi.listAssets();
+                
+                const localAssetCount = localAssets.size;
+                const cloudAssetCount = cloudAssetsList.length;
+        
+                console.log(`[Manual Sync] Local asset count: ${localAssetCount}, Cloud asset count: ${cloudAssetCount}`);
+        
+                // アセット数が異なるか、ローカルに変更がある(isDirty)場合 -> Pushで調整
+                if (localAssetCount !== cloudAssetCount || state.sync.isDirty) {
+                     if (state.sync.isDirty) {
+                        console.log("[Manual Sync] ローカルに変更（isDirty=true）があるため、Push処理を実行します。");
+                        uiUtils.updateProgressMessage('ローカルの変更を同期中...');
+                    } else {
+                        console.log("[Manual Sync] アセット数が一致しないため、Push処理でクラウドの状態を調整します。");
+                        uiUtils.updateProgressMessage('クラウドの状態を調整中...');
+                    }
+                    state.sync.isSyncing = false; // _doPushを呼ぶ前にリセット
+                    await this._doPush(true);
+                    return;
+                }
+        
+                // Step 4: syncIdもアセット数も一致 -> 本当に差分なし
+                console.log("[Manual Sync] syncIdとアセット数が一致しており、差分はありません。");
+                this.updateSyncStatusUI('idle');
+                uiUtils.hideProgressDialog();
+                await uiUtils.showCustomAlert("データは既に最新の状態です。");
+        
+            } catch (error) {
+                const errorMessage = error.message || '不明なエラーが発生しました。';
+                this.updateSyncStatusUI('error', errorMessage);
+                console.error("[Manual Sync] 手動同期処理中にエラーが発生しました:", error);
+                uiUtils.hideProgressDialog();
+                await uiUtils.showCustomAlert(`同期に失敗しました: ${errorMessage}`);
+            } finally {
+                state.sync.isSyncing = false;
             }
         });
+
 
         elements.syncStatusHeaderIcon.addEventListener('click', () => {
             uiUtils.showScreen('settings').then(() => {
@@ -8950,16 +9235,21 @@ const appLogic = {
             const summaryText = candidate?.content?.parts?.[0]?.text;
 
             if (!summaryText) {
-                if (candidate?.finishReason) {
-                    console.error(`[要約API] テキストが生成されませんでした。終了理由: ${candidate.finishReason}`);
-                    if (candidate.safetyRatings) {
-                        console.error("[要約API] 安全性評価:", candidate.safetyRatings);
-                    }
+                let errorMessage = "APIから有効な要約結果が得られませんでした。";
+                const finishReason = candidate?.finishReason;
+                const blockReason = responseData.promptFeedback?.blockReason;
+
+                if (finishReason === 'SAFETY' || blockReason) {
+                    const reason = finishReason === 'SAFETY' ? 'SAFETY' : blockReason;
+                    errorMessage = `生成された要約が安全フィルターにブロックされた可能性があります。(理由: ${reason})`;
+                    console.error(`[要約API] ブロック検出: finishReason=${finishReason}, blockReason=${blockReason}`);
+                } else if (finishReason) {
+                    errorMessage = `APIが予期せぬ理由で応答を終了しました。(理由: ${finishReason})`;
+                    console.error(`[要約API] 予期せぬ終了: finishReason=${finishReason}`);
+                } else {
+                    console.error("[要約API] 応答形式が不正です。テキスト部分が見つかりませんでした。");
                 }
-                if (responseData.promptFeedback) {
-                     console.error("[要約API] プロンプトフィードバック:", responseData.promptFeedback);
-                }
-                throw new Error("APIから有効な要約結果が得られませんでした。");
+                throw new Error(errorMessage);
             }
 
             this._showSummaryDialog(summaryText, originalText.length);
@@ -9347,29 +9637,22 @@ const appLogic = {
             
             const cloudData = parsedData.data;
 
-            // 1. ローカルのアセットIDリストを取得
+            const localAssetsBeforeClear = new Map();
             const localImageAssets = await dbUtils.getAllAssets();
+            localImageAssets.forEach(asset => {
+                if(asset.assetId && asset.blob) localAssetsBeforeClear.set(asset.assetId, asset.blob);
+            });
             const localChatImages = await new Promise((res, rej) => {
                 const store = dbUtils._getStore('image_store');
                 const request = store.getAll();
                 request.onsuccess = () => res(request.result);
                 request.onerror = (e) => rej(e.target.error);
             });
-            const localAssetIds = new Set();
-            // image_assetsストアのアセットIDを追加
-            localImageAssets.forEach(asset => {
-                // 古いデータ形式も考慮し、asset.nameをフォールバックとして使用
-                const assetId = asset.assetId || asset.name;
-                if(assetId) localAssetIds.add(assetId);
-            });
-            // image_storeの画像IDを追加
             localChatImages.forEach(image => {
-                if(image.id) localAssetIds.add(image.id);
+                if(image.id && image.blob) localAssetsBeforeClear.set(image.id, image.blob);
             });
-            console.log(`[Sync Pull] ローカルに存在するアセットID: ${localAssetIds.size}件`);
+            console.log(`[Sync Pull] ローカルに存在するアセットBlob: ${localAssetsBeforeClear.size}件をメモリに保持しました。`);
 
-
-            // 2. クラウドデータから必要なアセットIDをすべて収集
             const requiredAssetIds = new Set();
             (cloudData.profiles || []).forEach(p => { if (p.iconAssetId) requiredAssetIds.add(p.iconAssetId); });
             (cloudData.assets || []).forEach(a => { if (a.assetId) requiredAssetIds.add(a.assetId); });
@@ -9380,30 +9663,37 @@ const appLogic = {
             });
             console.log(`[Sync Pull] クラウドが必要とするアセットID: ${requiredAssetIds.size}件`);
 
-            // 3. 不足しているアセットIDを特定
-            const assetsToDownloadIds = [...requiredAssetIds].filter(id => !localAssetIds.has(id));
+            const assetsToDownloadIds = [...requiredAssetIds].filter(id => !localAssetsBeforeClear.has(id));
             console.log(`[Sync Pull] ダウンロードが必要なアセットID: ${assetsToDownloadIds.length}件`);
 
-            // 4. 不足アセットをダウンロード
             const downloadedAssets = new Map();
             if (assetsToDownloadIds.length > 0) {
                 for (let i = 0; i < assetsToDownloadIds.length; i++) {
                     const assetId = assetsToDownloadIds[i];
                     uiUtils.updateProgressMessage(`アセットをダウンロード中 (${i + 1}/${assetsToDownloadIds.length})`);
-                    const blob = await window.dropboxApi.downloadAsset(assetId);
-                    if (blob) {
-                        downloadedAssets.set(assetId, blob);
-                    } else {
-                        console.warn(`[Sync Pull] アセット(ID: ${assetId})のダウンロードに失敗、またはクラウドに存在しませんでした。`);
+                    try {
+                        const blob = await window.dropboxApi.downloadAsset(assetId);
+                        if (blob) {
+                            downloadedAssets.set(assetId, blob);
+                        } else {
+                            console.warn(`[Sync Pull] アセット(ID: ${assetId})のダウンロードに失敗、またはクラウドに存在しませんでした。`);
+                        }
+                    } catch (downloadError) {
+                        console.error(`[Sync Pull] アセット(ID: ${assetId})のダウンロード中にエラーが発生しました:`, downloadError);
                     }
                 }
             }
 
-            // 5. 新しい clearAndImportData を呼び出してDBを更新
-            await dbUtils.clearAndImportData(cloudData, downloadedAssets);
+            // clearAndImportDataからの戻り値を受け取る
+            const { removedAssetInfo } = await dbUtils.clearAndImportData(cloudData, localAssetsBeforeClear, downloadedAssets, requiredAssetIds);
     
             console.log("[Data Import V2] データのインポートに成功しました。");
-            return parsedData;
+            
+            // 戻り値にクレンジング情報とメタデータを両方含める
+            return {
+                ...parsedData, // syncId, exportedAtなどを含む
+                removedAssetInfo: removedAssetInfo // クレンジング情報を追加
+            };
     
         } catch (error) {
             console.error("[Data Import V2] インポート処理中にエラーが発生しました:", error);
@@ -9411,6 +9701,7 @@ const appLogic = {
             throw new Error(`データのインポートに失敗しました: ${error.message}`);
         }
     },
+
 
     /**
      * [PKCE] code_verifierを生成する

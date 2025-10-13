@@ -393,20 +393,36 @@
 
     // --- Lock File Operations ---
 
-    async uploadLockFile() {
-        const path = '/.sync_lock';
-        const args = { path: path, mode: 'overwrite', mute: true };
-        const content = `Sync started at ${new Date().toISOString()}`;
-        console.log('[Dropbox API] Uploading lock file...');
-        return this._request('content', '/files/upload', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/octet-stream',
-                'Dropbox-API-Arg': JSON.stringify(args),
-            },
-            body: content,
+    async uploadLockFile(operationType) {
+        if (!operationType || !['push', 'pull'].includes(operationType)) {
+            throw new Error('Lock file operation type must be "push" or "pull".');
+        }
+        console.log(`[Dropbox API] Uploading lock file for operation: ${operationType}`);
+        const lockData = JSON.stringify({
+            timestamp: new Date().toISOString(),
+            operation: operationType
         });
+        const path = '/.sync_lock';
+        try {
+            await this._request('content', '/files/upload', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/octet-stream',
+                    'Dropbox-API-Arg': JSON.stringify({
+                        path: path,
+                        mode: 'overwrite',
+                        autorename: false,
+                        mute: true
+                    })
+                },
+                body: lockData
+            });
+        } catch (error) {
+            console.error('Lock file upload failed:', error);
+            throw new Error('ロックファイルのアップロードに失敗しました。');
+        }
     },
+
 
     async deleteLockFile() {
         const path = '/.sync_lock';
@@ -432,17 +448,18 @@
     async checkLockFile() {
         const path = '/.sync_lock';
         try {
-            await this._request('api', '/files/get_metadata', {
+            const blob = await this._request('content', '/files/download', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path: path }),
+                headers: { 'Dropbox-API-Arg': JSON.stringify({ path: path }) },
             });
-            console.log('[Dropbox API] Lock file found.');
-            return true; // File exists
+            const content = await blob.text();
+            const data = JSON.parse(content);
+            console.log('[Dropbox API] Lock file found.', data);
+            return data; // ファイルの内容 (e.g., { operation: 'push' }) を返す
         } catch (error) {
             if (error.message.includes('path/not_found')) {
                 console.log('[Dropbox API] Lock file not found.');
-                return false; // File does not exist
+                return null; // ファイルが存在しない場合は null を返す
             }
             // Rethrow other network or API errors
             throw error;

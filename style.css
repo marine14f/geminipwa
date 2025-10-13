@@ -2532,3 +2532,41 @@ body.dark-mode .header-delete-button:disabled {
 .stat-item .material-symbols-outlined {
     font-size: 14px;
 }
+
+/* --- User Attachment Preview --- */
+.attachment-details .attachment-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 8px;
+}
+
+.attachment-details .attachment-list li {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 6px;
+    border: 1px solid var(--border-tertiary);
+    border-radius: var(--border-radius-sm);
+    background-color: var(--bg-secondary);
+    max-width: 120px; /* サムネイルの最大幅 */
+}
+
+.attachment-details .attachment-thumbnail {
+    width: 100px;
+    height: 75px;
+    object-fit: cover;
+    border-radius: var(--border-radius-xs);
+    background-color: var(--bg-tertiary);
+    cursor: pointer;
+}
+
+.attachment-details .attachment-filename {
+    font-size: 11px;
+    color: var(--text-secondary);
+    word-break: break-all;
+    text-align: center;
+    max-height: 2.4em; /* 2行までに制限 */
+    overflow: hidden;
+}
