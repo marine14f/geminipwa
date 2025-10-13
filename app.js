@@ -4936,57 +4936,6 @@ const appLogic = {
                 this.createRipple(e, button);
             }
         });
-        // --- メッセージアクションメニューの表示/非表示ロジック ---
-        let menuHideTimer = null;
-        let menuShowTimer = null; // ★デバウンス用のタイマーID
-        const MENU_SHOW_DEBOUNCE = 50; // 50ms
-        const MENU_HIDE_DELAY = 300;
-
-        const showMenu = (messageElement) => {
-            // 隠すタイマーが動いていればキャンセル
-            clearTimeout(menuHideTimer);
-            
-            // 他のメニューが表示されていれば即座に隠す
-            const currentlyShown = elements.messageContainer.querySelector('.message.show-actions');
-            if (currentlyShown && currentlyShown !== messageElement) {
-                currentlyShown.classList.remove('show-actions');
-            }
-
-            // 編集中のメニューは表示しない
-            if (!messageElement.classList.contains('editing')) {
-                messageElement.classList.add('show-actions');
-            }
-        };
-
-        const hideMenu = (messageElement) => {
-            // 表示するためのデバウンタイマーが動いていればキャンセル
-            clearTimeout(menuShowTimer);
-            // 指定時間後にメニューを隠す
-            menuHideTimer = setTimeout(() => {
-                if (messageElement) {
-                    messageElement.classList.remove('show-actions');
-                }
-            }, MENU_HIDE_DELAY);
-        };
-
-        // ★修正点: 'mouseover'/'mouseout' を 'mouseenter'/'mouseleave' に変更
-        elements.messageContainer.addEventListener('mouseenter', (event) => {
-            const messageElement = event.target.closest('.message');
-            if (messageElement) {
-                // ★修正点: デバウンス処理を追加
-                clearTimeout(menuShowTimer); // 既存のタイマーをクリア
-                menuShowTimer = setTimeout(() => {
-                    showMenu(messageElement);
-                }, MENU_SHOW_DEBOUNCE);
-            }
-        }, true); // キャプチャフェーズでイベントを捕捉
-
-        elements.messageContainer.addEventListener('mouseleave', (event) => {
-            const messageElement = event.target.closest('.message');
-            if (messageElement) {
-                hideMenu(messageElement);
-            }
-        }, true); // キャプチャフェーズでイベントを捕捉
     
         const chatScreen = elements.chatScreen;
     

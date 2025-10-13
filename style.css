@@ -728,16 +728,12 @@ body.dark-mode .ripple {
     box-shadow: var(--shadow-2);
     z-index: 2;
     transition: opacity var(--transition-duration) var(--transition-timing), transform var(--transition-duration) var(--transition-timing);
-    width: max-content; /* こちらは元の max-content に戻します */
+    width: max-content;
     white-space: nowrap;
-    pointer-events: none;
-    
-    /* ★★★ 今回の修正点 ★★★ */
-    will-change: opacity, transform; /* アニメーション対象のプロパティをブラウザに通知 */
-  }
-  
-  
-  
+    /* pointer-events: none; を削除 */
+    will-change: opacity, transform;
+}
+
 .message-actions { bottom: calc(-1 * var(--spacing-unit) * 5.5); }
 .message-cascade-controls {
     top: calc(-1 * var(--spacing-unit) * 5.5);
@@ -745,14 +741,17 @@ body.dark-mode .ripple {
     align-items: center;
 }
 
-/* マウスホバー時、またはJSでクラスが付与された時に表示 */
 .message:hover .message-actions,
-.message.show-actions .message-actions,
-.message.model:hover .message-cascade-controls,
-.message.model.show-actions .message-cascade-controls {
-    opacity: 1;
-    transform: translateY(0); /* 元の位置に戻す */
-    pointer-events: auto; /* 表示されたらクリックできるように */
+.message:hover .message-cascade-controls {
+  opacity: 1;
+  transform: translateY(0);
+  /* pointer-events: auto; はデフォルト値なので不要 */
+}
+
+/* 編集中のメッセージでは、ホバーしてもメニューを表示しないようにする */
+.message.editing:hover .message-actions,
+.message.editing:hover .message-cascade-controls {
+  opacity: 0;
 }
 
 .message.user .message-actions { right: 0; }
