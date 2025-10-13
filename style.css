@@ -728,14 +728,14 @@ body.dark-mode .ripple {
     box-shadow: var(--shadow-2);
     z-index: 2;
     transition: opacity var(--transition-duration) var(--transition-timing), transform var(--transition-duration) var(--transition-timing);
-    
-    /* ★★★ 検証用の修正点 ★★★ */
-    width: 250px; /* 'width: max-content;' の代わりに固定幅を指定 */
-    /* white-space: nowrap; は影響しないのでそのまま */
+    width: max-content; /* こちらは元の max-content に戻します */
     white-space: nowrap;
-  
     pointer-events: none;
+    
+    /* ★★★ 今回の修正点 ★★★ */
+    will-change: opacity, transform; /* アニメーション対象のプロパティをブラウザに通知 */
   }
+  
   
   
 .message-actions { bottom: calc(-1 * var(--spacing-unit) * 5.5); }
