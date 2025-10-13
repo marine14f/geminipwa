@@ -4940,6 +4940,9 @@ const appLogic = {
         const MENU_HIDE_DELAY = 300;
     
         const showMenu = (messageElement) => {
+            // ★デバッグログ: この関数がいつ、どの要素に対して呼ばれたかを出力
+            console.log(`showMenu called for index: ${messageElement.dataset.index} at ${performance.now()}`);
+
             clearTimeout(menuHideTimer);
             const currentlyShown = elements.messageContainer.querySelector('.message.show-actions');
             if (currentlyShown && currentlyShown !== messageElement) {
