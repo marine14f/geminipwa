@@ -486,8 +486,28 @@ function registerServiceWorker() {
         return;
     }
 
-    // ★修正点: 更新処理のロック用フラグ
     let isUpdateInProgress = false;
+
+    // ★★★ ここからが今回の最重要修正点 ★★★
+    const activateUpdate = (worker) => {
+        if (state.db) {
+            state.db.close();
+            state.db = null;
+            console.log("Service Worker更新のため、現在のDB接続を閉じました。");
+        }
+        // 新しいワーカーに制御を移すように指示
+        worker.postMessage({ action: 'skipWaiting' });
+
+        // 制御が移るのを待ってからリロードする
+        let isReloading = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (isReloading) return;
+            isReloading = true;
+            console.log("Controller changed, reloading page...");
+            window.location.reload();
+        });
+    };
+    // ★★★ ここまで ★★★
 
     const handleUpdateFound = (registration) => {
         const newWorker = registration.installing;
@@ -497,7 +517,6 @@ function registerServiceWorker() {
                 if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                     console.log('新しいService Workerがインストールされ、待機状態に入りました。');
                     
-                    // ★修正点: 更新処理が進行中でなければダイアログを表示
                     if (isUpdateInProgress) return;
                     isUpdateInProgress = true;
 
@@ -505,14 +524,8 @@ function registerServiceWorker() {
                         "新しいバージョンが利用可能です。\n\n今すぐ更新しますか？ (アプリがリロードされます)"
                     );
                     if (confirmed) {
-                        if (state.db) {
-                            state.db.close();
-                            state.db = null;
-                            console.log("Service Worker更新のため、現在のDB接続を閉じました。");
-                        }
-                        newWorker.postMessage({ action: 'skipWaiting' });
+                        activateUpdate(newWorker);
                     } else {
-                        // ユーザーがキャンセルした場合も、フラグを解除して次のチェックを許可
                         console.log("ユーザーが更新をキャンセルしました。");
                         isUpdateInProgress = false;
                     }
@@ -521,18 +534,23 @@ function registerServiceWorker() {
         }
     };
 
+    // ★修正点: controllerchangeリスナーを削除
+    /*
     let isReloading = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
         if (isReloading) return;
         isReloading = true;
         window.location.reload();
     });
+    */
 
     navigator.serviceWorker.addEventListener('message', event => {
         if (event.data && event.data.status === 'cacheCleared') {
             console.log('Service Workerから手動キャッシュクリア完了のメッセージを受信。リロードを実行します。');
-            if (isReloading) return;
-            isReloading = true;
+            // このリロードはユーザー起因なので残す
+            let isReloadingForCache = false;
+            if (isReloadingForCache) return;
+            isReloadingForCache = true;
             window.location.reload();
         }
     });
@@ -543,7 +561,6 @@ function registerServiceWorker() {
             console.log('ServiceWorker登録成功 スコープ: ', registration.scope);
 
             const checkForUpdates = () => {
-                // ★修正点: 更新処理中ならチェック自体をスキップ
                 if (isUpdateInProgress) {
                     console.log("既に更新処理が進行中のため、今回の更新チェックはスキップします。");
                     return;
@@ -578,7 +595,6 @@ function registerServiceWorker() {
             if (registration.waiting) {
                 console.log('待機中の新しいService Workerが見つかりました。');
                 
-                // ★修正点: 更新処理中なら何もしない
                 if (isUpdateInProgress) return;
                 isUpdateInProgress = true;
 
@@ -586,8 +602,8 @@ function registerServiceWorker() {
                     "新しいバージョンが利用可能です。\n\n今すぐ更新しますか？ (アプリがリロードされます)"
                 );
                 if (confirmed) {
-                    if (state.db) state.db.close();
-                    registration.waiting.postMessage({ action: 'skipWaiting' });
+                    // 新しい関数を呼び出す
+                    activateUpdate(registration.waiting);
                 } else {
                     console.log("ユーザーが更新をキャンセルしました。");
                     isUpdateInProgress = false;
@@ -603,7 +619,6 @@ function registerServiceWorker() {
         }
     });
 }
-
 
 // --- IndexedDBユーティリティ (dbUtils) ---
 const dbUtils = {
