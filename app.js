@@ -486,71 +486,39 @@ function registerServiceWorker() {
         return;
     }
 
-    let isUpdateInProgress = false;
-
-    // ★★★ ここからが今回の最重要修正点 ★★★
-    const activateUpdate = (worker) => {
-        if (state.db) {
-            state.db.close();
-            state.db = null;
-            console.log("Service Worker更新のため、現在のDB接続を閉じました。");
-        }
-        // 新しいワーカーに制御を移すように指示
-        worker.postMessage({ action: 'skipWaiting' });
-
-        // 制御が移るのを待ってからリロードする
-        let isReloading = false;
-        navigator.serviceWorker.addEventListener('controllerchange', () => {
-            if (isReloading) return;
-            isReloading = true;
-            console.log("Controller changed, reloading page...");
-            window.location.reload();
-        });
-    };
-    // ★★★ ここまで ★★★
+    // ページリロードの唯一のトリガーとしてcontrollerchangeを定義
+    let isReloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (isReloading) return;
+        isReloading = true;
+        console.log("Controller has changed, reloading page for update...");
+        window.location.reload();
+    });
 
     const handleUpdateFound = (registration) => {
         const newWorker = registration.installing;
         if (newWorker) {
             console.log('新しいService Workerのインストールを検知しました。');
-            newWorker.addEventListener('statechange', async () => {
+            newWorker.addEventListener('statechange', () => {
+                // 新しいワーカーがインストールされ、待機状態になったら...
                 if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                    console.log('新しいService Workerがインストールされ、待機状態に入りました。');
-                    
-                    if (isUpdateInProgress) return;
-                    isUpdateInProgress = true;
-
-                    const confirmed = await uiUtils.showCustomConfirm(
-                        "新しいバージョンが利用可能です。\n\n今すぐ更新しますか？ (アプリがリロードされます)"
-                    );
-                    if (confirmed) {
-                        activateUpdate(newWorker);
-                    } else {
-                        console.log("ユーザーが更新をキャンセルしました。");
-                        isUpdateInProgress = false;
+                    console.log('新しいService Workerが待機状態に入りました。アクティベートを試みます。');
+                    // 確認なしで即座に更新を指示
+                    if (state.db) {
+                        state.db.close();
+                        console.log("Service Worker更新のため、現在のDB接続を閉じました。");
                     }
+                    newWorker.postMessage({ action: 'skipWaiting' });
                 }
             });
         }
     };
 
-    // ★修正点: controllerchangeリスナーを削除
-    /*
-    let isReloading = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (isReloading) return;
-        isReloading = true;
-        window.location.reload();
-    });
-    */
-
     navigator.serviceWorker.addEventListener('message', event => {
         if (event.data && event.data.status === 'cacheCleared') {
             console.log('Service Workerから手動キャッシュクリア完了のメッセージを受信。リロードを実行します。');
-            // このリロードはユーザー起因なので残す
-            let isReloadingForCache = false;
-            if (isReloadingForCache) return;
-            isReloadingForCache = true;
+            if (isReloading) return;
+            isReloading = true;
             window.location.reload();
         }
     });
@@ -561,57 +529,28 @@ function registerServiceWorker() {
             console.log('ServiceWorker登録成功 スコープ: ', registration.scope);
 
             const checkForUpdates = () => {
-                if (isUpdateInProgress) {
-                    console.log("既に更新処理が進行中のため、今回の更新チェックはスキップします。");
-                    return;
-                }
                 navigator.serviceWorker.ready.then(readyRegistration => {
-                    console.log('Service Worker is ready, checking for updates...');
                     readyRegistration.update();
                 }).catch(error => {
                     console.error('navigator.serviceWorker.ready failed:', error);
                 });
             };
 
-            // イベントリスナーは変更なし
-            setInterval(() => {
-                console.log('Service Workerの定期的な更新をチェックします。');
-                checkForUpdates();
-            }, 60 * 60 * 1000);
-
+            // 各イベントでの更新チェックは維持
+            setInterval(checkForUpdates, 60 * 60 * 1000);
             document.addEventListener('visibilitychange', () => {
-                if (document.visibilityState === 'visible') {
-                    console.log('タブがアクティブになったため、Service Workerの更新をチェックします。');
-                    checkForUpdates();
-                }
+                if (document.visibilityState === 'visible') checkForUpdates();
             });
+            window.addEventListener('focus', checkForUpdates);
 
-            window.addEventListener('focus', () => {
-                console.log('ウィンドウがフォーカスされたため、Service Workerの更新をチェックします。');
-                checkForUpdates();
-            });
-
-            // 待機中のワーカーがいれば即座に通知
+            // 待機中のワーカーがいれば即座に更新を試みる
             if (registration.waiting) {
-                console.log('待機中の新しいService Workerが見つかりました。');
-                
-                if (isUpdateInProgress) return;
-                isUpdateInProgress = true;
-
-                const confirmed = await uiUtils.showCustomConfirm(
-                    "新しいバージョンが利用可能です。\n\n今すぐ更新しますか？ (アプリがリロードされます)"
-                );
-                if (confirmed) {
-                    // 新しい関数を呼び出す
-                    activateUpdate(registration.waiting);
-                } else {
-                    console.log("ユーザーが更新をキャンセルしました。");
-                    isUpdateInProgress = false;
-                }
-                return;
+                console.log('待機中の新しいService Workerが見つかりました。アクティベートを試みます。');
+                // 確認なしで即座に更新を指示
+                if (state.db) state.db.close();
+                registration.waiting.postMessage({ action: 'skipWaiting' });
             }
 
-            // 新しいワーカーが見つかった際のイベントリスナー
             registration.addEventListener('updatefound', () => handleUpdateFound(registration));
 
         } catch (error) {
@@ -619,6 +558,7 @@ function registerServiceWorker() {
         }
     });
 }
+
 
 // --- IndexedDBユーティリティ (dbUtils) ---
 const dbUtils = {
