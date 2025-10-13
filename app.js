@@ -486,6 +486,9 @@ function registerServiceWorker() {
         return;
     }
 
+    // 更新処理のロック用フラグ
+    let isUpdateInProgress = false;
+
     const handleUpdateFound = (registration) => {
         const newWorker = registration.installing;
         if (newWorker) {
@@ -493,6 +496,11 @@ function registerServiceWorker() {
             newWorker.addEventListener('statechange', async () => {
                 if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                     console.log('新しいService Workerがインストールされ、待機状態に入りました。');
+                    
+                    // 更新処理が進行中でなければダイアログを表示
+                    if (isUpdateInProgress) return;
+                    isUpdateInProgress = true;
+
                     const confirmed = await uiUtils.showCustomConfirm(
                         "新しいバージョンが利用可能です。\n\n今すぐ更新しますか？ (アプリがリロードされます)"
                     );
@@ -503,6 +511,10 @@ function registerServiceWorker() {
                             console.log("Service Worker更新のため、現在のDB接続を閉じました。");
                         }
                         newWorker.postMessage({ action: 'skipWaiting' });
+                    } else {
+                        // ユーザーがキャンセルした場合も、フラグを解除して次のチェックを許可
+                        console.log("ユーザーが更新をキャンセルしました。");
+                        isUpdateInProgress = false;
                     }
                 }
             });
@@ -530,9 +542,12 @@ function registerServiceWorker() {
             const registration = await navigator.serviceWorker.register('./sw.js');
             console.log('ServiceWorker登録成功 スコープ: ', registration.scope);
 
-            // ★★★ ここからが今回の最重要修正点 ★★★
             const checkForUpdates = () => {
-                // navigator.serviceWorker.ready を使うことで、常にアクティブなregistrationを取得
+                // 更新処理中ならチェック自体をスキップ
+                if (isUpdateInProgress) {
+                    console.log("既に更新処理が進行中のため、今回の更新チェックはスキップします。");
+                    return;
+                }
                 navigator.serviceWorker.ready.then(readyRegistration => {
                     console.log('Service Worker is ready, checking for updates...');
                     readyRegistration.update();
@@ -541,13 +556,12 @@ function registerServiceWorker() {
                 });
             };
 
-            // 1. 定期的なチェック (1時間ごと)
+            // イベントリスナーは変更なし
             setInterval(() => {
                 console.log('Service Workerの定期的な更新をチェックします。');
                 checkForUpdates();
             }, 60 * 60 * 1000);
 
-            // 2. タブがアクティブになった時にチェック
             document.addEventListener('visibilitychange', () => {
                 if (document.visibilityState === 'visible') {
                     console.log('タブがアクティブになったため、Service Workerの更新をチェックします。');
@@ -555,22 +569,28 @@ function registerServiceWorker() {
                 }
             });
 
-            // 3. ウィンドウがフォーカスされた時にチェック
             window.addEventListener('focus', () => {
                 console.log('ウィンドウがフォーカスされたため、Service Workerの更新をチェックします。');
                 checkForUpdates();
             });
-            // ★★★ ここまで ★★★
 
             // 待機中のワーカーがいれば即座に通知
             if (registration.waiting) {
                 console.log('待機中の新しいService Workerが見つかりました。');
+                
+                // 更新処理中なら何もしない
+                if (isUpdateInProgress) return;
+                isUpdateInProgress = true;
+
                 const confirmed = await uiUtils.showCustomConfirm(
                     "新しいバージョンが利用可能です。\n\n今すぐ更新しますか？ (アプリがリロードされます)"
                 );
                 if (confirmed) {
                     if (state.db) state.db.close();
                     registration.waiting.postMessage({ action: 'skipWaiting' });
+                } else {
+                    console.log("ユーザーが更新をキャンセルしました。");
+                    isUpdateInProgress = false;
                 }
                 return;
             }
@@ -583,6 +603,7 @@ function registerServiceWorker() {
         }
     });
 }
+
 
 // --- IndexedDBユーティリティ (dbUtils) ---
 const dbUtils = {
