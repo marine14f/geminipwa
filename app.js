@@ -486,7 +486,7 @@ function registerServiceWorker() {
         return;
     }
 
-    // 更新処理のロック用フラグ
+    // ★修正点: 更新処理のロック用フラグ
     let isUpdateInProgress = false;
 
     const handleUpdateFound = (registration) => {
@@ -497,7 +497,7 @@ function registerServiceWorker() {
                 if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                     console.log('新しいService Workerがインストールされ、待機状態に入りました。');
                     
-                    // 更新処理が進行中でなければダイアログを表示
+                    // ★修正点: 更新処理が進行中でなければダイアログを表示
                     if (isUpdateInProgress) return;
                     isUpdateInProgress = true;
 
@@ -543,7 +543,7 @@ function registerServiceWorker() {
             console.log('ServiceWorker登録成功 スコープ: ', registration.scope);
 
             const checkForUpdates = () => {
-                // 更新処理中ならチェック自体をスキップ
+                // ★修正点: 更新処理中ならチェック自体をスキップ
                 if (isUpdateInProgress) {
                     console.log("既に更新処理が進行中のため、今回の更新チェックはスキップします。");
                     return;
@@ -578,7 +578,7 @@ function registerServiceWorker() {
             if (registration.waiting) {
                 console.log('待機中の新しいService Workerが見つかりました。');
                 
-                // 更新処理中なら何もしない
+                // ★修正点: 更新処理中なら何もしない
                 if (isUpdateInProgress) return;
                 isUpdateInProgress = true;
 
