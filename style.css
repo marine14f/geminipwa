@@ -717,9 +717,9 @@ body.dark-mode .ripple {
 /* --- Message Actions --- */
 .message-actions, .message-cascade-controls {
     position: absolute;
-    display: flex; /* 常にflexでレイアウトを確保 */
-    visibility: hidden; /* 初期状態では非表示 */
-    opacity: 0; /* 初期状態では透明 */
+    display: flex;
+    opacity: 0;
+    transform: translateY(8px); /* 少し下にずらしておく */
     flex-wrap: nowrap;
     gap: var(--spacing-unit);
     background: var(--bg-message-actions);
@@ -727,11 +727,13 @@ body.dark-mode .ripple {
     border-radius: var(--border-radius-md);
     box-shadow: var(--shadow-2);
     z-index: 2;
-    transition: opacity var(--transition-duration) var(--transition-timing), visibility var(--transition-duration) var(--transition-timing);
+    /* transitionプロパティに transform を追加 */
+    transition: opacity var(--transition-duration) var(--transition-timing), transform var(--transition-duration) var(--transition-timing);
     width: max-content;
     white-space: nowrap;
-    pointer-events: none; /* 非表示時はクリックできないように */
-}
+    pointer-events: none; /* 透明な状態ではクリックできないようにする */
+  }
+  
 .message-actions { bottom: calc(-1 * var(--spacing-unit) * 5.5); }
 .message-cascade-controls {
     top: calc(-1 * var(--spacing-unit) * 5.5);
@@ -744,8 +746,8 @@ body.dark-mode .ripple {
 .message.show-actions .message-actions,
 .message.model:hover .message-cascade-controls,
 .message.model.show-actions .message-cascade-controls {
-    visibility: visible;
     opacity: 1;
+    transform: translateY(0); /* 元の位置に戻す */
     pointer-events: auto; /* 表示されたらクリックできるように */
 }
 
