@@ -719,7 +719,7 @@ body.dark-mode .ripple {
     position: absolute;
     display: flex;
     opacity: 0;
-    transform: translateY(8px); /* 少し下にずらしておく */
+    transform: translateY(8px);
     flex-wrap: nowrap;
     gap: var(--spacing-unit);
     background: var(--bg-message-actions);
@@ -727,12 +727,16 @@ body.dark-mode .ripple {
     border-radius: var(--border-radius-md);
     box-shadow: var(--shadow-2);
     z-index: 2;
-    /* transitionプロパティに transform を追加 */
     transition: opacity var(--transition-duration) var(--transition-timing), transform var(--transition-duration) var(--transition-timing);
-    width: max-content;
+    
+    /* ★★★ 検証用の修正点 ★★★ */
+    width: 250px; /* 'width: max-content;' の代わりに固定幅を指定 */
+    /* white-space: nowrap; は影響しないのでそのまま */
     white-space: nowrap;
-    pointer-events: none; /* 透明な状態ではクリックできないようにする */
+  
+    pointer-events: none;
   }
+  
   
 .message-actions { bottom: calc(-1 * var(--spacing-unit) * 5.5); }
 .message-cascade-controls {
