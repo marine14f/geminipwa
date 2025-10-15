@@ -6,7 +6,7 @@
     <title>Gemini PWA Mk-II</title>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" id="theme-color-meta" content="#4a90e2">
-    <!-- RobotoフォントとMaterial Symbols を読み込む (最終修正版) -->
+    <!-- RobotoフォントとMaterial Symbols を読み込む -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap">
@@ -362,7 +362,6 @@
                 <div class="settings-group" id="data-sync-group">
                     <div class="sync-header">
                         <h3>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 256 256" fill="currentColor"><path d="M128,32,69.6,71.2,10.4,110.4,69.6,149.6,128,188.8l58.4-39.2,59.2-39.2L186.4,71.2ZM128,51.5l38.7,26.1-38.7,26.1-38.7-26.1Zm0,153.3,58.4-39.2,0-52.2-58.4,39.2Zm-58.4-91.4,58.4,39.2,0,52.2-58.4-39.2Z"/></svg>
                             データ同期
                         </h3>
                     </div>
@@ -370,7 +369,9 @@
                     <!-- 連携前の表示 -->
                     <div id="dropbox-auth-state">
                         <p class="sync-description">
-                            Dropboxアカウントと連携して、異なるデバイス間でプロファイルや会話履歴を安全に同期します。<a href="https://github.com/kinkan04/Gemini-PWA-Mk-II/blob/main/docs/dropbox_integration.md" target="_blank" rel="noopener noreferrer">詳細はこちら</a>
+                            Dropboxアカウントと連携して、異なるブラウザ間でPWAの全データを安全に同期します。<br>
+                            初回は複数環境で残したいデータを1つのブラウザーにまとめてから連携することをおすすめします。<br>
+                            初回連携時は全データをクラウドにアップロードする処理が実行されます。<a href="https://github.com/kinkan04/Gemini-PWA-Mk-II/blob/main/docs/dropbox_integration.md" target="_blank">本機能の詳細はこちら</a>
                         </p>
                         <button id="dropbox-auth-btn" class="sync-primary-btn">
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 256 256" fill="currentColor"><path d="M128,32,69.6,71.2,10.4,110.4,69.6,149.6,128,188.8l58.4-39.2,59.2-39.2L186.4,71.2ZM128,51.5l38.7,26.1-38.7,26.1-38.7-26.1Zm0,153.3,58.4-39.2,0-52.2-58.4,39.2Zm-58.4-91.4,58.4,39.2,0,52.2-58.4-39.2Z"/></svg>
@@ -456,7 +457,6 @@
                     </label>
                     <p style="font-size: 11px; color: var(--text-secondary); margin-top: -5px; margin-bottom: 10px;">
                         ※ チェック時、モデルは回答生成のためにWeb検索を行います。<br>
-                        ※ Gemini 2.0以降でのみ対応(1.5以前は互換なし。エラーになる)<br>
                         ※ 推論モデルは推論内で検索する場合があり、引用データが帰らない場合がある。
                     </p>
                     <label class="checkbox-label" style="margin-top: 15px;">
@@ -474,6 +474,56 @@
                         ※ チェック時、モデルは応答時に必ずFunctionCallingで関数呼び出しを行います。<br>
                         ※ 応答時に必ずイラストを作成させたい時などに有効です。
                     </p>
+                </div>
+
+                <div class="settings-group" id="stable-diffusion-settings">
+                    <h3>画像生成 (Stable Diffusion)</h3>
+                    <p class="sd-description">
+                        ローカルネットワーク上のStable Diffusion WebUI (Forge/Reforge)と連携して画像を生成します。<br>
+                        Forge/Reforgeを起動する際に <code>--listen</code> オプションを指定してください。
+                    </p>
+                    
+                    <label for="sd-api-url">WebUI のURL:</label>
+                    <input type="text" id="sd-api-url" placeholder="例: http://127.0.0.1:7860">
+
+                    <div class="param-grid">
+                        <div>
+                            <label for="sd-api-user">ユーザー名 (任意):</label>
+                            <input type="text" id="sd-api-user" placeholder="Basic認証ユーザー名">
+                        </div>
+                        <div>
+                            <label for="sd-api-password">パスワード (任意):</label>
+                            <input type="password" id="sd-api-password" placeholder="Basic認証パスワード">
+                            
+                        </div>
+                    </div>
+                    <p class="sd-description" style="margin-top: 8px; margin-bottom: 8px;">
+                        ※このURLと認証情報は、各デバイス固有の設定として保存され、Dropboxでは同期されません。
+                    </p>
+                    <button id="sd-test-connection-btn" class="settings-action-button">接続テスト</button>
+
+                    <div class="settings-group-subsection">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="sd-enable-quality-checker">
+                            生成画像クオリティチェッカーを有効にする
+                        </label>
+                        <p class="sd-description">
+                            画像生成後にGemini Visionモデルを使用し、プロンプト通りの画像が生成されたか自動で検証します。
+                        </p>
+                        <div id="sd-quality-checker-options" class="hidden">
+                            <label for="sd-qc-model">チェック用Visionモデル:</label>
+                            <select id="sd-qc-model">
+                                <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+                                <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                            </select>
+
+                            <label for="sd-qc-prompt">チェック用システムプロンプト:</label>
+                            <textarea id="sd-qc-prompt" rows="5"></textarea>
+
+                            <label for="sd-qc-retries">リトライ上限回数:</label>
+                            <input type="number" id="sd-qc-retries" min="0" max="10" step="1" placeholder="例: 3">
+                        </div>
+                    </div>
                 </div>
 
 
@@ -750,14 +800,7 @@
                 <button id="close-memory-dialog-btn" value="close">閉じる</button>
             </div>
         </dialog>
-
-    
-        <!-- App Update Notification -->
-        <div id="update-notification" class="update-notification hidden">
-            <span>新しいバージョンが利用可能です。</span>
-            <button id="reload-for-update-btn">更新</button>
-        </div>
-
+        
         <!-- Progress Dialog -->
         <dialog id="progressDialog" class="custom-dialog progress-dialog">
             <div class="dialog-content">

@@ -280,7 +280,16 @@ try {
         syncStatusSettingsIcon: document.getElementById('sync-status-settings-icon'),
         dropboxSyncFrequencySelect: document.getElementById('dropbox-sync-frequency'),
         syncProgressText: document.getElementById('sync-progress-text'),
-        lastSyncTimeDisplay: document.getElementById('last-sync-time-display')
+        lastSyncTimeDisplay: document.getElementById('last-sync-time-display'),
+        sdApiUrlInput: document.getElementById('sd-api-url'),
+        sdApiUserInput: document.getElementById('sd-api-user'),
+        sdApiPasswordInput: document.getElementById('sd-api-password'),
+        sdTestConnectionBtn: document.getElementById('sd-test-connection-btn'),
+        sdEnableQualityCheckerCheckbox: document.getElementById('sd-enable-quality-checker'),
+        sdQualityCheckerOptionsDiv: document.getElementById('sd-quality-checker-options'),
+        sdQcModelSelect: document.getElementById('sd-qc-model'),
+        sdQcPromptTextarea: document.getElementById('sd-qc-prompt'),
+        sdQcRetriesInput: document.getElementById('sd-qc-retries')
     };
     document.body.classList.toggle('dropbox-connected', false);
 } catch (error) {
@@ -373,7 +382,27 @@ const state = {
 最終的な出力は、このあらすじを初めて読む人でも、これまでの物語の流れを正確に理解できるような形式にしてください。`,
         enableSummaryButton: true,
         floatingPanelBehavior: 'on-click',
-        dropboxSyncFrequency: 'instant'
+        dropboxSyncFrequency: 'instant',
+        sdApiUrl: '',
+        sdApiUser: '',
+        sdApiPassword: '',
+        sdEnableQualityChecker: false,
+        sdQcModel: 'gemini-2.5-pro',
+        sdQcPrompt: `あなたはプロンプトと画像を比較し、指示通りに生成されているか評価する専門家です。
+以下のプロンプトと画像の内容を厳密に比較してください。
+
+[プロンプト]
+{prompt}
+
+[評価ルール]
+- プロンプトの要素（人物、服装、背景、構図、雰囲気など）が画像内に明確に反映されていれば "OK" と評価してください。
+- 重要な要素が欠けていたり、指示と明らかに異なる場合は "NG" と評価し、その理由を簡潔に説明してください。
+
+[出力形式]
+評価結果を以下の形式で出力してください。他のテキストは一切含めないでください。
+Result: [OKまたはNG]
+Reason: [NGの場合の理由]`,
+        sdQcRetries: 3
     },
     syncMessageCounter: 0,
     backgroundImageUrl: null,
@@ -2334,6 +2363,15 @@ const uiUtils = {
         this.updateModelWarningMessage();
         this.applyBackgroundImage();
         appLogic.applyWideMode();
+
+        elements.sdApiUrlInput.value = state.settings.sdApiUrl || '';
+        elements.sdApiUserInput.value = state.settings.sdApiUser || '';
+        elements.sdApiPasswordInput.value = state.settings.sdApiPassword || '';
+        elements.sdEnableQualityCheckerCheckbox.checked = state.settings.sdEnableQualityChecker;
+        elements.sdQcModelSelect.value = state.settings.sdQcModel || 'gemini-2.5-pro';
+        elements.sdQcPromptTextarea.value = state.settings.sdQcPrompt || '';
+        elements.sdQcRetriesInput.value = state.settings.sdQcRetries === null ? '' : state.settings.sdQcRetries;
+        elements.sdQualityCheckerOptionsDiv.classList.toggle('hidden', !state.settings.sdEnableQualityChecker);
     },
 
 
@@ -4807,7 +4845,20 @@ const appLogic = {
             dropboxSyncFrequency: { element: elements.dropboxSyncFrequencySelect, event: 'change' },
             summarySystemPrompt: { element: elements.summarySystemPromptTextarea, event: 'input' },
             enableSummaryButton: { element: elements.enableSummaryButtonToggle, event: 'change', onUpdate: () => this.toggleSummaryButtonVisibility() },
-            floatingPanelBehavior: { element: elements.floatingPanelBehaviorSelect, event: 'change', onUpdate: () => this.applyFloatingPanelBehavior() }
+            floatingPanelBehavior: { element: elements.floatingPanelBehaviorSelect, event: 'change', onUpdate: () => this.applyFloatingPanelBehavior() },
+            sdApiUrl: { element: elements.sdApiUrlInput, event: 'input' },
+            sdApiUser: { element: elements.sdApiUserInput, event: 'input' },
+            sdApiPassword: { element: elements.sdApiPasswordInput, event: 'input' },
+            sdEnableQualityChecker: { 
+                element: elements.sdEnableQualityCheckerCheckbox, 
+                event: 'change', 
+                onUpdate: (value) => {
+                    elements.sdQualityCheckerOptionsDiv.classList.toggle('hidden', !value);
+                } 
+            },
+            sdQcModel: { element: elements.sdQcModelSelect, event: 'change' },
+            sdQcPrompt: { element: elements.sdQcPromptTextarea, event: 'input' },
+            sdQcRetries: { element: elements.sdQcRetriesInput, event: 'input' }
         };
     
         for (const key in settingsMap) {
@@ -5353,6 +5404,34 @@ const appLogic = {
                 }
             });
         }
+        elements.sdTestConnectionBtn.addEventListener('click', async () => {
+            const url = elements.sdApiUrlInput.value.trim().replace(/\/$/, '');
+            if (!url) {
+                return uiUtils.showCustomAlert("先にWebUIのURLを入力してください。");
+            }
+            const endpoint = `${url}/sdapi/v1/progress`;
+            const headers = {};
+            if (elements.sdApiUserInput.value && elements.sdApiPasswordInput.value) {
+                headers['Authorization'] = 'Basic ' + btoa(`${elements.sdApiUserInput.value}:${elements.sdApiPasswordInput.value}`);
+            }
+
+            try {
+                const response = await fetch(endpoint, { headers: headers });
+                if (response.ok) {
+                    await uiUtils.showCustomAlert("接続に成功しました！");
+                } else {
+                    throw new Error(`サーバーからの応答が不正です (ステータス: ${response.status})`);
+                }
+            } catch (error) {
+                console.error("SD接続テストエラー:", error);
+                await uiUtils.showCustomAlert(`接続に失敗しました。\nURL、認証情報、Forge/Reforgeの起動オプション(--listen)を確認してください。\nエラー: ${error.message}`);
+            }
+        });
+
+        elements.sdEnableQualityCheckerCheckbox.addEventListener('change', (event) => {
+            elements.sdQualityCheckerOptionsDiv.classList.toggle('hidden', !event.target.checked);
+        });
+        
     },
 
     
@@ -6193,13 +6272,13 @@ const appLogic = {
          * @param {object} systemInstruction - システムプロンプト。
          * @returns {Promise<Array>} 生成された新しいメッセージオブジェクトの配列。
          */
-    async _internalHandleSend(messagesForApi, generationConfig, systemInstruction, streamingIndex) { 
+     async _internalHandleSend(messagesForApi, generationConfig, systemInstruction) {
         let loopCount = 0;
-        const MAX_LOOPS = 10;
-        const turnResults = [];
+        const MAX_LOOPS = 5; // ループ上限を現実的な値に設定
+        const finalTurnResults = []; // 最終的に返す全メッセージを格納
         let currentTurnHistory = [...messagesForApi];
         let aggregatedSearchResults = [];
-        
+
         uiUtils.setLoadingIndicatorText('応答生成中...');
 
         const convertToApiFormat = (msg) => {
@@ -6213,11 +6292,10 @@ const appLogic = {
                     parts.push({ functionResponse: { name: msg.name, response: msg.response } });
                 }
             }
-            return { role: msg.role === 'tool' ? 'tool' : 'model', parts };
+            return { role: msg.role === 'tool' ? 'tool' : (msg.role === 'model' ? 'model' : 'user'), parts };
         };
 
         while (loopCount < MAX_LOOPS) {
-            const isFirstCallInLoop = loopCount === 0;
             loopCount++;
 
             const result = await this.callApiWithRetry({
@@ -6225,74 +6303,118 @@ const appLogic = {
                 generationConfig,
                 systemInstruction,
                 tools: window.functionDeclarations,
-                isFirstCall: isFirstCallInLoop
+                isFirstCall: (loopCount === 1)
             });
 
             const modelMessage = {
                 role: 'model',
                 content: result.content || '',
-                thoughtSummary: result.thoughtSummary,
+                thoughtSummary: (finalTurnResults.length === 0) ? result.thoughtSummary : null, // 思考は最初の応答のみ記録
                 tool_calls: result.toolCalls,
-                generated_images: result.images || [], 
                 timestamp: Date.now(),
                 finishReason: result.finishReason,
                 safetyRatings: result.safetyRatings,
-                groundingMetadata: result.groundingMetadata,
                 usageMetadata: result.usageMetadata,
                 retryCount: result.retryCount,
                 executedFunctions: []
             };
-            turnResults.push(modelMessage);
+            finalTurnResults.push(modelMessage);
 
+            // ツール呼び出しがなければ、それが最終応答。ループを終了。
             if (!result.toolCalls || result.toolCalls.length === 0) {
-                break; 
+                console.log("[_internalHandleSend] ツール呼び出しがないため、ループを終了します。");
+                break;
             }
             
+            // --- ツール実行フェーズ ---
             uiUtils.setLoadingIndicatorText('関数実行中...');
-
             const historyForFunctions = state.currentMessages.slice(0, -1);
-            const { toolResults, containsTerminalAction, search_results, internalUiActions } = await this.executeToolCalls(result.toolCalls, historyForFunctions);
+            const responseTextForQc = result.content || '';
+            
+            let toolCallResult;
+            try {
+                toolCallResult = await this.executeToolCalls(result.toolCalls, historyForFunctions, responseTextForQc);
+            } catch (toolError) {
+                console.error("[_internalHandleSend] executeToolCallsで予期せぬエラー:", toolError);
+                const functionName = result.toolCalls[0].functionCall.name;
+                toolCallResult = {
+                    toolResults: [{
+                        role: 'tool',
+                        name: functionName,
+                        response: { error: { message: `ツール実行中に予期せぬエラーが発生しました: ${toolError.message}` } },
+                        timestamp: Date.now()
+                    }],
+                    containsTerminalAction: false,
+                    search_results: [],
+                    internalUiActions: []
+                };
+            }
+            const { toolResults, containsTerminalAction, search_results, internalUiActions } = toolCallResult;
             
             if (search_results && search_results.length > 0) {
                 aggregatedSearchResults.push(...search_results);
             }
             
             if (internalUiActions && internalUiActions.length > 0) {
-                console.log(`[Debug] _internalHandleSend: executeToolCallsから ${internalUiActions.length} 件のUIアクションを受信`);
                 if (toolResults.length > 0) {
                     const lastToolResult = toolResults[toolResults.length - 1];
-                    if (!lastToolResult._internal_ui_action) {
-                        lastToolResult._internal_ui_action = [];
-                    }
+                    if (!lastToolResult._internal_ui_action) lastToolResult._internal_ui_action = [];
                     lastToolResult._internal_ui_action.push(...internalUiActions);
-                    console.log(`[Debug] _internalHandleSend: ツール結果にUIアクションを紐付けました`, lastToolResult._internal_ui_action);
                 }
             }
             
-            turnResults.push(...toolResults);
+            finalTurnResults.push(...toolResults);
             
             const executedFunctionNames = toolResults.map(tr => tr.name);
-            const lastModelMsg = turnResults.filter(m => m.role === 'model').pop();
-            if(lastModelMsg) {
-                lastModelMsg.executedFunctions.push(...executedFunctionNames);
-            }
+            modelMessage.executedFunctions.push(...executedFunctionNames);
 
-            const modelMessageForApi = convertToApiFormat(modelMessage);
-            const toolResultsForApi = toolResults.map(convertToApiFormat);
-            currentTurnHistory.push(modelMessageForApi, ...toolResultsForApi);
-
+            // 終端アクション（画像生成など）が実行されたら、ループを終了
             if (containsTerminalAction) {
                 console.log("終端アクションが検出されたため、Function Callingループを終了します。");
+                // AIがテキストを返さなかった場合、ここで強制的に再度APIを呼び出し、テキストを生成させる
+                if (!result.content) {
+                    console.log("[_internalHandleSend] テキスト応答がなかったため、ツール結果を基に最終応答を生成します。");
+                    uiUtils.setLoadingIndicatorText('最終応答を生成中...');
+
+                    // ツール結果をAPIフォーマットに変換して履歴に追加
+                    const modelMessageForApi = { role: 'model', parts: result.toolCalls.map(tc => ({ functionCall: tc.functionCall })) };
+                    const toolResultsForApi = toolResults.map(tr => ({ role: 'tool', parts: [{ functionResponse: { name: tr.name, response: tr.response } }] }));
+                    currentTurnHistory.push(modelMessageForApi, ...toolResultsForApi);
+
+                    // ツールなしで再度APIを呼び出し、テキスト応答のみを期待する
+                    const textResult = await this.callApiWithRetry({
+                        messagesForApi: currentTurnHistory,
+                        generationConfig,
+                        systemInstruction,
+                        tools: null, // ★ツールを無効化
+                        isFirstCall: false
+                    });
+                    
+                    // 最後のモデルメッセージに、生成されたテキストを追加する
+                    modelMessage.content = textResult.content || '';
+                }
                 break;
             }
+
+            // 通常のループ（非終端アクション）
+            const modelMessageForApi = { role: 'model', parts: result.toolCalls.map(tc => ({ functionCall: tc.functionCall })) };
+            const toolResultsForApi = toolResults.map(tr => ({ role: 'tool', parts: [{ functionResponse: { name: tr.name, response: tr.response } }] }));
+            currentTurnHistory.push(modelMessageForApi, ...toolResultsForApi);
             uiUtils.setLoadingIndicatorText('応答生成中...');
         }
 
         if (loopCount >= MAX_LOOPS) {
-            throw new Error("AIが同じ操作を繰り返しているようです。処理を中断しました。");
+            console.warn("Function Callingのループが上限に達しました。");
+            const finalErrorMessage = {
+                role: 'model',
+                content: 'AIが同じ操作を繰り返しているようです。処理を中断しました。プロンプトを修正して再度お試しください。',
+                timestamp: Date.now(),
+            };
+            finalTurnResults.push(finalErrorMessage);
         }
-
-        const finalModelMessages = turnResults.filter(m => m.role === 'model');
+        
+        // 翻訳や校正などの後処理
+        const finalModelMessages = finalTurnResults.filter(m => m.role === 'model');
         if (finalModelMessages.length > 0) {
             if (aggregatedSearchResults.length > 0) {
                 const lastMessage = finalModelMessages[finalModelMessages.length - 1];
@@ -6325,14 +6447,24 @@ const appLogic = {
             }
         }
         
-        return turnResults;
+        console.log("--- [_internalHandleSend] Final Output ---");
+        console.log("最終的に返却される turnResults の内容:", JSON.stringify(finalTurnResults, null, 2));
+        console.log("--------------------------------------");
+
+        return finalTurnResults;
     },
+
 
 
     /**
      * @private _internalHandleSendから返されたメッセージ配列を単一のオブジェクトに集約する。
      */
      _aggregateMessages(messages) {
+        // ★★★ デバッグログ追加 ★★★
+        console.log("--- [_aggregateMessages] Input ---");
+        console.log("集約処理の入力となる messages の内容:", JSON.stringify(messages, null, 2));
+        console.log("---------------------------------");
+        // ★★★ デバッグログ追加 ★★★
         const finalAggregatedMessage = {
             role: 'model',
             content: '',
@@ -6383,6 +6515,12 @@ const appLogic = {
         });
         
         console.log("[Debug] 集約後の最終メッセージオブジェクト:", JSON.stringify(finalAggregatedMessage, null, 2));
+
+        // ★★★ デバッグログ追加 ★★★
+        console.log("--- [_aggregateMessages] Output ---");
+        console.log("集約処理が返却する finalAggregatedMessage の内容:", JSON.stringify(finalAggregatedMessage, null, 2));
+        console.log("----------------------------------");
+        // ★★★ デバッグログ追加 ★★★
 
         return finalAggregatedMessage;
     },
@@ -6835,7 +6973,7 @@ const appLogic = {
         }
     },
 
-    async executeToolCalls(toolCalls, historyForFunctions) {
+    async executeToolCalls(toolCalls, historyForFunctions, responseTextForQc = '') {
         const messagesForFunction = (historyForFunctions || []).map(c => c.originalMessage || c);
         
         // ダミープロンプトの数を計算
@@ -6862,11 +7000,18 @@ const appLogic = {
             const functionArgs = toolCall.functionCall.args;
             
             console.log(`[Function Calling] 実行: ${functionName}`, functionArgs);
+
+            // 終端アクションとなる関数かをここで判定する
+            if (['generate_image', 'generate_image_stable_diffusion', 'generate_video', 'edit_image', 'display_layered_image'].includes(functionName)) {
+                containsTerminalAction = true;
+                console.log(`[Function Calling] 終端アクション (${functionName}) を検出しました。`);
+            }
     
             let result;
             if (window.functionCallingTools && typeof window.functionCallingTools[functionName] === 'function') {
                 try {
-                    result = await window.functionCallingTools[functionName](functionArgs, chat);
+                    const argsWithContext = { ...functionArgs, _responseTextForQc: responseTextForQc };
+                    result = await window.functionCallingTools[functionName](argsWithContext, chat);
                 } catch (e) {
                     console.error(`[Function Calling] 関数 '${functionName}' の実行中にエラーが発生しました:`, e);
                     result = { error: `関数実行中の内部エラー: ${e.message}` };
@@ -6900,6 +7045,10 @@ const appLogic = {
                 response: responseForAI, 
                 timestamp: Date.now() 
             });
+
+            if (containsTerminalAction) {
+                break;
+            }
         }
     
         if (chat.persistentMemory) {
@@ -7885,6 +8034,10 @@ const appLogic = {
                 };
 
             } catch (error) {
+                // ★★★ デバッグログ追加 ★★★
+                console.log(`[RETRY_DEBUG] Attempt ${attempt + 1} caught error:`, error);
+                // ★★★ デバッグログ追加 ★★★
+                
                 lastError = error;
                 if (error.name === 'AbortError') {
                     console.error("待機中または通信中に中断されました。リトライを中止します。", error);
@@ -9396,7 +9549,7 @@ const appLogic = {
             ]);
 
             const settingsForExport = allSettings.filter(setting => 
-                !['dropboxTokens', 'syncIsDirty', 'syncLastError', 'lastSyncId'].includes(setting.key)
+                !['dropboxTokens', 'syncIsDirty', 'syncLastError', 'lastSyncId', 'sdApiUrl', 'sdApiUser', 'sdApiPassword'].includes(setting.key)
             );
 
             const localAssets = new Map();
@@ -9429,7 +9582,6 @@ const appLogic = {
 
             console.log("[Data Export V2] チャット履歴内の添付ファイルのアセット化とデータクレンジングを開始します...");
             const imageStoreBlobs = new Map(chatImages.map(img => [img.id, img.blob]));
-            // ★★★ ここからが今回の最重要修正点 ★★★
             const blobsToSaveToImageStore = []; // 新しくimage_storeに保存するBlobのリスト
 
             for (const chat of chats) {
@@ -9451,7 +9603,7 @@ const appLogic = {
                                         const blob = await this.base64ToBlob(attachment.base64Data, attachment.mimeType);
                                         addAsset(attachment.assetId, blob);
                                         newImageIdsForMessage.push(attachment.assetId);
-                                        // ★修正点: 生成したBlobをimage_storeに保存するリストに追加
+                                        // 生成したBlobをimage_storeに保存するリストに追加
                                         blobsToSaveToImageStore.push({ id: attachment.assetId, blob: blob });
                                     } catch (e) {
                                         console.error(`[Data Export V2] 新規添付ファイルのアセット化に失敗:`, e);
@@ -9475,10 +9627,8 @@ const appLogic = {
                     }
                 }
             }
-            // ★★★ ここまで ★★★
             console.log("[Data Export V2] アセット化とクレンジングが完了しました。");
 
-            // ★修正点: 新しく生成されたBlobをimage_storeに一括で保存
             if (blobsToSaveToImageStore.length > 0) {
                 console.log(`[Data Export V2] ${blobsToSaveToImageStore.length}件の新規アセットBlobをimage_storeに永続化します。`);
                 const tx = state.db.transaction('image_store', 'readwrite');
@@ -9748,6 +9898,191 @@ const appLogic = {
             }
         });
     },
+
+    // --- ここからStable Diffusion連携機能の本体ロジック ---
+    handleStableDiffusionGeneration: async function(args, responseText = '') {
+        if (!state.settings.sdApiUrl) {
+            return { error: "Stable Diffusion WebUIのURLが設定されていません。設定画面から設定してください。" };
+        }
+
+        uiUtils.setLoadingIndicatorText('SDで画像生成中...');
+        let generatedImageBlob = null;
+        let qualityCheckResult = null;
+
+        try {
+            // クオリティチェッカーが有効かどうかの判定
+            const isQcEnabled = state.settings.sdEnableQualityChecker;
+            const maxRetries = isQcEnabled ? (state.settings.sdQcRetries || 3) : 0;
+
+            for (let i = 0; i <= maxRetries; i++) {
+                if (i > 0) {
+                    uiUtils.setLoadingIndicatorText(`品質チェックNG 再生成中... (${i}/${maxRetries})`);
+                }
+                
+                generatedImageBlob = await this.callStableDiffusionApi(args);
+
+                if (!isQcEnabled) {
+                    break; // QCが無効ならループは1回で終了
+                }
+
+                uiUtils.setLoadingIndicatorText('品質チェック中...');
+                qualityCheckResult = await this.runQualityChecker(generatedImageBlob, args.prompt, responseText);
+
+                if (qualityCheckResult.result === 'OK') {
+                    console.log("[Quality Checker] 判定: OK。処理を完了します。");
+                    break; // 成功したのでループを抜ける
+                } else {
+                    console.log(`[Quality Checker] 判定: NG。理由: ${qualityCheckResult.reason}`);
+                    if (i >= maxRetries) {
+                        throw new Error(`クオリティチェックが上限回数(${maxRetries}回)に達しました。最後のNG理由: ${qualityCheckResult.reason}`);
+                    }
+                }
+            }
+
+            // DBに保存し、imageIdを取得
+            const imageId = await this.saveImageBlob(generatedImageBlob);
+
+            return {
+                success: true,
+                message: "Stable Diffusionによる画像の生成と保存に成功しました。",
+                _internal_ui_action: {
+                    type: "display_generated_images",
+                    imageIds: [imageId]
+                },
+                meta: {
+                    ...args,
+                    qualityCheckResult: qualityCheckResult // 最終的なチェック結果もメタ情報として返す
+                }
+            };
+
+        } catch (error) {
+            console.error("[Stable Diffusion] 画像生成プロセスでエラー:", error);
+            return { success: false, error: { message: `画像生成エラー: ${error.message}` } };
+        }
+    },
+
+    callStableDiffusionApi: async function(args) {
+        const apiUrl = state.settings.sdApiUrl.trim().replace(/\/$/, '');
+        const endpoint = `${apiUrl}/sdapi/v1/txt2img`;
+
+        // advanced_params を分離し、残りを mainArgs として受け取る
+        const { advanced_params, ...mainArgs } = args;
+
+        // 1. デフォルト値を設定
+        // 2. mainArgs で上書き
+        // 3. advanced_params でさらに上書き (これにより、どんなパラメータも渡せる)
+        const payload = {
+            negative_prompt: "",
+            seed: -1,
+            steps: 25,
+            cfg_scale: 7,
+            width: 1024,
+            height: 1024,
+            ...mainArgs,
+            ...advanced_params
+        };
+
+        // 必須パラメータのチェック
+        if (!payload.prompt) {
+            throw new Error("必須パラメータ 'prompt' が指定されていません。");
+        }
+
+        // Hires. fixが有効な場合のdenoising_strengthのフォールバック処理
+        if (payload.enable_hr === true && payload.denoising_strength === undefined) {
+            payload.denoising_strength = 0.7;
+            console.log("[Stable Diffusion] Hires. fixが有効ですがdenoising_strengthが未指定のため、デフォルト値の0.7を設定しました。");
+        }
+        
+        // sd_model_checkpoint を override_settings に移動する後処理
+        if (payload.sd_model_checkpoint) {
+            if (!payload.override_settings) {
+                payload.override_settings = {};
+            }
+            if (!payload.override_settings.sd_model_checkpoint) {
+                payload.override_settings.sd_model_checkpoint = payload.sd_model_checkpoint;
+            }
+            delete payload.sd_model_checkpoint; // トップレベルのキーは削除
+        }
+
+        const headers = { 'Content-Type': 'application/json' };
+        if (state.settings.sdApiUser && state.settings.sdApiPassword) {
+            headers['Authorization'] = 'Basic ' + btoa(`${state.settings.sdApiUser}:${state.settings.sdApiPassword}`);
+        }
+
+        console.log("[Stable Diffusion] APIリクエスト送信:", endpoint, payload);
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            let errorMsg = `APIエラー (${response.status})`;
+            try {
+                const errorJson = await response.json();
+                errorMsg += `: ${errorJson.detail || JSON.stringify(errorJson)}`;
+            } catch (e) { /* ignore */ }
+            throw new Error(errorMsg);
+        }
+
+        const result = await response.json();
+        if (!result.images || result.images.length === 0) {
+            throw new Error("APIからの応答に画像データが含まれていませんでした。");
+        }
+
+        const base64Image = result.images[0];
+        return await this.base64ToBlob(base64Image, 'image/png');
+    },
+
+
+
+    runQualityChecker: async function(imageBlob, prompt, responseText = '') {
+        const qcModel = state.settings.sdQcModel;
+        const qcSystemPrompt = state.settings.sdQcPrompt
+            .replace('{prompt}', prompt || '(プロンプトなし)')
+            .replace('{response_text}', responseText || '(応答文なし)');
+
+        // ★★★ ここからログを追加 ★★★
+        console.log("--- [Quality Checker Debug] ---");
+        console.log("画像生成プロンプト:", prompt);
+        console.log("AIの応答文:", responseText);
+        console.log("最終的なチェック用プロンプト:", qcSystemPrompt);
+        console.log("---------------------------------");
+        // ★★★ ここまでログを追加 ★★★
+        
+        const imageBase64 = await this.fileToBase64(imageBlob);
+
+        const requestBody = {
+            contents: [{
+                parts: [
+                    { text: qcSystemPrompt },
+                    { inlineData: { mimeType: 'image/png', data: imageBase64 } }
+                ]
+            }],
+            generationConfig: { temperature: 0.1 }
+        };
+
+        const endpoint = `${GEMINI_API_BASE_URL}${qcModel}:generateContent?key=${state.settings.apiKey}`;
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+            throw new Error(`品質チェックAPIエラー (${response.status})`);
+        }
+
+        const data = await response.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+        if (text.includes('Result: OK')) {
+            return { result: 'OK', reason: '' };
+        } else {
+            const reasonMatch = text.match(/Reason:\s*(.*)/);
+            return { result: 'NG', reason: reasonMatch ? reasonMatch[1] : '理由不明' };
+        }
+    }
 
 }; // appLogic終了
 

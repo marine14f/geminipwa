@@ -1359,7 +1359,6 @@ async function generate_image(args = {}) {
     }
 }
 
-
 /**
  * 既存の画像を、テキストプロンプトに基づいて編集します。
  * @param {object} args
@@ -1676,6 +1675,17 @@ window.functionCallingTools = {
   display_layered_image: display_layered_image,
   generate_video: generate_video,
   generate_image: generate_image,
+  generate_image_stable_diffusion: async function(args) {
+    console.log(`[Function Calling] generate_image_stable_diffusionが呼び出されました。`, args);
+    if (window.appLogic && typeof window.appLogic.handleStableDiffusionGeneration === 'function') {
+        // 本体ロジックはapp.jsに委譲する
+        // _responseTextForQc を分離して渡す
+        const { _responseTextForQc, ...sdArgs } = args;
+        return await window.appLogic.handleStableDiffusionGeneration(sdArgs, _responseTextForQc);
+    } else {
+        return { error: "Stable Diffusion連携機能が初期化されていません。" };
+    }
+  },
   edit_image: edit_image,
   manage_character_memory: manage_character_memory
 };
@@ -2163,6 +2173,29 @@ window.functionDeclarations = [
                     "default": "1:1",
                     "description": "生成画像のアスペクト比を指定します。指定がなければ1:1。" 
                 }
+                },
+                "required": ["prompt"]
+            }
+        },
+        {
+            "name": "generate_image_stable_diffusion",
+            "description": "【最重要ルール】この関数を呼び出す際は、必ずユーザー向けのテキスト応答（物語の続き、画像の説明文など）も同時に生成してください。テキスト応答には、生成画像を表示したい位置に`[IMAGE_HERE]`という目印を必ず含めてください。\n【機能概要】ユーザーが『Stable Diffusionで』『SDで』のように明示的に指示した場合に、テキストプロンプトと詳細パラメータに基づき画像を生成します。",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "prompt": { "type": "STRING", "description": "生成したい画像の内容を表す、詳細な英語のプロンプト。" },
+                    "negative_prompt": { "type": "STRING", "description": "画像に含めたくない要素を指定する英語のネガティブプロンプト。" },
+                    "width": { "type": "NUMBER", "description": "画像の幅（ピクセル単位）。デフォルトは1024。" },
+                    "height": { "type": "NUMBER", "description": "画像の高さ（ピクセル単位）。デフォルトは1024。" },
+                    "steps": { "type": "NUMBER", "description": "サンプリングステップ数。品質に影響します。デフォルトは25。" },
+                    "cfg_scale": { "type": "NUMBER", "description": "CFGスケール。プロンプトへの忠実度を調整します。デフォルトは7。" },
+                    "sampler_name": { "type": "STRING", "description": "使用するサンプラー名。例: 'DPM++ 2M Karras', 'Euler a'。" },
+                    "seed": { "type": "NUMBER", "description": "シード値。-1を指定するとランダムになります。デフォルトは-1。" },
+                    "sd_model_checkpoint": { "type": "STRING", "description": "使用するStable Diffusionのチェックポイントモデル名。指定がない場合はWebUIの現在の設定が使用されます。" },
+                    "advanced_params": {
+                        "type": "OBJECT",
+                        "description": "高度な設定用のオブジェクト。ここに、`restore_faces`, `tiling`, `enable_hr`, `hr_scale`, `script_name`, `script_args`, `override_settings` など、他の引数で定義されていない任意のtxt2img APIパラメータをキーと値のペアで指定できます。キーと値はAPIの仕様に完全に一致させてください。"
+                    }
                 },
                 "required": ["prompt"]
             }

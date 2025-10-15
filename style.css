@@ -2576,3 +2576,35 @@ body.dark-mode .header-delete-button:disabled {
     overflow: hidden;
 }
 
+/* --- Stable Diffusion Settings --- */
+#stable-diffusion-settings .sd-description {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: -10px;
+    margin-bottom: 15px;
+    line-height: 1.5;
+}
+
+#stable-diffusion-settings .settings-group-subsection {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-primary);
+}
+
+#sd-test-connection-btn {
+    width: auto;
+    padding: 8px 16px;
+    font-size: 0.8rem;
+    margin-top: 8px;
+    background-color: var(--bg-button-action);
+}
+
+body.dark-mode #sd-test-connection-btn {
+    color: var(--text-primary);
+}
+
+#sd-quality-checker-options {
+    margin-top: 16px;
+    padding-left: 20px;
+    border-left: 2px solid var(--border-tertiary);
+}
