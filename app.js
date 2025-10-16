@@ -8037,7 +8037,7 @@ const appLogic = {
                 // ★★★ デバッグログ追加 ★★★
                 console.log(`[RETRY_DEBUG] Attempt ${attempt + 1} caught error:`, error);
                 // ★★★ デバッグログ追加 ★★★
-                
+
                 lastError = error;
                 if (error.name === 'AbortError') {
                     console.error("待機中または通信中に中断されました。リトライを中止します。", error);
@@ -9806,8 +9806,11 @@ const appLogic = {
     
     async updateDropboxUIState() {
         const tokenData = await dbUtils.getSetting('dropboxTokens');
+        const isAuthenticated = tokenData && tokenData.value && tokenData.value.access_token;
+
+        elements.syncStatusHeaderIcon.style.display = isAuthenticated ? 'block' : 'none';
         
-        if (tokenData && tokenData.value && tokenData.value.access_token) {
+        if (isAuthenticated) {
             document.body.classList.add('dropbox-connected');
             elements.dropboxAuthState.classList.add('hidden');
             elements.dropboxConnectedState.classList.remove('hidden');

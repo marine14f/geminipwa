@@ -2608,3 +2608,7 @@ body.dark-mode #sd-test-connection-btn {
     padding-left: 20px;
     border-left: 2px solid var(--border-tertiary);
 }
+
+#sync-status-settings-icon {
+    cursor: default;
+}
