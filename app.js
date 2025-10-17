@@ -815,9 +815,6 @@ const dbUtils = {
     },
 
     async saveChat(optionalTitle = null, chatObjectToSave = null) {
-        // ★★★ ログ出力コード ★★★
-        logMessagesState("saveChat 開始時");
-        
         await this.openDB();
     
         let messagesForStats = [];
@@ -829,14 +826,14 @@ const dbUtils = {
                 else console.log("saveChat: 新規チャットに保存するメッセージもシステムプロンプトもなし");
                 return state.currentChatId;
             }
-    
+
             const messagesToSave = state.currentMessages.map(msg => ({
                 role: msg.role,
                 content: msg.content,
                 timestamp: msg.timestamp,
                 thoughtSummary: msg.thoughtSummary || null,
                 tool_calls: msg.tool_calls || null,
-                imageIds: msg.imageIds, // undefinedでもそのまま渡す
+                imageIds: msg.imageIds,
                 finishReason: msg.finishReason,
                 safetyRatings: msg.safetyRatings,
                 error: msg.error,
@@ -844,7 +841,13 @@ const dbUtils = {
                 isSelected: msg.isSelected,
                 siblingGroupId: msg.siblingGroupId,
                 groundingMetadata: msg.groundingMetadata,
-                attachments: msg.attachments,
+                // attachments を安全にコピーし、file オブジェクトのみ除外する
+                attachments: msg.attachments ? msg.attachments.map(att => ({
+                    name: att.name,
+                    mimeType: att.mimeType,
+                    base64Data: att.base64Data,
+                    assetId: att.assetId
+                })) : undefined,
                 usageMetadata: msg.usageMetadata,
                 executedFunctions: msg.executedFunctions,
                 generated_images: msg.generated_images,
@@ -855,6 +858,7 @@ const dbUtils = {
                 isHidden: msg.isHidden,
                 isAutoTrigger: msg.isAutoTrigger
             }));
+
             messagesForStats = messagesToSave;
     
             chatDataToSave = {
@@ -917,7 +921,7 @@ const dbUtils = {
                     };
                 };
     
-                if (state.currentChatId && !chatObjectToSave) { // chatObjectToSaveがある場合はそれをそのまま使う
+                if (state.currentChatId && !chatObjectToSave) {
                     const getRequest = store.get(state.currentChatId);
                     getRequest.onsuccess = (event) => {
                         const existingChat = event.target.result;
@@ -933,7 +937,7 @@ const dbUtils = {
                         processSave(null);
                     };
                 } else {
-                    processSave(chatObjectToSave); // chatObjectToSaveを渡すことで既存データを引き継ぐ
+                    processSave(chatObjectToSave);
                 }
     
                 transaction.oncomplete = () => {
@@ -950,8 +954,6 @@ const dbUtils = {
             }
         });
     },
-
-
 
     async _calculateChatStats(messages) {
         if (!messages) return null;
@@ -7484,20 +7486,8 @@ const appLogic = {
             console.log(`削除実行: ${deleteTargetDescription}`);
             const originalFirstUserMsgIndex = state.currentMessages.findIndex(m => m.role === 'user');
 
-            // 先にDOMから要素を削除
-            indicesToDelete.forEach(idx => {
-                const elementToRemove = elements.messageContainer.querySelector(`.message[data-index="${idx}"]`);
-                if (elementToRemove) {
-                    elementToRemove.remove();
-                }
-            });
-            // その後stateを更新
             indicesToDelete.sort((a, b) => b - a).forEach(idx => {
                 state.currentMessages.splice(idx, 1);
-            });
-            // 最後にインデックスを振り直す
-            elements.messageContainer.querySelectorAll('.message').forEach((el, i) => {
-                el.dataset.index = i;
             });
 
             console.log(`メッセージ削除完了 (state)。削除件数: ${indicesToDelete.length}`);
@@ -7506,7 +7496,6 @@ const appLogic = {
             let requiresTitleUpdate = indicesToDelete.includes(originalFirstUserMsgIndex);
 
             try {
-                // 先にUIを完全に更新し、インデックスのズレを解消する
                 uiUtils.renderChatMessages();
     
                 let newTitleForSave = null;
@@ -7532,7 +7521,7 @@ const appLogic = {
                 
                 if (state.settings.autoScroll) {
                     requestAnimationFrame(() => {
-                        uiUtils.scrollToBottom();
+                        this.scrollToBottom();
                     });
                 }
     
@@ -7545,6 +7534,7 @@ const appLogic = {
              console.log("削除キャンセル");
         }
     },
+
 
     
     
