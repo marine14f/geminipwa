@@ -8,6 +8,37 @@ import("https://esm.run/@google/genai").then(module => {
     document.body.innerHTML = `<p style="color: red; padding: 20px;">SDKの読み込みに失敗しました。アプリを起動できません。</p>`;
 });
 
+
+/**
+ * [デバッグ用] state.currentMessages の添付ファイル状態をログに出力するヘルパー
+ * @param {string} title - ログのタイトル
+ */
+ function logMessagesState(title) {
+    console.group(`[ATTACHMENT DEBUG] ${title}`);
+    try {
+        if (!window.state || !state.currentMessages || state.currentMessages.length === 0) {
+            console.log("state.currentMessages は空です。");
+            return;
+        }
+        console.log(`メッセージ総数: ${state.currentMessages.length}`);
+        const summary = state.currentMessages.map((msg, index) => ({
+            index,
+            role: msg.role,
+            contentLength: msg.content?.length || 0,
+            hasAttachments: !!msg.attachments,
+            attachmentCount: msg.attachments?.length || 0,
+            // 最初の添付ファイルにbase64Dataがあるか（文字数で確認）
+            firstAttachmentBase64Length: msg.attachments?.[0]?.base64Data?.length || 0,
+            isHidden: !!msg.isHidden
+        }));
+        console.table(summary);
+    } catch (error) {
+        console.error("ログ出力中にエラーが発生しました:", error);
+    } finally {
+        console.groupEnd();
+    }
+}
+
 // --- 定数 ---
 const DB_NAME = 'GeminiPWA_DB';
 const DB_VERSION = 13; 
@@ -784,6 +815,9 @@ const dbUtils = {
     },
 
     async saveChat(optionalTitle = null, chatObjectToSave = null) {
+        // ★★★ ログ出力コード ★★★
+        logMessagesState("saveChat 開始時");
+        
         await this.openDB();
     
         let messagesForStats = [];
@@ -3710,6 +3744,9 @@ const appLogic = {
         // ディープコピーで元のメッセージ配列を保護する
         const messagesForApi = JSON.parse(JSON.stringify(baseMessages));
 
+        // ★★★ ログ出力コード ★★★
+        logMessagesState("_prepareApiHistory ディープコピー直後");
+
         let historyToProcess;
 
         // 要約コンテキストが存在する場合、API送信用の履歴を動的に構築する
@@ -6523,6 +6560,9 @@ const appLogic = {
 
     
     async handleSend() {
+        // ★★★ ログ出力コード ★★★
+        logMessagesState("handleSend 開始時");
+
         if (state.isSending) { return; }
         if (state.editingMessageIndex !== null) { await uiUtils.showCustomAlert("他のメッセージを編集中です。"); return; }
         if (state.isEditingSystemPrompt) { await uiUtils.showCustomAlert("システムプロンプトを編集中です。"); return; }
@@ -6554,6 +6594,9 @@ const appLogic = {
             this.scrollToBottom();
         }
         
+        // ★★★ ログ出力コード ★★★
+        logMessagesState("ユーザーメッセージ保存直前");
+
         // ユーザーメッセージをDBに保存し、同期処理をトリガー
         await dbUtils.saveChat();
         this.markAsDirtyAndSchedulePush(); // <-- ユーザーメッセージ送信後に呼び出しを追加
@@ -6582,6 +6625,10 @@ const appLogic = {
             }
 
             const systemInstruction = finalSystemPrompt ? { role: "system", parts: [{ text: finalSystemPrompt }] } : null;
+
+             // ★★★ ログ出力コード ★★★
+            logMessagesState("_prepareApiHistory 呼び出し直前");
+
             const historyForApi = this._prepareApiHistory(baseHistory);
 
             const newMessages = await this._internalHandleSend(historyForApi, generationConfig, systemInstruction);
@@ -6590,6 +6637,9 @@ const appLogic = {
             state.currentMessages[modelMessageIndex] = finalAggregatedMessage;
 
             uiUtils.renderChatMessages(() => uiUtils.scrollToBottom());
+
+            // ★★★ ログ出力コード ★★★
+            logMessagesState("モデル応答保存直前");
 
             // モデルの応答をDBに保存し、同期処理をトリガー
             await dbUtils.saveChat();
@@ -6613,6 +6663,9 @@ const appLogic = {
             
             state.currentMessages[modelMessageIndex] = { role: 'error', content: errorMessage, timestamp: Date.now() };
             uiUtils.renderChatMessages(() => uiUtils.scrollToBottom());
+
+            // ★★★ ログ出力コード ★★★
+            logMessagesState("エラー発生後、DB保存直前");
             
             // エラー発生時もDBに保存し、同期処理をトリガー
             await dbUtils.saveChat();
@@ -7899,6 +7952,8 @@ const appLogic = {
             elements.fileUploadDialog.close('ok');
             uiUtils.adjustTextareaHeight();
             uiUtils.updateAttachmentBadgeVisibility();
+            // ★★★ ログ出力コード ★★★
+            logMessagesState("confirmAttachment 完了時 (state.pendingAttachments が設定された直後)");
         }
     },
 
