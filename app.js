@@ -810,7 +810,7 @@ const dbUtils = {
                 isSelected: msg.isSelected,
                 siblingGroupId: msg.siblingGroupId,
                 groundingMetadata: msg.groundingMetadata,
-                attachments: msg.attachments, // ★修正点4: スプレッド構文をやめ、完全なオブジェクトを渡す
+                attachments: msg.attachments,
                 usageMetadata: msg.usageMetadata,
                 executedFunctions: msg.executedFunctions,
                 generated_images: msg.generated_images,
@@ -2146,7 +2146,7 @@ const uiUtils = {
                     titleEl.textContent = titleText;
                     titleEl.title = titleText;
 
-                    // ★ 新機能: 統計情報を表示
+                    // 統計情報を表示
                     if (chat.stats) {
                         li.querySelector('.js-stat-tokens').innerHTML = `<span class="material-symbols-outlined">token</span>${chat.stats.totalTokens > 0 ? chat.stats.totalTokens.toLocaleString() : '0'}`;
                         li.querySelector('.js-stat-assets').innerHTML = `<span class="material-symbols-outlined">perm_media</span>${chat.stats.assetCount > 0 ? chat.stats.assetCount.toLocaleString() : '0'}`;
@@ -2178,7 +2178,7 @@ const uiUtils = {
                 elements.historyTitle.textContent = '履歴一覧';
             }
 
-            // ★ 新機能: 古い履歴削除ボタンの状態を更新
+            // 古い履歴削除ボタンの状態を更新
             const deleteBtn = document.getElementById('delete-old-chats-btn');
             if (oldChatsCount > 0) {
                 deleteBtn.disabled = false;
@@ -3707,17 +3707,20 @@ const appLogic = {
     _prepareApiHistory(baseMessages) {
         console.log("[API Prep] 履歴をAPIフォーマットに変換します。");
 
-        let messagesForApi;
+        // ディープコピーで元のメッセージ配列を保護する
+        const messagesForApi = JSON.parse(JSON.stringify(baseMessages));
+
+        let historyToProcess;
 
         // 要約コンテキストが存在する場合、API送信用の履歴を動的に構築する
         if (state.currentSummarizedContext && state.currentSummarizedContext.summaryText) {
             console.log("[API Prep] 要約コンテキストを検出。API履歴を圧縮します。");
-            const { summaryText, summaryRange } = state.currentSummarizedContext;
+            const { summaryText } = state.currentSummarizedContext;
             const headCount = 5;
             const tailCount = 15;
 
-            const headMessages = baseMessages.slice(0, headCount);
-            const tailMessages = baseMessages.slice(Math.max(headCount, baseMessages.length - tailCount));
+            const headMessages = messagesForApi.slice(0, headCount);
+            const tailMessages = messagesForApi.slice(Math.max(headCount, messagesForApi.length - tailCount));
             
             const summaryMessage = {
                 role: 'user',
@@ -3727,28 +3730,26 @@ const appLogic = {
                 attachments: []
             };
             
-            // head, summary, tail を結合してAPI用の履歴を作成
-            messagesForApi = [...headMessages, summaryMessage, ...tailMessages];
-            console.log(`[API Prep] 履歴を圧縮しました: Head(${headMessages.length}) + Summary(1) + Tail(${tailMessages.length}) = ${messagesForApi.length}件`);
+            historyToProcess = [...headMessages, summaryMessage, ...tailMessages];
+            console.log(`[API Prep] 履歴を圧縮しました: Head(${headMessages.length}) + Summary(1) + Tail(${tailMessages.length}) = ${historyToProcess.length}件`);
 
         } else {
             // 通常の履歴
-            messagesForApi = [...baseMessages];
+            historyToProcess = messagesForApi;
         }
 
         // ダミープロンプトの追加処理は共通
         if (state.settings.dummyUser) {
-            messagesForApi.push({ role: 'user', content: state.settings.dummyUser, attachments: [] });
+            historyToProcess.push({ role: 'user', content: state.settings.dummyUser, attachments: [] });
         }
         if (state.settings.dummyModel) {
-            messagesForApi.push({ role: 'model', content: state.settings.dummyModel, attachments: [] });
+            historyToProcess.push({ role: 'model', content: state.settings.dummyModel, attachments: [] });
         }
         
         console.log('--- [DEBUG] API送信前の履歴チェック ---');
-        console.log(`APIに送信されるメッセージ件数: ${messagesForApi.length}件`);
+        console.log(`APIに送信されるメッセージ件数: ${historyToProcess.length}件`);
 
-        return messagesForApi.map(msg => {
-            // 添付ファイルやFunction Callのpartsを生成するロジックは変更なし
+        return historyToProcess.map(msg => {
             const parts = [];
             let contentText = msg.content || '';
             if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
@@ -3756,7 +3757,7 @@ const appLogic = {
                 const attachmentText = `\n\n[添付ファイル: ${fileNames}]`;
                 contentText = (contentText.trim() ? contentText : '') + attachmentText;
             }
-            if (contentText.trim() !== '' || msg.isHidden) { // isHiddenのメッセージもcontentが空でもpartsに含める
+            if (contentText.trim() !== '' || msg.isHidden) {
                 parts.push({ text: contentText });
             }
             if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
@@ -3778,6 +3779,7 @@ const appLogic = {
             return { role: msg.role === 'tool' ? 'tool' : (msg.role === 'model' ? 'model' : 'user'), parts };
         }).filter(c => c.parts.length > 0);
     },
+
 
 
 
@@ -4369,7 +4371,7 @@ const appLogic = {
         updateProgress('同期準備中...');
 
         try {
-            // ★修正点: 操作タイプ 'push' を渡す
+            // 操作タイプ 'push' を渡す
             await window.dropboxApi.uploadLockFile('push');
 
             // --- Step 1: 競合検知 ---
@@ -4411,7 +4413,7 @@ const appLogic = {
             const cloudAssetsList = await window.dropboxApi.listAssets();
             const cloudAssetIds = new Set(cloudAssetsList.map(asset => asset.name));
 
-            // ★デバッグログ: ローカルとクラウドのアセットIDリストを比較
+            // ローカルとクラウドのアセットIDリストを比較
             console.log('%c[DEBUG_SYNC] --- Asset ID Comparison ---', 'color: red; font-weight: bold;');
             console.log(`%c[DEBUG_SYNC] Local Asset IDs (${localAssetIds.size} items):`, 'color: blue;', Array.from(localAssetIds).sort());
             console.log(`%c[DEBUG_SYNC] Cloud Asset IDs (${cloudAssetIds.size} items):`, 'color: orange;', Array.from(cloudAssetIds).sort());
@@ -4422,7 +4424,7 @@ const appLogic = {
                 
             const assetsToDelete = Array.from(cloudAssetIds).filter(id => !localAssetIds.has(id));
 
-            // ★デバッグログ: 差分計算の結果
+            // 差分計算の結果
             console.log(`%c[DEBUG_SYNC] Assets to Upload (${assetsToUploadArray.length} items):`, 'color: green;', assetsToUploadArray.map(a => a.assetId).sort());
             console.log(`%c[DEBUG_SYNC] Assets to Delete (${assetsToDelete.length} items):`, 'color: magenta;', assetsToDelete.sort());
             console.log('%c[DEBUG_SYNC] --- End Comparison ---', 'color: red; font-weight: bold;');
@@ -4589,7 +4591,7 @@ const appLogic = {
                     if (isManual) uiUtils.showProgressDialog('同期を再開しています...');
                 }
 
-                // ★修正点: importDataFromStringの戻り値を受け取る
+                // importDataFromStringの戻り値を受け取る
                 const importResult = await this.importDataFromString(cloudMetadataString);
                 const removedAssetInfo = importResult.removedAssetInfo;
 
@@ -4608,7 +4610,7 @@ const appLogic = {
                 this.updateSyncStatusUI('idle');
                 if (isManual) uiUtils.hideProgressDialog();
 
-                // ★修正点: クレンジング結果があれば通知
+                // クレンジング結果があれば通知
                 let finalMessage = "クラウドからデータを同期しました。アプリを再起動します。";
                 if (removedAssetInfo && Object.keys(removedAssetInfo).length > 0) {
                     let cleanupDetails = "\n\n【通知】\nクラウド上で実体が見つからなかったため、以下のチャットから画像添付の記録を削除しました：\n";
@@ -4782,7 +4784,7 @@ const appLogic = {
                     state.activeProfile.settings[key] = value;
                     
                     await dbUtils.updateProfile(state.activeProfile);
-                    // ★ 修正点: 強制Pushフラグ(true)を削除
+                    // 強制Pushフラグ(true)を削除
                     appLogic.markAsDirtyAndSchedulePush();
                     
                     if (onUpdate) {
@@ -6386,7 +6388,7 @@ const appLogic = {
                         messagesForApi: currentTurnHistory,
                         generationConfig,
                         systemInstruction,
-                        tools: null, // ★ツールを無効化
+                        tools: null, // ツールを無効化
                         isFirstCall: false
                     });
                     
@@ -6460,48 +6462,39 @@ const appLogic = {
      * @private _internalHandleSendから返されたメッセージ配列を単一のオブジェクトに集約する。
      */
      _aggregateMessages(messages) {
-        // ★★★ デバッグログ追加 ★★★
         console.log("--- [_aggregateMessages] Input ---");
         console.log("集約処理の入力となる messages の内容:", JSON.stringify(messages, null, 2));
         console.log("---------------------------------");
-        // ★★★ デバッグログ追加 ★★★
-        const finalAggregatedMessage = {
-            role: 'model',
-            content: '',
-            thoughtSummary: '',
-            executedFunctions: [],
-            imageIds: [], // generated_images の代わりに imageIds を使用
-            generated_videos: [], 
-            timestamp: Date.now(),
-        };
 
+        // 最後に content を持つ model メッセージを探す。なければ、最後の model メッセージを探す。
+        const primaryModelMessage = [...messages].reverse().find(m => m.role === 'model' && m.content) 
+                                 || [...messages].reverse().find(m => m.role === 'model');
+
+        // プライマリメッセージが見つからない場合は、空のオブジェクトを返す（安全対策）
+        if (!primaryModelMessage) {
+            console.warn("[_aggregateMessages] プライマリとなるモデルメッセージが見つかりませんでした。");
+            return { role: 'model', content: '', timestamp: Date.now(), imageIds: [] };
+        }
+
+        // プライマリメッセージをベースとして、最終的なオブジェクトを作成（ディープコピー）
+        const finalAggregatedMessage = JSON.parse(JSON.stringify(primaryModelMessage));
+
+        // imageIds や executedFunctions などを初期化
+        finalAggregatedMessage.imageIds = finalAggregatedMessage.imageIds || [];
+        finalAggregatedMessage.executedFunctions = finalAggregatedMessage.executedFunctions || [];
+        finalAggregatedMessage.generated_videos = finalAggregatedMessage.generated_videos || [];
+
+        // 全てのメッセージを走査し、ツール関連の情報をマージする
         messages.forEach(msg => {
-            if (msg.role === 'model') {
-                if (msg.content) finalAggregatedMessage.content += msg.content;
-                if (msg.thoughtSummary) finalAggregatedMessage.thoughtSummary += msg.thoughtSummary;
-                if (msg.executedFunctions) finalAggregatedMessage.executedFunctions.push(...msg.executedFunctions);
-                
-                if (msg.search_web_results) {
-                    if (!finalAggregatedMessage.search_web_results) {
-                        finalAggregatedMessage.search_web_results = [];
-                    }
-                    finalAggregatedMessage.search_web_results.push(...msg.search_web_results);
+            // 自身（プライマリ）以外のモデルメッセージからは、ツール実行履歴のみをマージ
+            if (msg.role === 'model' && msg !== primaryModelMessage) {
+                if (msg.executedFunctions) {
+                    finalAggregatedMessage.executedFunctions.push(...msg.executedFunctions);
                 }
-
-                Object.assign(finalAggregatedMessage, {
-                    finishReason: msg.finishReason,
-                    safetyRatings: msg.safetyRatings,
-                    groundingMetadata: msg.groundingMetadata,
-                    usageMetadata: msg.usageMetadata,
-                    retryCount: msg.retryCount,
-                });
             }
-
-            if (msg.role === 'tool' && msg.name === 'manage_image_assets' && msg.response?.imageId) {
-                finalAggregatedMessage.imageIds.push(msg.response.imageId);
-            }
-
-            if (msg._internal_ui_action) {
+            
+            // ツール応答からUIアクション（画像IDなど）をマージ
+            if (msg.role === 'tool' && msg._internal_ui_action) {
                 const actions = Array.isArray(msg._internal_ui_action) ? msg._internal_ui_action : [msg._internal_ui_action];
                 actions.forEach(action => {
                     if (action.type === 'display_generated_images' && action.imageIds) {
@@ -6513,17 +6506,21 @@ const appLogic = {
                 });
             }
         });
-        
-        console.log("[Debug] 集約後の最終メッセージオブジェクト:", JSON.stringify(finalAggregatedMessage, null, 2));
 
-        // ★★★ デバッグログ追加 ★★★
+        // 重複を除去
+        finalAggregatedMessage.imageIds = [...new Set(finalAggregatedMessage.imageIds)];
+        finalAggregatedMessage.executedFunctions = [...new Set(finalAggregatedMessage.executedFunctions)];
+
+        // タイムスタンプを更新
+        finalAggregatedMessage.timestamp = Date.now();
+
         console.log("--- [_aggregateMessages] Output ---");
         console.log("集約処理が返却する finalAggregatedMessage の内容:", JSON.stringify(finalAggregatedMessage, null, 2));
         console.log("----------------------------------");
-        // ★★★ デバッグログ追加 ★★★
 
         return finalAggregatedMessage;
     },
+
     
     async handleSend() {
         if (state.isSending) { return; }
@@ -8034,9 +8031,6 @@ const appLogic = {
                 };
 
             } catch (error) {
-                // ★★★ デバッグログ追加 ★★★
-                console.log(`[RETRY_DEBUG] Attempt ${attempt + 1} caught error:`, error);
-                // ★★★ デバッグログ追加 ★★★
 
                 lastError = error;
                 if (error.name === 'AbortError') {
@@ -10044,14 +10038,6 @@ const appLogic = {
         const qcSystemPrompt = state.settings.sdQcPrompt
             .replace('{prompt}', prompt || '(プロンプトなし)')
             .replace('{response_text}', responseText || '(応答文なし)');
-
-        // ★★★ ここからログを追加 ★★★
-        console.log("--- [Quality Checker Debug] ---");
-        console.log("画像生成プロンプト:", prompt);
-        console.log("AIの応答文:", responseText);
-        console.log("最終的なチェック用プロンプト:", qcSystemPrompt);
-        console.log("---------------------------------");
-        // ★★★ ここまでログを追加 ★★★
         
         const imageBase64 = await this.fileToBase64(imageBlob);
 
