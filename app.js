@@ -9568,21 +9568,22 @@ const appLogic = {
         console.log(`%c[DEBUG_SYNC] _prepareExportData CALLED at ${new Date().toISOString()}`, 'color: blue; font-weight: bold;');
 
         try {
+            // JSONシリアライズを利用して、すべてのデータをディープコピーする
             const [profiles, chats, memories, imageAssets, chatImages, allSettings] = await Promise.all([
-                dbUtils.getAllProfiles(),
-                dbUtils.getAllChats(),
-                dbUtils.getAllMemories(),
-                dbUtils.getAllAssets(),
+                dbUtils.getAllProfiles().then(data => JSON.parse(JSON.stringify(data))),
+                dbUtils.getAllChats().then(data => JSON.parse(JSON.stringify(data))),
+                dbUtils.getAllMemories().then(data => JSON.parse(JSON.stringify(data))),
+                dbUtils.getAllAssets().then(data => JSON.parse(JSON.stringify(data))),
                 new Promise((res, rej) => {
                     const store = dbUtils._getStore('image_store');
                     const request = store.getAll();
-                    request.onsuccess = () => res(request.result);
+                    request.onsuccess = () => res(JSON.parse(JSON.stringify(request.result)));
                     request.onerror = (e) => rej(e.target.error);
                 }),
                 new Promise((res, rej) => {
                     const store = dbUtils._getStore(SETTINGS_STORE);
                     const request = store.getAll();
-                    request.onsuccess = () => res(request.result);
+                    request.onsuccess = () => res(JSON.parse(JSON.stringify(request.result)));
                     request.onerror = (e) => rej(e.target.error);
                 })
             ]);
@@ -9621,7 +9622,7 @@ const appLogic = {
 
             console.log("[Data Export V2] チャット履歴内の添付ファイルのアセット化とデータクレンジングを開始します...");
             const imageStoreBlobs = new Map(chatImages.map(img => [img.id, img.blob]));
-            const blobsToSaveToImageStore = []; // 新しくimage_storeに保存するBlobのリスト
+            const blobsToSaveToImageStore = [];
 
             for (const chat of chats) {
                 if (chat.messages) {
@@ -9633,7 +9634,6 @@ const appLogic = {
                         if (message.attachments && message.attachments.length > 0) {
                             const newImageIdsForMessage = [];
                             for (const attachment of message.attachments) {
-                                // ケース1: 新規アセット (assetIdなし, base64Dataあり)
                                 if (!attachment.assetId && attachment.base64Data) {
                                     attachment.assetId = `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
                                     if (!chat._needsUpdate) chat._needsUpdate = true;
@@ -9642,13 +9642,11 @@ const appLogic = {
                                         const blob = await this.base64ToBlob(attachment.base64Data, attachment.mimeType);
                                         addAsset(attachment.assetId, blob);
                                         newImageIdsForMessage.push(attachment.assetId);
-                                        // 生成したBlobをimage_storeに保存するリストに追加
                                         blobsToSaveToImageStore.push({ id: attachment.assetId, blob: blob });
                                     } catch (e) {
                                         console.error(`[Data Export V2] 新規添付ファイルのアセット化に失敗:`, e);
                                     }
                                 } 
-                                // ケース2: 既存アセット (assetIdあり, base64Dataなし)
                                 else if (attachment.assetId && !attachment.base64Data) {
                                     const blob = imageStoreBlobs.get(attachment.assetId);
                                     if (blob) {
@@ -9740,6 +9738,7 @@ const appLogic = {
             throw new Error("データのエクスポート準備に失敗しました。");
         }
     },
+
 
     async importDataFromString(jsonString) {
         console.log("[Data Import V2] 文字列からのデータインポートを開始します。");
