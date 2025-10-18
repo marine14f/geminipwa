@@ -1510,87 +1510,44 @@ const uiUtils = {
         }
     },
 
-    renderChatMessages() {
-        const renderStartTime = performance.now();
-        console.log(`[PERF_DEBUG] renderChatMessages 開始`);
+// app.js の uiUtils オブジェクト内
 
-        const container = elements.messageContainer;
-        
-        container.style.minHeight = `${container.scrollHeight}px`;
+renderChatMessages() {
+    const renderStartTime = performance.now();
+    console.log(`[PERF_DEBUG] renderChatMessages 開始`);
 
-        if (state.imageUrlCache.size > 0) {
-            for (const url of state.imageUrlCache.values()) {
-                URL.revokeObjectURL(url);
-            }
-            state.imageUrlCache.clear();
+    const container = elements.messageContainer;
+    
+    container.style.minHeight = `${container.scrollHeight}px`;
+
+    if (state.imageUrlCache.size > 0) {
+        for (const url of state.imageUrlCache.values()) {
+            URL.revokeObjectURL(url);
         }
-        if (state.editingMessageIndex !== null) {
-            const messageElement = container.querySelector(`.message[data-index="${state.editingMessageIndex}"]`);
-            if (messageElement) appLogic.cancelEditMessage(state.editingMessageIndex, messageElement);
-            else state.editingMessageIndex = null;
-        }
+        state.imageUrlCache.clear();
+    }
+    if (state.editingMessageIndex !== null) {
+        const messageElement = container.querySelector(`.message[data-index="${state.editingMessageIndex}"]`);
+        if (messageElement) appLogic.cancelEditMessage(state.editingMessageIndex, messageElement);
+        else state.editingMessageIndex = null;
+    }
 
-        container.innerHTML = '';
-        const fragment = document.createDocumentFragment();
-        const visibleMessages = [];
-        const processedGroupIds = new Set();
+    container.innerHTML = '';
+    const fragment = document.createDocumentFragment();
+    
+    // 新しいヘルパー関数で表示対象メッセージを取得
+    const visibleMessages = appLogic.getVisibleMessages();
 
-        state.currentMessages.forEach((msg) => {
-            if (msg.isHidden) return; // isHiddenフラグを持つメッセージは表示しない
-            if (msg.isCascaded && msg.siblingGroupId) {
-                if (!processedGroupIds.has(msg.siblingGroupId)) {
-                    const siblings = state.currentMessages.filter(m => m.siblingGroupId === msg.siblingGroupId && !m.isHidden);
-                    const selectedSibling = siblings.find(m => m.isSelected) || siblings[siblings.length - 1];
-                    if (selectedSibling) {
-                        visibleMessages.push(selectedSibling);
-                    }
-                    processedGroupIds.add(msg.siblingGroupId);
-                }
-            } else {
-                visibleMessages.push(msg);
-            }
-        });
+    // 要約マーカー表示ロジック
+    const summaryEndIndex = state.currentSummarizedContext?.summaryRange?.end;
+    let markerInserted = false;
 
-        // 要約マーカー表示ロジック
-        const summaryEndIndex = state.currentSummarizedContext?.summaryRange?.end;
-        let markerInserted = false;
-
-        visibleMessages.forEach(msg => {
-            const index = state.currentMessages.indexOf(msg);
-            if (index === -1 || msg.role === 'tool') return;
-            
-            // メッセージのインデックスが要約範囲の終端と一致したらマーカーを挿入
-            if (!markerInserted && summaryEndIndex !== undefined && index >= summaryEndIndex) {
-                const markerDiv = document.createElement('div');
-                markerDiv.className = 'summary-marker';
-                const markerText = document.createElement('span');
-                markerText.className = 'summary-marker-text';
-                const summarizedDate = new Date(state.currentSummarizedContext.summarizedAt).toLocaleString('ja-JP');
-                markerText.textContent = `ここまで要約済み (${summarizedDate})`;
-                markerDiv.appendChild(markerText);
-                fragment.appendChild(markerDiv);
-                markerInserted = true;
-            }
-
-            let cascadeInfo = null;
-            if (msg.isCascaded && msg.siblingGroupId) {
-                const siblings = state.currentMessages.filter(m => m.siblingGroupId === msg.siblingGroupId && !m.isHidden);
-                const currentIndexInGroup = siblings.findIndex(m => m === msg);
-                cascadeInfo = {
-                    currentIndex: currentIndexInGroup + 1,
-                    total: siblings.length,
-                    siblingGroupId: msg.siblingGroupId
-                };
-            }
-            
-            const messageElement = uiUtils.createMessageElement(msg.role, msg.content, index, false, cascadeInfo, msg.attachments);
-            if (messageElement) {
-                fragment.appendChild(messageElement);
-            }
-        });
+    visibleMessages.forEach(msg => {
+        const index = state.currentMessages.indexOf(msg);
+        if (index === -1 || msg.role === 'tool') return;
         
-        // ループ後にマーカーが挿入されなかった場合（＝全履歴が要約対象だった場合）の処理
-        if (!markerInserted && summaryEndIndex !== undefined && state.currentMessages.length === summaryEndIndex) {
+        // メッセージのインデックスが要約範囲の終端と一致したらマーカーを挿入
+        if (!markerInserted && summaryEndIndex !== undefined && index >= summaryEndIndex) {
             const markerDiv = document.createElement('div');
             markerDiv.className = 'summary-marker';
             const markerText = document.createElement('span');
@@ -1602,24 +1559,55 @@ const uiUtils = {
             markerInserted = true;
         }
 
-        container.appendChild(fragment);
-        
-        if (window.Prism) {
-            const highlightStartTime = performance.now();
-            console.log(`[PERF_DEBUG] Prism.highlightAll 開始`);
-            Prism.highlightAll();
-            const highlightEndTime = performance.now();
-            console.log(`[PERF_DEBUG] Prism.highlightAll 完了 (所要時間: ${highlightEndTime - highlightStartTime}ms)`);
+        let cascadeInfo = null;
+        if (msg.isCascaded && msg.siblingGroupId) {
+            const siblings = state.currentMessages.filter(m => m.siblingGroupId === msg.siblingGroupId && !m.isHidden);
+            const currentIndexInGroup = siblings.findIndex(m => m === msg);
+            cascadeInfo = {
+                currentIndex: currentIndexInGroup + 1,
+                total: siblings.length,
+                siblingGroupId: msg.siblingGroupId
+            };
         }
         
-        requestAnimationFrame(() => {
-            container.style.minHeight = '';
-        });
-        
-        appLogic.updateSummarizeButtonState();
-        const renderEndTime = performance.now();
-        console.log(`[PERF_DEBUG] renderChatMessages 完了 (合計所要時間: ${renderEndTime - renderStartTime}ms)`);
-    },
+        const messageElement = uiUtils.createMessageElement(msg.role, msg.content, index, false, cascadeInfo, msg.attachments);
+        if (messageElement) {
+            fragment.appendChild(messageElement);
+        }
+    });
+    
+    // ループ後にマーカーが挿入されなかった場合（＝全履歴が要約対象だった場合）の処理
+    if (!markerInserted && summaryEndIndex !== undefined && state.currentMessages.length > 0 && state.currentMessages.length <= summaryEndIndex) {
+        const markerDiv = document.createElement('div');
+        markerDiv.className = 'summary-marker';
+        const markerText = document.createElement('span');
+        markerText.className = 'summary-marker-text';
+        const summarizedDate = new Date(state.currentSummarizedContext.summarizedAt).toLocaleString('ja-JP');
+        markerText.textContent = `ここまで要約済み (${summarizedDate})`;
+        markerDiv.appendChild(markerText);
+        fragment.appendChild(markerDiv);
+        markerInserted = true;
+    }
+
+    container.appendChild(fragment);
+    
+    if (window.Prism) {
+        const highlightStartTime = performance.now();
+        console.log(`[PERF_DEBUG] Prism.highlightAll 開始`);
+        Prism.highlightAll();
+        const highlightEndTime = performance.now();
+        console.log(`[PERF_DEBUG] Prism.highlightAll 完了 (所要時間: ${highlightEndTime - highlightStartTime}ms)`);
+    }
+    
+    requestAnimationFrame(() => {
+        container.style.minHeight = '';
+    });
+    
+    appLogic.updateSummarizeButtonState();
+    const renderEndTime = performance.now();
+    console.log(`[PERF_DEBUG] renderChatMessages 完了 (合計所要時間: ${renderEndTime - renderStartTime}ms)`);
+},
+
 
     createMessageElement(role, content, index, isStreamingPlaceholder = false, cascadeInfo = null, attachments = null) {
         const messageData = state.currentMessages[index];
@@ -3959,6 +3947,32 @@ const appLogic = {
         document.body.classList.toggle('wide-mode-enabled', state.settings.enableWideMode);
         // ワイドモードの有効/無効が切り替わった際に、メッセージ幅を再計算する
         updateMessageMaxWidthVar();
+    },
+
+    getVisibleMessages() {
+        const visibleMessages = [];
+        const processedGroupIds = new Set();
+
+        state.currentMessages.forEach((msg) => {
+            if (msg.isHidden) return; // isHiddenフラグを持つメッセージは表示しない
+
+            if (msg.isCascaded && msg.siblingGroupId) {
+                // 同じグループは一度しか処理しない
+                if (!processedGroupIds.has(msg.siblingGroupId)) {
+                    const siblings = state.currentMessages.filter(m => m.siblingGroupId === msg.siblingGroupId && !m.isHidden);
+                    // 選択されているものを探す。なければ最後のものを採用
+                    const selectedSibling = siblings.find(m => m.isSelected) || siblings[siblings.length - 1];
+                    if (selectedSibling) {
+                        visibleMessages.push(selectedSibling);
+                    }
+                    processedGroupIds.add(msg.siblingGroupId);
+                }
+            } else {
+                // カスケードでないメッセージはそのまま追加
+                visibleMessages.push(msg);
+            }
+        });
+        return visibleMessages;
     },
 
     // アプリ初期化
@@ -6306,35 +6320,21 @@ const appLogic = {
 
     
     /**
-         * @private API通信と応答解析、ループ処理に責務を特化した内部関数。
-         * stateの変更やUIの更新は一切行わない。
-         * @param {Array} messagesForApi - APIに送信するメッセージ履歴。
-         * @param {object} generationConfig - 生成設定。
-         * @param {object} systemInstruction - システムプロンプト。
-         * @returns {Promise<Array>} 生成された新しいメッセージオブジェクトの配列。
-         */
-     async _internalHandleSend(messagesForApi, generationConfig, systemInstruction) {
+     * @private API通信と応答解析、ループ処理に責務を特化した内部関数。
+     * stateの変更やUIの更新は一切行わない。
+     * @param {Array} messagesForApi - APIに送信するメッセージ履歴。
+     * @param {object} generationConfig - 生成設定。
+     * @param {object} systemInstruction - システムプロンプト。
+     * @returns {Promise<Array>} 生成された新しいメッセージオブジェクトの配列。
+    */
+    async _internalHandleSend(messagesForApi, generationConfig, systemInstruction) {
         let loopCount = 0;
-        const MAX_LOOPS = 5; // ループ上限を現実的な値に設定
-        const finalTurnResults = []; // 最終的に返す全メッセージを格納
+        const MAX_LOOPS = 5;
+        const finalTurnResults = [];
         let currentTurnHistory = [...messagesForApi];
         let aggregatedSearchResults = [];
 
         uiUtils.setLoadingIndicatorText('応答生成中...');
-
-        const convertToApiFormat = (msg) => {
-            const parts = [];
-            if (msg.content && msg.content.trim() !== '') parts.push({ text: msg.content });
-            if (msg.role === 'model' && msg.tool_calls) {
-                msg.tool_calls.forEach(toolCall => parts.push({ functionCall: toolCall.functionCall }));
-            }
-            if (msg.role === 'tool') {
-                if (msg.name && msg.response) {
-                    parts.push({ functionResponse: { name: msg.name, response: msg.response } });
-                }
-            }
-            return { role: msg.role === 'tool' ? 'tool' : (msg.role === 'model' ? 'model' : 'user'), parts };
-        };
 
         while (loopCount < MAX_LOOPS) {
             loopCount++;
@@ -6350,7 +6350,7 @@ const appLogic = {
             const modelMessage = {
                 role: 'model',
                 content: result.content || '',
-                thoughtSummary: (finalTurnResults.length === 0) ? result.thoughtSummary : null, // 思考は最初の応答のみ記録
+                thoughtSummary: (finalTurnResults.length === 0) ? result.thoughtSummary : null,
                 tool_calls: result.toolCalls,
                 timestamp: Date.now(),
                 finishReason: result.finishReason,
@@ -6361,83 +6361,98 @@ const appLogic = {
             };
             finalTurnResults.push(modelMessage);
 
-            // ツール呼び出しがなければ、それが最終応答。ループを終了。
             if (!result.toolCalls || result.toolCalls.length === 0) {
                 console.log("[_internalHandleSend] ツール呼び出しがないため、ループを終了します。");
                 break;
             }
             
-            // --- ツール実行フェーズ ---
-            uiUtils.setLoadingIndicatorText('関数実行中...');
             const historyForFunctions = state.currentMessages.slice(0, -1);
             const responseTextForQc = result.content || '';
             
-            let toolCallResult;
-            try {
-                toolCallResult = await this.executeToolCalls(result.toolCalls, historyForFunctions, responseTextForQc);
-            } catch (toolError) {
-                console.error("[_internalHandleSend] executeToolCallsで予期せぬエラー:", toolError);
-                const functionName = result.toolCalls[0].functionCall.name;
-                toolCallResult = {
-                    toolResults: [{
-                        role: 'tool',
-                        name: functionName,
-                        response: { error: { message: `ツール実行中に予期せぬエラーが発生しました: ${toolError.message}` } },
-                        timestamp: Date.now()
-                    }],
-                    containsTerminalAction: false,
-                    search_results: [],
-                    internalUiActions: []
-                };
-            }
-            const { toolResults, containsTerminalAction, search_results, internalUiActions } = toolCallResult;
+            const toolResults = [];
+            let containsTerminalAction = false;
             
-            if (search_results && search_results.length > 0) {
-                aggregatedSearchResults.push(...search_results);
-            }
-            
-            if (internalUiActions && internalUiActions.length > 0) {
-                if (toolResults.length > 0) {
-                    const lastToolResult = toolResults[toolResults.length - 1];
-                    if (!lastToolResult._internal_ui_action) lastToolResult._internal_ui_action = [];
-                    lastToolResult._internal_ui_action.push(...internalUiActions);
+            for (const toolCall of result.toolCalls) {
+                const functionName = toolCall.functionCall.name;
+                const functionArgs = toolCall.functionCall.args;
+                
+                if (functionName === 'generate_image_stable_diffusion') {
+                    uiUtils.setLoadingIndicatorText('SDで画像生成中...');
+                } else if (functionName === 'run_quality_checker') {
+                    uiUtils.setLoadingIndicatorText('品質チェック中...');
+                } else {
+                    uiUtils.setLoadingIndicatorText('関数実行中...');
                 }
+
+                let toolResult;
+                try {
+                    const argsWithContext = { ...functionArgs, _responseTextForQc: responseTextForQc };
+                    toolResult = await window.functionCallingTools[functionName](argsWithContext, {
+                        messages: historyForFunctions.filter(m => m.role !== 'tool'),
+                        persistentMemory: state.currentPersistentMemory
+                    });
+                } catch (toolError) {
+                    console.error(`[_internalHandleSend] ${functionName}の実行中に予期せぬエラー:`, toolError);
+                    toolResult = { error: { message: `ツール実行中に予期せぬエラーが発生しました: ${toolError.message}` } };
+                }
+
+                if (functionName === 'run_quality_checker' && toolResult.result === 'OK') {
+                    containsTerminalAction = true;
+                    console.log(`[Function Calling] 終端アクション (run_quality_checker: OK) を検出しました。`);
+                } else if (['generate_image', 'generate_video', 'edit_image', 'display_layered_image'].includes(functionName)) {
+                    containsTerminalAction = true; 
+                    console.log(`[Function Calling] 終端アクション (${functionName}) を検出しました。`);
+                }
+
+                const responseForAI = { ...toolResult };
+                if (toolResult.search_results) {
+                    aggregatedSearchResults.push(...toolResult.search_results);
+                    delete responseForAI.search_results;
+                }
+                if (toolResult._internal_ui_action) {
+                    delete responseForAI._internal_ui_action;
+                }
+
+                const toolResponseMessage = { 
+                    role: 'tool', 
+                    name: functionName, 
+                    response: responseForAI, 
+                    timestamp: Date.now() 
+                };
+                
+                if(toolResult._internal_ui_action){
+                    toolResponseMessage._internal_ui_action = toolResult._internal_ui_action;
+                }
+
+                toolResults.push(toolResponseMessage);
+                modelMessage.executedFunctions.push(functionName);
             }
             
             finalTurnResults.push(...toolResults);
             
-            const executedFunctionNames = toolResults.map(tr => tr.name);
-            modelMessage.executedFunctions.push(...executedFunctionNames);
-
-            // 終端アクション（画像生成など）が実行されたら、ループを終了
             if (containsTerminalAction) {
                 console.log("終端アクションが検出されたため、Function Callingループを終了します。");
-                // AIがテキストを返さなかった場合、ここで強制的に再度APIを呼び出し、テキストを生成させる
                 if (!result.content) {
                     console.log("[_internalHandleSend] テキスト応答がなかったため、ツール結果を基に最終応答を生成します。");
                     uiUtils.setLoadingIndicatorText('最終応答を生成中...');
 
-                    // ツール結果をAPIフォーマットに変換して履歴に追加
                     const modelMessageForApi = { role: 'model', parts: result.toolCalls.map(tc => ({ functionCall: tc.functionCall })) };
                     const toolResultsForApi = toolResults.map(tr => ({ role: 'tool', parts: [{ functionResponse: { name: tr.name, response: tr.response } }] }));
                     currentTurnHistory.push(modelMessageForApi, ...toolResultsForApi);
 
-                    // ツールなしで再度APIを呼び出し、テキスト応答のみを期待する
                     const textResult = await this.callApiWithRetry({
                         messagesForApi: currentTurnHistory,
                         generationConfig,
                         systemInstruction,
-                        tools: null, // ツールを無効化
+                        tools: null,
                         isFirstCall: false
                     });
                     
-                    // 最後のモデルメッセージに、生成されたテキストを追加する
                     modelMessage.content = textResult.content || '';
                 }
                 break;
             }
 
-            // 通常のループ（非終端アクション）
             const modelMessageForApi = { role: 'model', parts: result.toolCalls.map(tc => ({ functionCall: tc.functionCall })) };
             const toolResultsForApi = toolResults.map(tr => ({ role: 'tool', parts: [{ functionResponse: { name: tr.name, response: tr.response } }] }));
             currentTurnHistory.push(modelMessageForApi, ...toolResultsForApi);
@@ -6454,7 +6469,7 @@ const appLogic = {
             finalTurnResults.push(finalErrorMessage);
         }
         
-        // 翻訳や校正などの後処理
+        // 後処理（翻訳や校正）
         const finalModelMessages = finalTurnResults.filter(m => m.role === 'model');
         if (finalModelMessages.length > 0) {
             if (aggregatedSearchResults.length > 0) {
@@ -6494,6 +6509,7 @@ const appLogic = {
 
         return finalTurnResults;
     },
+
 
 
 
@@ -7054,7 +7070,7 @@ const appLogic = {
             console.log(`[Function Calling] 実行: ${functionName}`, functionArgs);
 
             // 終端アクションとなる関数かをここで判定する
-            if (['generate_image', 'generate_image_stable_diffusion', 'generate_video', 'edit_image', 'display_layered_image'].includes(functionName)) {
+            if (['generate_image', 'generate_video', 'edit_image', 'display_layered_image', 'run_quality_checker'].includes(functionName)) {
                 containsTerminalAction = true;
                 console.log(`[Function Calling] 終端アクション (${functionName}) を検出しました。`);
             }
@@ -9238,7 +9254,7 @@ const appLogic = {
 
     updateSummarizeButtonState() {
         const messageCount = state.currentMessages.length;
-        elements.summarizeHistoryBtn.disabled = messageCount < 50;
+        elements.summarizeHistoryBtn.disabled = messageCount < 5;
     },
 
     applyFloatingPanelBehavior() {
@@ -9264,12 +9280,19 @@ const appLogic = {
             return;
         }
 
-        const messages = state.currentMessages;
+        const visibleMessages = this.getVisibleMessages();
         let start = 0;
-        let end = messages.length;
+        let end = visibleMessages.length;
 
         if (state.currentSummarizedContext && state.currentSummarizedContext.summaryRange) {
-            start = state.currentSummarizedContext.summaryRange.end;
+            const originalEndIndex = state.currentSummarizedContext.summaryRange.end;
+            
+            // 要約済み範囲に含まれる表示メッセージの数をカウント
+            const summarizedVisibleMessages = visibleMessages.filter(msg => {
+                const originalIndex = state.currentMessages.indexOf(msg);
+                return originalIndex < originalEndIndex;
+            });
+            start = summarizedVisibleMessages.length;
         }
 
         if (end <= start) {
@@ -9277,7 +9300,8 @@ const appLogic = {
             return;
         }
 
-        const messagesToSummarize = messages.slice(start, end);
+        // フィルタリング後のメッセージリストから要約対象を切り出す
+        const messagesToSummarize = visibleMessages.slice(start, end);
         const originalText = messagesToSummarize.map(m => `${m.role === 'user' ? 'ユーザー' : 'アシスタント'}: ${m.content}`).join('\n\n');
 
         const confirmed = await uiUtils.showCustomConfirm(
@@ -9291,7 +9315,8 @@ const appLogic = {
 
         elements.summaryDialog.dataset.originalText = originalText;
         elements.summaryDialog.dataset.summaryRangeStart = start;
-        elements.summaryDialog.dataset.summaryRangeEnd = end;
+        // 終了位置はフィルタリング前の `state.currentMessages` でのインデックスを保存する
+        elements.summaryDialog.dataset.summaryRangeEnd = state.currentMessages.length;
 
         elements.summaryStats.textContent = '要約を生成中です...';
         elements.summaryEditor.value = '';
@@ -9563,24 +9588,16 @@ const appLogic = {
      * @param {boolean} isManual - 手動実行かどうか
      * @returns {Promise<{metadataJson: string, localAssets: Map<string, {blob: Blob, hash: string}>}>}
      */
-     async _prepareExportData() {
+    async _prepareExportData() {
         console.log("[Data Export V2] 分離形式でのデータエクスポートを開始します。");
         console.log(`%c[DEBUG_SYNC] _prepareExportData CALLED at ${new Date().toISOString()}`, 'color: blue; font-weight: bold;');
 
         try {
-            // JSONシリアライズを利用して、すべてのデータをディープコピーする
-            // これにより、以降の処理が元の state オブジェクトに影響を与えなくなる
-            const [profiles, chats, memories, imageAssets, chatImages, allSettings] = await Promise.all([
+            // ディープコピーの対象を、Blobを含まないメタデータのみに限定する
+            const [profiles, chats, memories, allSettings] = await Promise.all([
                 dbUtils.getAllProfiles().then(data => JSON.parse(JSON.stringify(data))),
                 dbUtils.getAllChats().then(data => JSON.parse(JSON.stringify(data))),
                 dbUtils.getAllMemories().then(data => JSON.parse(JSON.stringify(data))),
-                dbUtils.getAllAssets().then(data => JSON.parse(JSON.stringify(data))),
-                new Promise((res, rej) => {
-                    const store = dbUtils._getStore('image_store');
-                    const request = store.getAll();
-                    request.onsuccess = () => res(request.result); // BlobはJSON.stringifyで消えるので、ここではコピーしない
-                    request.onerror = (e) => rej(e.target.error);
-                }),
                 new Promise((res, rej) => {
                     const store = dbUtils._getStore(SETTINGS_STORE);
                     const request = store.getAll();
@@ -9588,6 +9605,14 @@ const appLogic = {
                     request.onerror = (e) => rej(e.target.error);
                 })
             ]);
+            // Blobを含むアセットは、後で直接DBから読み込む
+            const imageAssets = await dbUtils.getAllAssets();
+            const chatImages = await new Promise((res, rej) => {
+                const store = dbUtils._getStore('image_store');
+                const request = store.getAll();
+                request.onsuccess = () => res(request.result);
+                request.onerror = (e) => rej(e.target.error);
+            });
 
             const settingsForExport = allSettings.filter(setting => 
                 !['dropboxTokens', 'syncIsDirty', 'syncLastError', 'lastSyncId', 'sdApiUrl', 'sdApiUser', 'sdApiPassword'].includes(setting.key)
@@ -9600,7 +9625,6 @@ const appLogic = {
             };
 
             for (const profile of profiles) {
-                // 元のDBデータからBlobを取得して localAssets に追加
                 const originalProfile = await dbUtils.getProfile(profile.id);
                 if (originalProfile && originalProfile.icon instanceof Blob) {
                     const assetId = `profile_${profile.id}_icon.webp`;
@@ -9610,14 +9634,13 @@ const appLogic = {
                 delete profile.icon;
             }
             for (const asset of imageAssets) {
-                const originalAsset = await dbUtils.getAsset(asset.name);
-                if (originalAsset && originalAsset.blob) {
+                if (asset.blob) { // Blobが存在することを確認
                     if (!asset.assetId) {
                         const safeName = asset.name.replace(/[^a-zA-Z0-9]/g, '_');
                         asset.assetId = `asset_${safeName}_${new Date(asset.createdAt).getTime()}.webp`;
                         asset._needsUpdate = true;
                     }
-                    addAsset(asset.assetId, originalAsset.blob);
+                    addAsset(asset.assetId, asset.blob);
                 }
             }
             for (const image of chatImages) {
@@ -9627,10 +9650,11 @@ const appLogic = {
             }
 
             console.log("[Data Export V2] チャット履歴内の添付ファイルのアセット化とデータクレンジングを開始します...");
-            const imageStoreBlobs = new Map(chatImages.map(img => [img.id, img.blob]));
             const blobsToSaveToImageStore = [];
 
-            for (const chat of chats) {
+            // ディープコピーされた `chats` ではなく、ライブデータに近い `state.currentMessages` を含むチャットを直接処理する
+            const allDbChats = await dbUtils.getAllChats();
+            for (const chat of allDbChats) {
                 if (chat.messages) {
                     for (const message of chat.messages) {
                         if (message.imageIds && Array.isArray(message.imageIds)) {
@@ -9653,10 +9677,11 @@ const appLogic = {
                                         console.error(`[Data Export V2] 新規添付ファイルのアセット化に失敗:`, e);
                                     }
                                 } 
-                                else if (attachment.assetId && !attachment.base64Data) {
-                                    const blob = imageStoreBlobs.get(attachment.assetId);
-                                    if (blob) {
-                                        addAsset(attachment.assetId, blob);
+                                else if (attachment.assetId) {
+                                    // 既にassetIdがある場合は、DBからBlobを探してlocalAssetsに追加するだけ
+                                    const imgData = chatImages.find(img => img.id === attachment.assetId);
+                                    if (imgData && imgData.blob) {
+                                        addAsset(attachment.assetId, imgData.blob);
                                     } else {
                                         console.warn(`[Data Export V2] 既存アセット(ID: ${attachment.assetId})のBlobがimage_storeに見つかりません。`);
                                     }
@@ -9691,17 +9716,28 @@ const appLogic = {
                     store.put(asset);
                 }
             }
-            const chatsToUpdate = chats.filter(c => c._needsUpdate);
+            const chatsToUpdate = allDbChats.filter(c => c._needsUpdate);
             if (chatsToUpdate.length > 0) {
                 console.log(`[Data Export V2] ${chatsToUpdate.length}件のチャットにattachmentのassetIdを永続化します。`);
                 const tx = state.db.transaction(CHATS_STORE, 'readwrite');
                 const store = tx.objectStore(CHATS_STORE);
                 for (const chat of chatsToUpdate) {
+                    // 永続化する前に、base64Dataを削除する
+                    chat.messages.forEach(msg => {
+                        if (msg.attachments) {
+                            msg.attachments.forEach(att => delete att.base64Data);
+                        }
+                    });
                     delete chat._needsUpdate;
                     store.put(chat);
+                    if (chat.id === state.currentChatId) {
+                        console.log(`%c[DEBUG_SYNC_STATE] アクティブなチャット(ID: ${chat.id})のメモリ上のデータをDBと同期します。`, 'color: red; font-weight: bold;');
+                        state.currentMessages = chat.messages;
+                    }
                 }
             }
 
+            // エクスポート用の `chats` 配列から base64Data を削除
             chats.forEach(chat => {
                 if (chat.messages) {
                     chat.messages.forEach(message => {
@@ -9722,7 +9758,7 @@ const appLogic = {
                 syncId: syncId,
                 data: {
                     profiles,
-                    chats,
+                    chats, // base64Dataが除去されたコピーを使用
                     memories,
                     assets: imageAssets.map(a => ({ name: a.name, assetId: a.assetId, createdAt: a.createdAt })),
                     settings: settingsForExport

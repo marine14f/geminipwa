@@ -1655,39 +1655,100 @@ window.functionCallingTools = {
       console.error(`[Function Calling] calculate: 計算エラー: ${error.message}`);
       return { error: `計算エラー: ${error.message}` };
     }
-  },
-  manage_persistent_memory: manage_persistent_memory,
-  getCurrentDateTime: getCurrentDateTime,
-  rollDice: rollDice,
-  manage_timer: manage_timer,
-  manage_character_status: manage_character_status,
-  manage_inventory: manage_inventory,
-  manage_scene: manage_scene,
-  manage_flags: manage_flags,
-  manage_game_date: manage_game_date,
-  get_random_integer: get_random_integer,
-  get_random_choice: get_random_choice,
-  generate_random_string: generate_random_string,
-  search_web: search_web,
-  manage_style_profile: manage_style_profile,
-  set_ui_opacity: set_ui_opacity,
-  set_background_image: set_background_image,
-  display_layered_image: display_layered_image,
-  generate_video: generate_video,
-  generate_image: generate_image,
-  generate_image_stable_diffusion: async function(args) {
-    console.log(`[Function Calling] generate_image_stable_diffusionが呼び出されました。`, args);
-    if (window.appLogic && typeof window.appLogic.handleStableDiffusionGeneration === 'function') {
-        // 本体ロジックはapp.jsに委譲する
-        // _responseTextForQc を分離して渡す
-        const { _responseTextForQc, ...sdArgs } = args;
-        return await window.appLogic.handleStableDiffusionGeneration(sdArgs, _responseTextForQc);
-    } else {
-        return { error: "Stable Diffusion連携機能が初期化されていません。" };
+    },
+    manage_persistent_memory: manage_persistent_memory,
+    getCurrentDateTime: getCurrentDateTime,
+    rollDice: rollDice,
+    manage_timer: manage_timer,
+    manage_character_status: manage_character_status,
+    manage_inventory: manage_inventory,
+    manage_scene: manage_scene,
+    manage_flags: manage_flags,
+    manage_game_date: manage_game_date,
+    get_random_integer: get_random_integer,
+    get_random_choice: get_random_choice,
+    generate_random_string: generate_random_string,
+    search_web: search_web,
+    manage_style_profile: manage_style_profile,
+    set_ui_opacity: set_ui_opacity,
+    set_background_image: set_background_image,
+    display_layered_image: display_layered_image,
+    generate_video: generate_video,
+    generate_image: generate_image,
+
+    generate_image_stable_diffusion: async function(args) {
+        console.log(`[Function Calling] generate_image_stable_diffusion (ver.2)が呼び出されました。`, args);
+        // app.jsの本体ロジックを直接呼び出すように変更
+        if (window.appLogic && typeof window.appLogic.callStableDiffusionApi === 'function') {
+            try {
+                // UIのステータスを更新
+                if (window.uiUtils) uiUtils.setLoadingIndicatorText('SDで画像生成中...');
+
+                // クオリティチェックは行わず、API呼び出しと画像保存のみを行う
+                const generatedImageBlob = await window.appLogic.callStableDiffusionApi(args);
+                const imageId = await window.appLogic.saveImageBlob(generatedImageBlob);
+
+                // ここでは終端アクションとせず、生成したimageIdを返す
+                return {
+                    success: true,
+                    message: "Stable Diffusionによる画像の生成と保存に成功しました。",
+                    // UIに画像を表示するための内部アクション
+                    _internal_ui_action: {
+                        type: "display_generated_images",
+                        imageIds: [imageId]
+                    },
+                    // 後続の run_quality_checker が使えるようにimageIdを返す
+                    generated_image_id: imageId, 
+                    meta: args
+                };
+            } catch (error) {
+                console.error("[Stable Diffusion] 画像生成プロセスでエラー:", error);
+                return { success: false, error: { message: `画像生成エラー: ${error.message}` } };
+            }
+        } else {
+            return { error: "Stable Diffusion連携機能が初期化されていません。" };
+        }
+    },
+
+    edit_image: edit_image,
+    /**
+   * 生成された画像の品質をGemini Visionでチェックする関数
+   * @param {object} args - AIによって提供される引数オブジェクト
+   * @param {string} args.image_id - チェック対象の画像のID (generate_image_stable_diffusionの返り値)
+   * @param {string} args.original_prompt - 元の生成プロンプト
+   * @param {string} [args.context_text] - 画像が描写しようとしている文脈（地の文やセリフなど）
+   * @returns {Promise<object>} チェック結果 (OK/NGと理由)
+   */
+  run_quality_checker: async function({ image_id, original_prompt, context_text }) {
+    console.log(`[Function Calling] run_quality_checkerが呼び出されました。`, { image_id, original_prompt, context_text });
+    if (!state.settings.sdEnableQualityChecker) {
+        return { result: "SKIPPED", reason: "クオリティチェッカー機能がユーザー設定で無効になっています。" };
+    }
+    if (!image_id || !original_prompt) {
+        return { error: "引数 'image_id' と 'original_prompt' は必須です。" };
+    }
+
+    try {
+        const imageData = await window.appLogic.getImageBlobById(image_id);
+        if (!imageData || !imageData.blob) {
+            return { error: `指定されたIDの画像が見つかりません: ${image_id}` };
+        }
+
+        uiUtils.setLoadingIndicatorText('品質チェック中...');
+        const qualityCheckResult = await window.appLogic.runQualityChecker(imageData.blob, original_prompt, context_text || '');
+
+        // 本体ロジック側でログが出力されるが、念のためこちらでも判定結果をログに残す
+        console.log(`[Function Calling] run_quality_checker 実行完了。結果: ${qualityCheckResult.result}`);
+
+        // この関数は常に終端アクションとするため、結果をそのまま返す
+        return qualityCheckResult;
+
+    } catch (error) {
+        console.error("[Quality Checker] 品質チェックプロセスでエラー:", error);
+        return { error: `品質チェック中にエラーが発生しました: ${error.message}` };
     }
   },
-  edit_image: edit_image,
-  manage_character_memory: manage_character_memory
+    manage_character_memory: manage_character_memory
 };
 
 
@@ -2179,7 +2240,7 @@ window.functionDeclarations = [
         },
         {
             "name": "generate_image_stable_diffusion",
-            "description": "【最重要ルール】この関数を呼び出す際は、必ずユーザー向けのテキスト応答（物語の続き、画像の説明文など）も同時に生成してください。テキスト応答には、生成画像を表示したい位置に`[IMAGE_HERE]`という目印を必ず含めてください。\n【機能概要】ユーザーが『Stable Diffusionで』『SDで』のように明示的に指示した場合に、テキストプロンプトと詳細パラメータに基づき画像を生成します。",
+            "description": "【最重要ルール】この関数を呼び出す際は、必ずユーザー向けのテキスト応答（物語の続き、画像の説明文など）も同時に生成してください。テキスト応答には、生成画像を表示したい位置に`[IMAGE_HERE]`という目印を必ず含めてください。\n【機能概要】ユーザーが『Stable Diffusionで』『SDで』のように明示的に指示した場合に、テキストプロンプトと詳細パラメータに基づき画像を生成します。この関数は品質チェックを行いません。品質を検証するには、この関数の実行後に `run_quality_checker` を呼び出してください。",
             "parameters": {
                 "type": "OBJECT",
                 "properties": {
@@ -2229,6 +2290,28 @@ window.functionDeclarations = [
                     }
                 },
                 "required": ["prompt", "source_images"]
+            }
+        },
+        {
+            "name": "run_quality_checker",
+            "description": "generate_image_stable_diffusionで生成された画像の品質を、元のプロンプトと比較して検証します。この関数は会話ターンの最後に実行されるべき終端アクションです。もしチェック結果がNGだった場合は、その理由を基にプロンプトを改善し、再度generate_image_stable_diffusionを呼び出すことを検討してください。",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "image_id": {
+                        "type": "STRING",
+                        "description": "品質チェック対象となる画像のID。通常、この関数を呼び出す直前の `generate_image_stable_diffusion` の実行によって生成された画像のIDを指定します。"
+                    },
+                    "original_prompt": {
+                        "type": "STRING",
+                        "description": "画像の生成に使用された元の英語プロンプト。"
+                    },
+                    "context_text": {
+                        "type": "STRING",
+                        "description": "（任意）画像が描写しようとしている物語の文脈（地の文やセリフなど）。より正確な判定に役立ちます。"
+                    }
+                },
+                "required": ["image_id", "original_prompt"]
             }
         },
         {
