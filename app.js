@@ -9563,12 +9563,13 @@ const appLogic = {
      * @param {boolean} isManual - 手動実行かどうか
      * @returns {Promise<{metadataJson: string, localAssets: Map<string, {blob: Blob, hash: string}>}>}
      */
-    async _prepareExportData() {
+     async _prepareExportData() {
         console.log("[Data Export V2] 分離形式でのデータエクスポートを開始します。");
         console.log(`%c[DEBUG_SYNC] _prepareExportData CALLED at ${new Date().toISOString()}`, 'color: blue; font-weight: bold;');
 
         try {
             // JSONシリアライズを利用して、すべてのデータをディープコピーする
+            // これにより、以降の処理が元の state オブジェクトに影響を与えなくなる
             const [profiles, chats, memories, imageAssets, chatImages, allSettings] = await Promise.all([
                 dbUtils.getAllProfiles().then(data => JSON.parse(JSON.stringify(data))),
                 dbUtils.getAllChats().then(data => JSON.parse(JSON.stringify(data))),
@@ -9577,7 +9578,7 @@ const appLogic = {
                 new Promise((res, rej) => {
                     const store = dbUtils._getStore('image_store');
                     const request = store.getAll();
-                    request.onsuccess = () => res(JSON.parse(JSON.stringify(request.result)));
+                    request.onsuccess = () => res(request.result); // BlobはJSON.stringifyで消えるので、ここではコピーしない
                     request.onerror = (e) => rej(e.target.error);
                 }),
                 new Promise((res, rej) => {
@@ -9599,20 +9600,25 @@ const appLogic = {
             };
 
             for (const profile of profiles) {
-                if (profile.icon instanceof Blob) {
+                // 元のDBデータからBlobを取得して localAssets に追加
+                const originalProfile = await dbUtils.getProfile(profile.id);
+                if (originalProfile && originalProfile.icon instanceof Blob) {
                     const assetId = `profile_${profile.id}_icon.webp`;
-                    addAsset(assetId, profile.icon);
+                    addAsset(assetId, originalProfile.icon);
                     profile.iconAssetId = assetId;
-                    delete profile.icon;
                 }
+                delete profile.icon;
             }
             for (const asset of imageAssets) {
-                if (!asset.assetId) {
-                    const safeName = asset.name.replace(/[^a-zA-Z0-9]/g, '_');
-                    asset.assetId = `asset_${safeName}_${new Date(asset.createdAt).getTime()}.webp`;
-                    asset._needsUpdate = true;
+                const originalAsset = await dbUtils.getAsset(asset.name);
+                if (originalAsset && originalAsset.blob) {
+                    if (!asset.assetId) {
+                        const safeName = asset.name.replace(/[^a-zA-Z0-9]/g, '_');
+                        asset.assetId = `asset_${safeName}_${new Date(asset.createdAt).getTime()}.webp`;
+                        asset._needsUpdate = true;
+                    }
+                    addAsset(asset.assetId, originalAsset.blob);
                 }
-                addAsset(asset.assetId, asset.blob);
             }
             for (const image of chatImages) {
                 if (image.id && image.blob) {
@@ -9693,10 +9699,6 @@ const appLogic = {
                 for (const chat of chatsToUpdate) {
                     delete chat._needsUpdate;
                     store.put(chat);
-                    if (chat.id === state.currentChatId) {
-                        console.log(`%c[DEBUG_SYNC_STATE] アクティブなチャット(ID: ${chat.id})のメモリ上のデータをDBと同期します。`, 'color: red; font-weight: bold;');
-                        state.currentMessages = chat.messages;
-                    }
                 }
             }
 
@@ -9738,6 +9740,7 @@ const appLogic = {
             throw new Error("データのエクスポート準備に失敗しました。");
         }
     },
+
 
 
     async importDataFromString(jsonString) {
