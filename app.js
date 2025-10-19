@@ -9523,7 +9523,7 @@ const appLogic = {
      * @param {boolean} isManual - 手動実行かどうか
      * @returns {Promise<{metadataJson: string, localAssets: Map<string, {blob: Blob, hash: string}>}>}
      */
-    async _prepareExportData() {
+     async _prepareExportData() {
         console.log("[Data Export V2] 分離形式でのデータエクスポートを開始します。");
         console.log(`%c[DEBUG_SYNC] _prepareExportData CALLED at ${new Date().toISOString()}`, 'color: blue; font-weight: bold;');
 
@@ -9587,7 +9587,7 @@ const appLogic = {
             console.log("[Data Export V2] チャット履歴内の添付ファイルのアセット化とデータクレンジングを開始します...");
             const blobsToSaveToImageStore = [];
 
-            // ディープコピーされた `chats` ではなく、ライブデータに近い `state.currentMessages` を含むチャットを直接処理する
+            // DBから直接読み込んだデータを操作し、stateを汚染しないようにする
             const allDbChats = await dbUtils.getAllChats();
             for (const chat of allDbChats) {
                 if (chat.messages) {
@@ -9613,7 +9613,6 @@ const appLogic = {
                                     }
                                 } 
                                 else if (attachment.assetId) {
-                                    // 既にassetIdがある場合は、DBからBlobを探してlocalAssetsに追加するだけ
                                     const imgData = chatImages.find(img => img.id === attachment.assetId);
                                     if (imgData && imgData.blob) {
                                         addAsset(attachment.assetId, imgData.blob);
@@ -9657,14 +9656,17 @@ const appLogic = {
                 const tx = state.db.transaction(CHATS_STORE, 'readwrite');
                 const store = tx.objectStore(CHATS_STORE);
                 for (const chat of chatsToUpdate) {
-                    // 永続化する前に、base64Dataを削除する
-                    chat.messages.forEach(msg => {
+                    // DBに保存する前にディープコピーを作成し、コピーからbase64Dataを削除する
+                    const chatForDb = JSON.parse(JSON.stringify(chat));
+                    chatForDb.messages.forEach(msg => {
                         if (msg.attachments) {
                             msg.attachments.forEach(att => delete att.base64Data);
                         }
                     });
-                    delete chat._needsUpdate;
-                    store.put(chat);
+                    delete chatForDb._needsUpdate;
+                    store.put(chatForDb);
+
+                    // メモリ上のstate.currentMessagesは、base64Dataが削除されていない元のchatオブジェクトで更新する
                     if (chat.id === state.currentChatId) {
                         console.log(`%c[DEBUG_SYNC_STATE] アクティブなチャット(ID: ${chat.id})のメモリ上のデータをDBと同期します。`, 'color: red; font-weight: bold;');
                         state.currentMessages = chat.messages;
@@ -9693,7 +9695,7 @@ const appLogic = {
                 syncId: syncId,
                 data: {
                     profiles,
-                    chats, // base64Dataが除去されたコピーを使用
+                    chats,
                     memories,
                     assets: imageAssets.map(a => ({ name: a.name, assetId: a.assetId, createdAt: a.createdAt })),
                     settings: settingsForExport
@@ -9711,6 +9713,7 @@ const appLogic = {
             throw new Error("データのエクスポート準備に失敗しました。");
         }
     },
+
 
 
 
