@@ -1676,39 +1676,15 @@ window.functionCallingTools = {
     generate_video: generate_video,
     generate_image: generate_image,
 
-    generate_image_stable_diffusion: async function(args) {
-        console.log(`[Function Calling] generate_image_stable_diffusion (ver.2)が呼び出されました。`, args);
-        // app.jsの本体ロジックを直接呼び出すように変更
-        if (window.appLogic && typeof window.appLogic.callStableDiffusionApi === 'function') {
-            try {
-                // UIのステータスを更新
-                if (window.uiUtils) uiUtils.setLoadingIndicatorText('SDで画像生成中...');
-
-                // クオリティチェックは行わず、API呼び出しと画像保存のみを行う
-                const generatedImageBlob = await window.appLogic.callStableDiffusionApi(args);
-                const imageId = await window.appLogic.saveImageBlob(generatedImageBlob);
-
-                // ここでは終端アクションとせず、生成したimageIdを返す
-                return {
-                    success: true,
-                    message: "Stable Diffusionによる画像の生成と保存に成功しました。",
-                    // UIに画像を表示するための内部アクション
-                    _internal_ui_action: {
-                        type: "display_generated_images",
-                        imageIds: [imageId]
-                    },
-                    // 後続の run_quality_checker が使えるようにimageIdを返す
-                    generated_image_id: imageId, 
-                    meta: args
-                };
-            } catch (error) {
-                console.error("[Stable Diffusion] 画像生成プロセスでエラー:", error);
-                return { success: false, error: { message: `画像生成エラー: ${error.message}` } };
-            }
+    generate_image_stable_diffusion: async function(args, chatContext) {
+        console.log(`[Function Calling] generate_image_stable_diffusionが呼び出されました。`, args);
+        if (window.appLogic && typeof window.appLogic.handleStableDiffusionGeneration === 'function') {
+            const responseText = args._responseTextForQc || '';
+            return await window.appLogic.handleStableDiffusionGeneration(args, responseText);
         } else {
             return { error: "Stable Diffusion連携機能が初期化されていません。" };
         }
-    },
+      },
 
     edit_image: edit_image,
     /**
@@ -2240,7 +2216,7 @@ window.functionDeclarations = [
         },
         {
             "name": "generate_image_stable_diffusion",
-            "description": "【最重要ルール】この関数を呼び出す際は、必ずユーザー向けのテキスト応答（物語の続き、画像の説明文など）も同時に生成してください。テキスト応答には、生成画像を表示したい位置に`[IMAGE_HERE]`という目印を必ず含めてください。\n【機能概要】ユーザーが『Stable Diffusionで』『SDで』のように明示的に指示した場合に、テキストプロンプトと詳細パラメータに基づき画像を生成します。この関数は品質チェックを行いません。品質を検証するには、この関数の実行後に `run_quality_checker` を呼び出してください。",
+            "description": "【最重要ルール】この関数を呼び出す際は、必ずユーザー向けのテキスト応答（物語の続き、画像の説明文など）も同時に生成してください。テキスト応答には、生成画像を表示したい位置に`[IMAGE_HERE]`という目印を必ず含めてください。\n【機能概要】ユーザーが『Stable Diffusionで』『SDで』のように明示的に指示した場合に、テキストプロンプトと詳細パラメータに基づき画像を生成します。",
             "parameters": {
                 "type": "OBJECT",
                 "properties": {
