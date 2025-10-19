@@ -8,37 +8,6 @@ import("https://esm.run/@google/genai").then(module => {
     document.body.innerHTML = `<p style="color: red; padding: 20px;">SDKの読み込みに失敗しました。アプリを起動できません。</p>`;
 });
 
-
-/**
- * [デバッグ用] state.currentMessages の添付ファイル状態をログに出力するヘルパー
- * @param {string} title - ログのタイトル
- */
- function logMessagesState(title) {
-    console.group(`[ATTACHMENT DEBUG] ${title}`);
-    try {
-        if (!window.state || !state.currentMessages || state.currentMessages.length === 0) {
-            console.log("state.currentMessages は空です。");
-            return;
-        }
-        console.log(`メッセージ総数: ${state.currentMessages.length}`);
-        const summary = state.currentMessages.map((msg, index) => ({
-            index,
-            role: msg.role,
-            contentLength: msg.content?.length || 0,
-            hasAttachments: !!msg.attachments,
-            attachmentCount: msg.attachments?.length || 0,
-            // 最初の添付ファイルにbase64Dataがあるか（文字数で確認）
-            firstAttachmentBase64Length: msg.attachments?.[0]?.base64Data?.length || 0,
-            isHidden: !!msg.isHidden
-        }));
-        console.table(summary);
-    } catch (error) {
-        console.error("ログ出力中にエラーが発生しました:", error);
-    } finally {
-        console.groupEnd();
-    }
-}
-
 // --- 定数 ---
 const DB_NAME = 'GeminiPWA_DB';
 const DB_VERSION = 13; 
@@ -320,7 +289,9 @@ try {
         sdQualityCheckerOptionsDiv: document.getElementById('sd-quality-checker-options'),
         sdQcModelSelect: document.getElementById('sd-qc-model'),
         sdQcPromptTextarea: document.getElementById('sd-qc-prompt'),
-        sdQcRetriesInput: document.getElementById('sd-qc-retries')
+        sdQcRetriesInput: document.getElementById('sd-qc-retries'),
+        sdPromptImproveModelSelect: document.getElementById('sd-prompt-improve-model'),
+        sdPromptImproveSystemPromptTextarea: document.getElementById('sd-prompt-improve-system-prompt')
     };
     document.body.classList.toggle('dropbox-connected', false);
 } catch (error) {
@@ -433,7 +404,9 @@ const state = {
 評価結果を以下の形式で出力してください。他のテキストは一切含めないでください。
 Result: [OKまたはNG]
 Reason: [NGの場合の理由]`,
-        sdQcRetries: 3
+        sdQcRetries: 3,
+        sdPromptImproveModel: 'gemini-2.5-flash',
+        sdPromptImproveSystemPrompt: `あなたはプロのプロンプトエンジニアです。提示された「元のプロンプト」と「失敗理由」に基づき、失敗理由を解決するための改善された英語の画像生成プロンプトを生成してください。余計な解説や前置きは一切含めず、改善されたプロンプト本体のみを出力してください。`
     },
     syncMessageCounter: 0,
     backgroundImageUrl: null,
@@ -2395,6 +2368,8 @@ renderChatMessages() {
         elements.sdQcModelSelect.value = state.settings.sdQcModel || 'gemini-2.5-pro';
         elements.sdQcPromptTextarea.value = state.settings.sdQcPrompt || '';
         elements.sdQcRetriesInput.value = state.settings.sdQcRetries === null ? '' : state.settings.sdQcRetries;
+        elements.sdPromptImproveModelSelect.value = state.settings.sdPromptImproveModel || 'gemini-2.5-flash';
+        elements.sdPromptImproveSystemPromptTextarea.value = state.settings.sdPromptImproveSystemPrompt || '';
         elements.sdQualityCheckerOptionsDiv.classList.toggle('hidden', !state.settings.sdEnableQualityChecker);
     },
 
@@ -2970,30 +2945,6 @@ renderChatMessages() {
         } else {
             console.error('[Debug Toggle] エラー: 対象となるメニュー要素が見つかりません。');
         }
-    },
-
-    debug_moveChatScreen() {
-        console.log('[DEBUG_TRANSITION] デバッグ用遷移関数を開始します。');
-        const chatScreen = elements.chatScreen;
-    
-        // transitionendイベントリスナーを設定
-        const onTransitionEnd = (event) => {
-            // イベントが本当にchatScreenのtransformプロパティで発生したか確認
-            if (event.target === chatScreen && event.propertyName === 'transform') {
-                console.log('%c[DEBUG_TRANSITION] transitionend イベントが発火しました！', 'color: lime; font-weight: bold;');
-                // 念のためリスナーを削除
-                chatScreen.removeEventListener('transitionend', onTransitionEnd);
-            }
-        };
-        chatScreen.addEventListener('transitionend', onTransitionEnd);
-    
-        // 遷移を開始
-        console.log('[DEBUG_TRANSITION] これから transform を translateX(0) に設定します。');
-        requestAnimationFrame(() => {
-            chatScreen.style.transition = 'transform 0.3s ease-in-out';
-            chatScreen.style.transform = 'translateX(0)';
-            console.log('[DEBUG_TRANSITION] transform を設定しました。イベント発火を待ちます...');
-        });
     },
 
     // --- 進捗ダイアログ ヘルパー ---
@@ -3733,9 +3684,6 @@ const appLogic = {
 
         // ディープコピーで元のメッセージ配列を保護する
         const messagesForApi = JSON.parse(JSON.stringify(baseMessages));
-
-        // ★★★ ログ出力コード ★★★
-        logMessagesState("_prepareApiHistory ディープコピー直後");
 
         let historyToProcess;
 
@@ -4913,7 +4861,9 @@ const appLogic = {
             },
             sdQcModel: { element: elements.sdQcModelSelect, event: 'change' },
             sdQcPrompt: { element: elements.sdQcPromptTextarea, event: 'input' },
-            sdQcRetries: { element: elements.sdQcRetriesInput, event: 'input' }
+            sdQcRetries: { element: elements.sdQcRetriesInput, event: 'input' },
+            sdPromptImproveModel: { element: elements.sdPromptImproveModelSelect, event: 'change' },
+            sdPromptImproveSystemPrompt: { element: elements.sdPromptImproveSystemPromptTextarea, event: 'input' }
         };
     
         for (const key in settingsMap) {
@@ -6396,9 +6346,9 @@ const appLogic = {
                     toolResult = { error: { message: `ツール実行中に予期せぬエラーが発生しました: ${toolError.message}` } };
                 }
 
-                if (functionName === 'run_quality_checker' && toolResult.result === 'OK') {
+                if (['generate_image', 'generate_image_stable_diffusion', 'generate_video', 'edit_image', 'display_layered_image'].includes(functionName)) {
                     containsTerminalAction = true;
-                    console.log(`[Function Calling] 終端アクション (run_quality_checker: OK) を検出しました。`);
+                    console.log(`[Function Calling] 終端アクション (${functionName}) を検出しました。`);
                 } else if (['generate_image', 'generate_video', 'edit_image', 'display_layered_image'].includes(functionName)) {
                     containsTerminalAction = true; 
                     console.log(`[Function Calling] 終端アクション (${functionName}) を検出しました。`);
@@ -6578,8 +6528,6 @@ const appLogic = {
 
     
     async handleSend() {
-        // ★★★ ログ出力コード ★★★
-        logMessagesState("handleSend 開始時");
 
         if (state.isSending) { return; }
         if (state.editingMessageIndex !== null) { await uiUtils.showCustomAlert("他のメッセージを編集中です。"); return; }
@@ -6612,8 +6560,6 @@ const appLogic = {
             this.scrollToBottom();
         }
         
-        // ★★★ ログ出力コード ★★★
-        logMessagesState("ユーザーメッセージ保存直前");
 
         // ユーザーメッセージをDBに保存し、同期処理をトリガー
         await dbUtils.saveChat();
@@ -6644,9 +6590,6 @@ const appLogic = {
 
             const systemInstruction = finalSystemPrompt ? { role: "system", parts: [{ text: finalSystemPrompt }] } : null;
 
-             // ★★★ ログ出力コード ★★★
-            logMessagesState("_prepareApiHistory 呼び出し直前");
-
             const historyForApi = this._prepareApiHistory(baseHistory);
 
             const newMessages = await this._internalHandleSend(historyForApi, generationConfig, systemInstruction);
@@ -6655,9 +6598,6 @@ const appLogic = {
             state.currentMessages[modelMessageIndex] = finalAggregatedMessage;
 
             uiUtils.renderChatMessages(() => uiUtils.scrollToBottom());
-
-            // ★★★ ログ出力コード ★★★
-            logMessagesState("モデル応答保存直前");
 
             // モデルの応答をDBに保存し、同期処理をトリガー
             await dbUtils.saveChat();
@@ -6681,9 +6621,6 @@ const appLogic = {
             
             state.currentMessages[modelMessageIndex] = { role: 'error', content: errorMessage, timestamp: Date.now() };
             uiUtils.renderChatMessages(() => uiUtils.scrollToBottom());
-
-            // ★★★ ログ出力コード ★★★
-            logMessagesState("エラー発生後、DB保存直前");
             
             // エラー発生時もDBに保存し、同期処理をトリガー
             await dbUtils.saveChat();
@@ -7958,8 +7895,6 @@ const appLogic = {
             elements.fileUploadDialog.close('ok');
             uiUtils.adjustTextareaHeight();
             uiUtils.updateAttachmentBadgeVisibility();
-            // ★★★ ログ出力コード ★★★
-            logMessagesState("confirmAttachment 完了時 (state.pendingAttachments が設定された直後)");
         }
     },
 
@@ -9982,44 +9917,45 @@ const appLogic = {
     // --- ここからStable Diffusion連携機能の本体ロジック ---
     handleStableDiffusionGeneration: async function(args, responseText = '') {
         if (!state.settings.sdApiUrl) {
-            return { error: "Stable Diffusion WebUIのURLが設定されていません。設定画面から設定してください。" };
+            return { error: "Stable Diffusion WebUIのURLが設定されていません。" };
         }
 
-        uiUtils.setLoadingIndicatorText('SDで画像生成中...');
+        let currentPrompt = args.prompt;
         let generatedImageBlob = null;
         let qualityCheckResult = null;
+        const isQcEnabled = state.settings.sdEnableQualityChecker;
+        const maxRetries = isQcEnabled ? (state.settings.sdQcRetries || 0) : 0;
 
         try {
-            // クオリティチェッカーが有効かどうかの判定
-            const isQcEnabled = state.settings.sdEnableQualityChecker;
-            const maxRetries = isQcEnabled ? (state.settings.sdQcRetries || 3) : 0;
-
             for (let i = 0; i <= maxRetries; i++) {
                 if (i > 0) {
-                    uiUtils.setLoadingIndicatorText(`品質チェックNG 再生成中... (${i}/${maxRetries})`);
+                    uiUtils.setLoadingIndicatorText(`プロンプト改善中... (${i}/${maxRetries})`);
+                    currentPrompt = await this._improveSdPrompt(args.prompt, currentPrompt, qualityCheckResult.reason);
                 }
                 
-                generatedImageBlob = await this.callStableDiffusionApi(args);
+                uiUtils.setLoadingIndicatorText('SDで画像生成中...');
+                const payload = { ...args, prompt: currentPrompt };
+                generatedImageBlob = await this.callStableDiffusionApi(payload);
 
                 if (!isQcEnabled) {
-                    break; // QCが無効ならループは1回で終了
+                    break;
                 }
 
                 uiUtils.setLoadingIndicatorText('品質チェック中...');
-                qualityCheckResult = await this.runQualityChecker(generatedImageBlob, args.prompt, responseText);
+                qualityCheckResult = await this.runQualityChecker(generatedImageBlob, currentPrompt, responseText);
+
+                // runQualityCheckerの実行直後に、その結果をログに出力する
+                console.log(`[Quality Check Cycle ${i + 1}/${maxRetries + 1}] 判定: ${qualityCheckResult.result}。理由: ${qualityCheckResult.reason || 'N/A'}`);
 
                 if (qualityCheckResult.result === 'OK') {
-                    console.log("[Quality Checker] 判定: OK。処理を完了します。");
-                    break; // 成功したのでループを抜ける
+                    break; 
                 } else {
-                    console.log(`[Quality Checker] 判定: NG。理由: ${qualityCheckResult.reason}`);
                     if (i >= maxRetries) {
-                        throw new Error(`クオリティチェックが上限回数(${maxRetries}回)に達しました。最後のNG理由: ${qualityCheckResult.reason}`);
+                        throw new Error(`品質チェックが上限回数(${maxRetries}回)に達しました。最後のNG理由: ${qualityCheckResult.reason}`);
                     }
                 }
             }
 
-            // DBに保存し、imageIdを取得
             const imageId = await this.saveImageBlob(generatedImageBlob);
 
             return {
@@ -10029,15 +9965,87 @@ const appLogic = {
                     type: "display_generated_images",
                     imageIds: [imageId]
                 },
-                meta: {
-                    ...args,
-                    qualityCheckResult: qualityCheckResult // 最終的なチェック結果もメタ情報として返す
-                }
+                meta: { ...args, finalPrompt: currentPrompt, qualityCheckResult }
             };
 
         } catch (error) {
             console.error("[Stable Diffusion] 画像生成プロセスでエラー:", error);
             return { success: false, error: { message: `画像生成エラー: ${error.message}` } };
+        }
+    },
+
+    async _improveSdPrompt(originalPrompt, failedPrompt, ngReason) {
+        const model = state.settings.sdPromptImproveModel;
+        const systemPrompt = state.settings.sdPromptImproveSystemPrompt;
+
+        const userPrompt = `元のプロンプト: ${originalPrompt}\n失敗したプロンプト: ${failedPrompt}\n失敗理由: ${ngReason}`;
+
+        const requestBody = {
+            contents: [{ parts: [{ text: userPrompt }] }],
+            systemInstruction: { parts: [{ text: systemPrompt }] },
+            generationConfig: { temperature: 0.5 }
+        };
+
+        const endpoint = `${GEMINI_API_BASE_URL}${model}:generateContent?key=${state.settings.apiKey}`;
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) throw new Error(`プロンプト改善APIエラー (${response.status})`);
+
+        const data = await response.json();
+        const improvedPrompt = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        if (!improvedPrompt) throw new Error("プロンプト改善APIから有効な応答が得られませんでした。");
+        
+        console.log("[SD Prompt Improver] 改善されたプロンプト:", improvedPrompt);
+        return improvedPrompt;
+    },
+
+    runQualityChecker: async function(imageBlob, prompt, responseText = '') {
+        const qcModel = state.settings.sdQcModel;
+        const qcSystemPrompt = state.settings.sdQcPrompt
+            .replace('{prompt}', prompt || '(プロンプトなし)')
+            .replace('{response_text}', responseText || '(応答文なし)');
+        
+        const imageBase64 = await this.fileToBase64(imageBlob);
+
+        const requestBody = {
+            contents: [{
+                parts: [
+                    { text: qcSystemPrompt },
+                    { inlineData: { mimeType: 'image/png', data: imageBase64 } }
+                ]
+            }],
+            generationConfig: { temperature: 0.1 }
+        };
+
+        const endpoint = `${GEMINI_API_BASE_URL}${qcModel}:generateContent?key=${state.settings.apiKey}`;
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+            throw new Error(`品質チェックAPIエラー (${response.status})`);
+        }
+
+        const data = await response.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+        if (text.includes('Result: OK')) {
+            const result = { result: 'OK', reason: '' };
+            console.log("[Quality Checker] 判定: OK");
+            return result;
+        } else {
+            const reasonMatch = text.match(/Reason:\s*(.*)/);
+            const reason = reasonMatch ? reasonMatch[1].trim() : '理由不明';
+            const result = { result: 'NG', reason: reason };
+            console.log(`[Quality Checker] 判定: NG。理由: ${reason}`);
+            return result;
         }
     },
 
