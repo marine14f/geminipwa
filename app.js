@@ -8,6 +8,33 @@ import("https://esm.run/@google/genai").then(module => {
     document.body.innerHTML = `<p style="color: red; padding: 20px;">SDKの読み込みに失敗しました。アプリを起動できません。</p>`;
 });
 
+// 【デバッグ用一時コード】添付ファイルの状態をログに出力するヘルパー関数
+function logAttachmentState(label) {
+    console.group(`%c${label}`, 'color: blue; font-weight: bold;');
+    const lastUserMessage = [...state.currentMessages].reverse().find(m => m.role === 'user' && m.attachments && m.attachments.length > 0);
+    if (lastUserMessage && lastUserMessage.attachments.length > 0) {
+        const attachment = lastUserMessage.attachments[0];
+        console.log(`最新の添付ファイル付きメッセージ (index: ${state.currentMessages.indexOf(lastUserMessage)}) を検査します。`);
+        console.log(`- ファイル名: ${attachment.name}`);
+        // fileプロパティ（Blob本体）の存在を確認
+        if (attachment.file && attachment.file instanceof Blob) {
+            console.log(`- fileプロパティ: ✅ Blobオブジェクトが存在します (サイズ: ${attachment.file.size} bytes)`);
+        } else {
+            console.log(`- fileプロパティ: ❌ undefined (存在しません)`);
+        }
+        // base64Dataの存在を確認
+        if (typeof attachment.base64Data === 'string') {
+            console.log(`- base64Dataプロパティ: ✅ 文字列が存在します (長さ: ${attachment.base64Data.length})`);
+        } else {
+            console.log(`- base64Dataプロパティ: ❌ undefined (存在しません)`);
+        }
+    } else {
+        console.log("検査対象の添付ファイル付きメッセージが見つかりません。");
+    }
+    console.groupEnd();
+}
+
+
 // --- 定数 ---
 const DB_NAME = 'GeminiPWA_DB';
 const DB_VERSION = 13; 
@@ -6561,8 +6588,11 @@ const appLogic = {
         }
         
 
-        // ユーザーメッセージをDBに保存し、同期処理をトリガー
+        // 【デバッグ用一時コード】saveChatの呼び出し前後でログを出力
+        logAttachmentState("【検証①】 saveChat 呼び出し直前");
         await dbUtils.saveChat();
+        logAttachmentState("【検証②】 saveChat 完了直後");
+        
         this.markAsDirtyAndSchedulePush(); // <-- ユーザーメッセージ送信後に呼び出しを追加
         
         try {
@@ -9550,7 +9580,7 @@ const appLogic = {
             });
 
             const settingsForExport = allSettings.filter(setting => 
-                !['dropboxTokens', 'syncIsDirty', 'syncLastError', 'lastSyncId', 'sdApiUrl', 'sdApiUser', 'sdApiPassword'].includes(setting.key)
+                !['dropboxTokens', 'syncIsDirty', 'syncLastError', 'lastSyncId'].includes(setting.key)
             );
 
             const localAssets = new Map();
