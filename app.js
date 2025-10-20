@@ -6587,12 +6587,8 @@ const appLogic = {
             this.scrollToBottom();
         }
         
-
-        // 【デバッグ用一時コード】saveChatの呼び出し前後でログを出力
-        logAttachmentState("【検証①】 saveChat 呼び出し直前");
         await dbUtils.saveChat();
-        logAttachmentState("【検証②】 saveChat 完了直後");
-        
+
         this.markAsDirtyAndSchedulePush(); // <-- ユーザーメッセージ送信後に呼び出しを追加
         
         try {
@@ -6620,7 +6616,10 @@ const appLogic = {
 
             const systemInstruction = finalSystemPrompt ? { role: "system", parts: [{ text: finalSystemPrompt }] } : null;
 
+            // 【デバッグ用一時コード】_prepareApiHistoryの呼び出し前後でログを出力
+            logAttachmentState("【検証①】 _prepareApiHistory 呼び出し直前");
             const historyForApi = this._prepareApiHistory(baseHistory);
+            logAttachmentState("【検証②】 _prepareApiHistory 完了直後");
 
             const newMessages = await this._internalHandleSend(historyForApi, generationConfig, systemInstruction);
             
