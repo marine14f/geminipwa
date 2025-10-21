@@ -9697,8 +9697,12 @@ const appLogic = {
 
                     // メモリ上のstate.currentMessagesは、base64Dataが削除されていない元のchatオブジェクトで更新する
                     if (chat.id === state.currentChatId) {
-                        console.log(`%c[DEBUG_SYNC_STATE] アクティブなチャット(ID: ${chat.id})のメモリ上のデータをDBと同期します。`, 'color: red; font-weight: bold;');
+                        // 【デバッグ用一時コード】データ破壊の瞬間を観測する
+                        console.group('%c【仮説検証】データ破壊の瞬間', 'color: red; font-weight: bold;');
+                        logAttachmentState("【検証①】 state.currentMessages 上書き直前");
                         state.currentMessages = chat.messages;
+                        logAttachmentState("【検証②】 state.currentMessages 上書き直後");
+                        console.groupEnd();
                     }
                 }
             }
