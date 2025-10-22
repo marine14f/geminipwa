@@ -1042,11 +1042,11 @@ async function set_ui_opacity({ overlay, message_bubble }) {
  * @returns {Promise<object>} { success, message, video_url, video_base64 } | { success: false, error: { message, code } }
  */
  async function generate_video(
-    { prompt, negative_prompt, aspect_ratio = "16:9", source_image_message_index, source_inline_image },
+    { prompt, negative_prompt, aspect_ratio = "16:9", source_image_message_index, source_inline_image, model = "veo-3.0-generate-001" },
     chat
   ) {
     console.log(`[Function Calling] generate_video (SDK実装) が呼び出されました。`, {
-      prompt, negative_prompt, aspect_ratio, source_image_message_index, hasInline: !!source_inline_image
+      prompt, negative_prompt, aspect_ratio, source_image_message_index, hasInline: !!source_inline_image, model
     });
   
     const apiKey = window.state?.settings?.apiKey;
@@ -1065,7 +1065,7 @@ async function set_ui_opacity({ overlay, message_bubble }) {
   
       const safeAspect = "16:9";
   
-      const request = { model: "veo-3.0-generate-preview", prompt, config: {} };
+      const request = { model: model, prompt, config: {} };
       if (negative_prompt) request.config.negativePrompt = negative_prompt;
       request.config.aspectRatio = safeAspect;
   
@@ -1232,6 +1232,7 @@ async function set_ui_opacity({ overlay, message_bubble }) {
       if (window.uiUtils) window.elements.loadingIndicator.classList.add('hidden');
     }
 }
+
 
 
 
@@ -1627,6 +1628,52 @@ async function generate_image(args = {}) {
     }
 }
 
+/**
+ * 指定されたURLのコンテンツを取得するプロキシ経由の関数
+ * @param {object} args - AIによって提供される引数オブジェクト
+ * @param {string} args.url - 取得したいコンテンツのURL
+ * @returns {Promise<object>} 取得したテキストコンテンツまたはエラー情報
+ */
+ async function fetch_url_content({ url }) {
+    console.log(`[Function Calling] fetch_url_contentが呼び出されました。URL: ${url}`);
+
+    const PROXY_URL = 'https://gemini-pwa-mk2-proxy.marine14f.workers.dev/';
+
+    if (!PROXY_URL.startsWith('https://')) {
+        // デプロイ忘れの際にエラーメッセージを返す
+        return { error: "プロキシURLが設定されていません。この機能は現在利用できません。" };
+    }
+    if (!url) {
+        return { error: "引数 'url' は必須です。" };
+    }
+
+    try {
+        // WorkerにPOSTリクエストでURLを渡す
+        const response = await fetch(PROXY_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: url })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`プロキシサーバーからのエラー (${response.status}): ${errorText}`);
+        }
+
+        const data = await response.json();
+        
+        if (data.error) {
+            return { error: `コンテンツの取得に失敗しました: ${data.error}` };
+        }
+
+        console.log(`[Function Calling] fetch_url_content: ${data.content.substring(0, 200)}...`);
+        return { success: true, content: data.content };
+
+    } catch (error) {
+        console.error(`[Function Calling] fetch_url_contentでエラーが発生しました:`, error);
+        return { error: `URLコンテンツの取得中にエラーが発生しました: ${error.message}` };
+    }
+}
 
 
 
@@ -1724,7 +1771,8 @@ window.functionCallingTools = {
         return { error: `品質チェック中にエラーが発生しました: ${error.message}` };
     }
   },
-    manage_character_memory: manage_character_memory
+    manage_character_memory: manage_character_memory,
+    fetch_url_content: fetch_url_content
 };
 
 
@@ -2149,28 +2197,40 @@ window.functionDeclarations = [
             "name": "generate_video",
             "description": "ユーザーが明示的に動画の生成を指示した場合にのみ、この関数を使用してください。テキストプロンプト、または画像とテキストプロンプトから動画を生成します。重要：この関数を呼び出した後は、その結果を使ってユーザーへの最終的な応答メッセージを生成し、会話を完了させてください。再度関数を呼び出すことは禁止です。応答メッセージには、生成した動画を埋め込む場所を示す `[VIDEO_HERE]` という文字列の目印を必ず1つだけ配置してください。HTMLタグは絶対に生成しないでください。ユーザーの指示から、動画の内容を表す英語のプロンプトを生成して `prompt` 引数に設定してください。動画に含めたくない要素は英語で `negative_prompt` に設定します。ユーザーが『この画像から』『あの猫の絵を』のように元画像を指示した場合、会話の文脈から最も適切と思われる画像が含まれているメッセージのインデックス（番号）を特定し、`source_image_message_index` 引数に設定してください。関数がエラーを返した場合、エラー番号とエラー文をユーザーに出力して下さい。",
             "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "prompt": {
-                        "type": "STRING",
-                        "description": "動画の内容を説明する英語のプロンプト。"
-                    },
-                    "negative_prompt": {
-                        "type": "STRING",
-                        "description": "動画に含めたくない要素を説明する英語のネガティブプロンプト。"
-                    },
-                    "aspect_ratio": {
-                        "type": "STRING",
-                        "description": "動画のアスペクト比。'16:9' (横長), '9:16' (縦長), '1:1' (正方形) など。デフォルトは '16:9'。"
-                    },
-                    "source_image_message_index": {
-                        "type": "NUMBER",
-                        "description": "動画生成の元になる画像が含まれているメッセージのインデックス番号。ユーザーが送信したプロンプトが0、その一つ前のAIの応答が1となります。"
-                    }
+              "type": "OBJECT",
+              "properties": {
+                "prompt": {
+                  "type": "STRING",
+                  "description": "動画の内容を説明する英語のプロンプト。"
                 },
-                "required": ["prompt"]
+                "negative_prompt": {
+                  "type": "STRING",
+                  "description": "動画に含めたくない要素を説明する英語のネガティブプロンプト。"
+                },
+                "aspect_ratio": {
+                  "type": "STRING",
+                  "description": "動画のアスペクト比。'16:9' (横長), '9:16' (縦長), '1:1' (正方形) など。デフォルトは '16:9'。"
+                },
+                "source_image_message_index": {
+                  "type": "NUMBER",
+                  "description": "動画生成の元になる画像が含まれているメッセージのインデックス番号。ユーザーが送信したプロンプトが0、その一つ前のAIの応答が1となります。"
+                },
+                "model": {
+                  "type": "STRING",
+                  "description": "使用する動画生成モデルを指定します。指定がない場合はデフォルトの 'veo-3.0-generate-001' が使用されます。",
+                  "enum": [
+                    "veo-3.1-generate-preview",
+                    "veo-3.1-fast-generate-preview",
+                    "veo-3.0-generate-001",
+                    "veo-3.0-fast-generate-001",
+                    "veo-2.0-generate-001"
+                  ]
+                }
+              },
+              "required": ["prompt"]
             }
         },
+       
         { 
             "name": "generate_image",
             "description": "ユーザーが明示的に画像の生成を指示した場合にのみ、この関数を使用してください。テキストプロンプトから画像を生成します。重要：この関数を呼び出した後は、その結果を使ってユーザーへの最終的な応答メッセージを生成し、会話を完了させてください。画像以外の余計な定型文（例：「Here is the original image:」など）は絶対に出力しないでください。再度関数を呼び出すことは禁止です。応答メッセージには、生成した画像を埋め込む場所を示す `[IMAGE_HERE]` という文字列の目印を必ず1つだけ配置してください。HTMLタグは絶対に生成しないでください。ユーザーの指示から、動画の内容を表す英語のプロンプトを生成して `prompt` 引数に設定してください。関数がエラーを返した場合、エラー番号とエラー文をユーザーに出力して下さい。",
@@ -2334,6 +2394,20 @@ window.functionDeclarations = [
                     }
                 },
                 "required": ["character_name", "action"]
+            }
+        },
+        {
+            "name": "fetch_url_content",
+            "description": "指定されたURLにアクセスし、そのページの主要なテキストコンテンツを取得します。Webサイト、記事、ドキュメントの内容を会話の文脈として利用したい場合に使用します。",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "url": {
+                        "type": "STRING",
+                        "description": "コンテンツを取得したいページの完全なURL。"
+                    }
+                },
+                "required": ["url"]
             }
         }
     ]

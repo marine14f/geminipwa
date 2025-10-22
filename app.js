@@ -1510,8 +1510,6 @@ const uiUtils = {
         }
     },
 
-// app.js の uiUtils オブジェクト内
-
 renderChatMessages() {
     const renderStartTime = performance.now();
     console.log(`[PERF_DEBUG] renderChatMessages 開始`);
@@ -2845,6 +2843,15 @@ renderChatMessages() {
             menu.addEventListener('click', e => e.stopPropagation());
         });
 
+        const STORAGE_KEY = 'gemini_pro_api_usage';
+        let usage = { count: 0 };
+        try {
+            const storedUsage = JSON.parse(localStorage.getItem(STORAGE_KEY));
+            if (storedUsage) {
+                usage = storedUsage;
+            }
+        } catch (e) { /* ignore */ }
+
         state.profiles.forEach(profile => {
             const menuItem = document.createElement('div');
             menuItem.classList.add('profile-menu-item');
@@ -2873,17 +2880,36 @@ renderChatMessages() {
             const nameSpan = document.createElement('span');
             nameSpan.classList.add('profile-menu-name');
             nameSpan.textContent = profile.name;
+            textContainer.appendChild(nameSpan);
+
+            const modelLineDiv = document.createElement('div');
+            modelLineDiv.classList.add('profile-menu-model-line');
 
             const modelSpan = document.createElement('span');
             modelSpan.classList.add('profile-menu-model');
-            // profile.settingsが存在し、modelNameが設定されていれば表示
             modelSpan.textContent = profile.settings?.modelName || 'モデル未設定';
+            modelLineDiv.appendChild(modelSpan);
 
-            textContainer.appendChild(nameSpan);
-            textContainer.appendChild(modelSpan);
+            if (profile.settings?.modelName === 'gemini-2.5-pro') {
+                const STORAGE_KEY = `gemini_pro_api_usage_${profile.id}`;
+                let usage = { count: 0 };
+                try {
+                    const storedUsage = JSON.parse(localStorage.getItem(STORAGE_KEY));
+                    if (storedUsage) {
+                        usage = storedUsage;
+                    }
+                } catch (e) { /* ignore */ }
+    
+                const countSpan = document.createElement('span');
+                countSpan.classList.add('profile-menu-api-count');
+                countSpan.textContent = `(本日: ${usage.count} 回)`;
+                modelLineDiv.appendChild(countSpan);
+            }
+            
+            textContainer.appendChild(modelLineDiv);
 
             menuItem.appendChild(iconContainer);
-            menuItem.appendChild(textContainer); // textContainerを追加
+            menuItem.appendChild(textContainer);
 
             const switchHandler = (event) => {
                 event.stopPropagation();
@@ -2902,6 +2928,7 @@ renderChatMessages() {
         
         console.log("[UI] プロファイルメニューを更新しました。");
     },
+
 
     updateProfileCardUI() {
         if (!state.activeProfile) return;
@@ -3038,6 +3065,10 @@ const apiUtils = {
 
         const model = state.settings.modelName || DEFAULT_MODEL;
         const apiKey = state.settings.apiKey;
+
+        if (model === 'gemini-2.5-pro') {
+            appLogic._updateApiUsageCount(state.activeProfileId); 
+        }
 
         const isImageGenModel = model === 'gemini-2.5-flash-image-preview';
 
@@ -3950,6 +3981,102 @@ const appLogic = {
         return visibleMessages;
     },
 
+    _updateApiUsageCount: async function(profileId) {
+        if (!profileId) return;
+    
+        const STORAGE_KEY = `gemini_pro_api_usage_${profileId}`;
+        const now = new Date();
+        
+        const getPacificDate = (date) => {
+            const options = { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' };
+            const formatter = new Intl.DateTimeFormat('en-CA', options); // 'en-CA' は YYYY-MM-DD 形式を得やすい
+            return formatter.format(date);
+        };
+    
+        const todayPacific = getPacificDate(now);
+    
+        let usage = { date: todayPacific, count: 0 };
+        try {
+            // 日付チェックは行わず、単純に読み込むだけ
+            const storedUsage = JSON.parse(localStorage.getItem(STORAGE_KEY));
+            if (storedUsage && storedUsage.date === todayPacific) {
+                usage = storedUsage;
+            }
+        } catch (e) {
+            console.error("API使用回数データの読み込みに失敗:", e);
+        }
+    
+        usage.count++;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(usage));
+        console.log(`[API Count] gemini-2.5-pro call detected for profile ${profileId}. Count for ${usage.date}: ${usage.count}`);
+        
+        // UIを更新
+        this.updateApiUsageUI();
+        uiUtils.updateProfileSwitcherUI();
+    },
+    
+    _checkAndResetApiUsage: async function() {
+        console.log("[API Count] Checking for daily reset...");
+        const activeProfile = state.activeProfile;
+        if (!activeProfile || activeProfile.settings?.modelName !== 'gemini-2.5-pro' || !activeProfile.settings?.apiKey) {
+            return; // チェック対象外
+        }
+    
+        const STORAGE_KEY = `gemini_pro_api_usage_${activeProfile.id}`;
+        const now = new Date();
+    
+        const getPacificDate = (date) => {
+            const options = { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' };
+            const formatter = new Intl.DateTimeFormat('en-CA', options);
+            return formatter.format(date);
+        };
+    
+        const todayPacific = getPacificDate(now);
+    
+        try {
+            const storedUsage = JSON.parse(localStorage.getItem(STORAGE_KEY));
+            if (storedUsage && storedUsage.date !== todayPacific) {
+                console.log(`[API Count] Pacific date has changed from ${storedUsage.date} to ${todayPacific}. Resetting count for profile ${activeProfile.id}.`);
+                localStorage.removeItem(STORAGE_KEY);
+                // UIを更新してリセットを反映
+                this.updateApiUsageUI();
+                uiUtils.updateProfileSwitcherUI();
+            }
+        } catch (e) {
+            console.error("API使用回数データのリセットチェック中にエラー:", e);
+        }
+    },
+
+    updateApiUsageUI: function() {
+        const profileId = state.activeProfileId;
+        if (!profileId) {
+            document.getElementById('api-usage-container').classList.add('hidden');
+            return;
+        }
+        const STORAGE_KEY = `gemini_pro_api_usage_${profileId}`;
+        const usageContainer = document.getElementById('api-usage-container');
+        const usageText = document.getElementById('api-usage-text');
+        
+        if (!usageContainer || !usageText) return;
+
+        let usage = { count: 0 };
+        try {
+            const storedUsage = JSON.parse(localStorage.getItem(STORAGE_KEY));
+            if (storedUsage) {
+                usage = storedUsage;
+            }
+        } catch (e) { /* ignore */ }
+
+        if (state.settings.modelName === 'gemini-2.5-pro') {
+            usageText.textContent = `gemini-2.5-pro 本日の使用回数: ${usage.count} 回 (日本時間16/17時リセット)`;
+            usageContainer.classList.remove('hidden');
+        } else {
+            usageContainer.classList.add('hidden');
+        }
+    },
+
+
+
     // アプリ初期化
     async initializeApp() {
         // --- ステップ0: バージョンアップ通知 ---
@@ -4162,6 +4289,8 @@ const appLogic = {
             
             await this.loadGlobalSettings();
             await this.loadProfiles();
+            await this._checkAndResetApiUsage();
+            this.updateApiUsageUI();
             await this.initializeSyncState();
             await this.updateDropboxUIState();
 
@@ -4331,6 +4460,12 @@ const appLogic = {
             dbUtils.saveSetting('syncIsDirty', true);
         }
         this.updateSyncStatusUI('dirty');
+
+        // AIが応答中の場合は、同期処理のスケジュールを遅延させる
+        if (state.isSending) {
+            console.log("[Sync] AIが応答中のため、同期スケジュールを保留します。");
+            return;
+        }
 
         // 強制Pushフラグがある場合は、設定を無視して即時同期
         if (forcePush) {
@@ -4772,6 +4907,22 @@ const appLogic = {
             e.target.value = null;
         });
 
+    
+        // カウンターリセットボタンの処理
+        document.getElementById('reset-api-count-btn').addEventListener('click', async () => {
+            const confirmed = await uiUtils.showCustomConfirm("API使用回数のカウントを0にリセットしますか？");
+            if (confirmed) {
+                const profileId = state.activeProfileId;
+                if (profileId) {
+                    const STORAGE_KEY = `gemini_pro_api_usage_${profileId}`;
+                    localStorage.removeItem(STORAGE_KEY);
+                    this.updateApiUsageUI();
+                    uiUtils.updateProfileSwitcherUI();
+                    console.log(`[API Count] カウンターが手動でリセットされました (Profile ID: ${profileId})`);
+                }
+            }
+        });
+
         // --- データ同期 (エラークリア) ---
         document.getElementById('clear-sync-error-btn').addEventListener('click', () => {
             state.sync.lastError = null;
@@ -4828,7 +4979,14 @@ const appLogic = {
         
         const settingsMap = {
             apiKey: { element: elements.apiKeyInput, event: 'input' },
-            modelName: { element: elements.modelNameSelect, event: 'change', onUpdate: () => uiUtils.updateModelWarningMessage() },
+            modelName: { 
+                element: elements.modelNameSelect, 
+                event: 'change', 
+                onUpdate: () => {
+                    uiUtils.updateModelWarningMessage();
+                    this.updateApiUsageUI(); // onUpdateに統合
+                } 
+            },
             systemPrompt: { element: elements.systemPromptDefaultTextarea, event: 'input' },
             temperature: { element: elements.temperatureInput, event: 'input' },
             maxTokens: { element: elements.maxTokensInput, event: 'input' },
@@ -5463,7 +5621,14 @@ const appLogic = {
         elements.sdEnableQualityCheckerCheckbox.addEventListener('change', (event) => {
             elements.sdQualityCheckerOptionsDiv.classList.toggle('hidden', !event.target.checked);
         });
-        
+
+        // タブがアクティブになった時にカウンターのリセットをチェック
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                this._checkAndResetApiUsage();
+            }
+        });
+            
     },
 
     
@@ -6417,7 +6582,7 @@ const appLogic = {
                     const toolResultsForApi = toolResults.map(tr => ({ role: 'tool', parts: [{ functionResponse: { name: tr.name, response: tr.response } }] }));
                     currentTurnHistory.push(modelMessageForApi, ...toolResultsForApi);
 
-                    const textResult = await this.callApiWithRetry({
+                    const textResult = await this.callApiWithRetry({ 
                         messagesForApi: currentTurnHistory,
                         generationConfig,
                         systemInstruction,
@@ -6588,8 +6753,6 @@ const appLogic = {
         }
         
         await dbUtils.saveChat();
-
-        this.markAsDirtyAndSchedulePush(); // <-- ユーザーメッセージ送信後に呼び出しを追加
         
         try {
             const generationConfig = {};
@@ -6626,11 +6789,10 @@ const appLogic = {
             const finalAggregatedMessage = this._aggregateMessages(newMessages);
             state.currentMessages[modelMessageIndex] = finalAggregatedMessage;
 
-            uiUtils.renderChatMessages(() => uiUtils.scrollToBottom());
+            uiUtils.renderChatMessages();
 
             // モデルの応答をDBに保存し、同期処理をトリガー
             await dbUtils.saveChat();
-            this.markAsDirtyAndSchedulePush(); // <-- モデル応答受信後にも呼び出しを追加
 
             this.updateCharacterProfileButtonVisibility();
 
@@ -6657,6 +6819,10 @@ const appLogic = {
         } finally {
             uiUtils.setSendingState(false);
             state.abortController = null;
+            
+            // 処理が完了したこのタイミングで、安全に同期処理をトリガーする
+            this.markAsDirtyAndSchedulePush();
+
             if (state.settings.autoScroll) {
                 requestAnimationFrame(() => {
                     this.scrollToBottom();

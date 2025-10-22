@@ -2612,3 +2612,40 @@ body.dark-mode #sd-test-connection-btn {
 #sync-status-settings-icon {
     cursor: default;
 }
+/* --- API Usage Counter --- */
+.api-usage-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: var(--bg-tertiary);
+    padding: 8px 12px;
+    border-radius: var(--border-radius-sm);
+    margin-top: -4px;
+    margin-bottom: 12px;
+}
+.api-usage-text {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin: 0;
+}
+.profile-menu-model-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.profile-menu-model {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 1; /* モデル名が長い場合に縮むように */
+}
+
+.profile-menu-api-count {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    font-weight: normal;
+    white-space: nowrap;
+    flex-shrink: 0; /* カウント表示は縮まないように */
+}
