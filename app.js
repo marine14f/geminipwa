@@ -1380,6 +1380,17 @@ const dbUtils = {
             }
         });
 
+        // 【デバッグ用一時コード】
+        console.group('%c【Pull検証③】 clearAndImportData DB書き込み直前', 'color: purple; font-weight: bold;');
+        const firstChatWithAttachment = (chats || []).find(c => c.messages && c.messages.some(m => m.attachments && m.attachments.length > 0));
+        if (firstChatWithAttachment) {
+            const msg = firstChatWithAttachment.messages.find(m => m.attachments && m.attachments.length > 0);
+            console.log('DBに書き込む直前の最初の添付ファイル付きメッセージを検査:', msg.attachments[0]);
+        } else {
+            console.log('DBに書き込むデータ内に添付ファイル付きメッセージは見つかりませんでした。');
+        }
+        console.groupEnd();
+
         const profilesWithBlobs = (profiles || []).map(p => {
             if (p.iconAssetId && allAvailableAssets.has(p.iconAssetId)) {
                 p.icon = allAvailableAssets.get(p.iconAssetId);
@@ -4565,6 +4576,9 @@ const appLogic = {
      * @private
      */
     async _doPush(isManual = false) {
+        // 【デバッグ用一時コード】Push処理開始前の状態を記録
+        logAttachmentState("【Push検証①】 _doPush 開始直後");
+
         console.log(`[SYNC_DEBUG] _doPush: 開始。isManual = ${isManual}`);
 
         if (state.sync.isSyncing) {
@@ -4696,6 +4710,9 @@ const appLogic = {
             state.sync.isSyncing = false;
             await window.dropboxApi.deleteLockFile();
             console.log(`[SYNC_DEBUG] _doPush: 終了。`);
+
+            // 【デバッグ用一時コード】Push処理完了後の状態を記録
+            logAttachmentState("【Push検証②】 _doPush 完了直後");
         }
     },
 
@@ -4728,6 +4745,9 @@ const appLogic = {
      * [V2 Pull] Dropboxからデータをダウンロードして同期する
      */
      async handlePull(isManual = false) {
+        // 【デバッグ用一時コード】
+        logAttachmentState("【Pull検証①】 handlePull 開始直後");
+
         console.log(`[SYNC_DEBUG] handlePull: 開始。isManual = ${isManual}`);
 
         if (state.sync.isSyncing) {
@@ -4858,6 +4878,9 @@ const appLogic = {
             state.sync.isSyncing = false;
             await window.dropboxApi.deleteLockFile();
             console.log(`[SYNC_DEBUG] handlePull: 終了。`);
+
+            // 【デバッグ用一時コード】
+            logAttachmentState("【Pull検証④】 handlePull 完了直後");
         }
     },
 
@@ -9977,6 +10000,17 @@ const appLogic = {
             }
             
             const cloudData = parsedData.data;
+
+            // 【デバッグ用一時コード】
+            console.group('%c【Pull検証②】 importDataFromString パース直後', 'color: purple; font-weight: bold;');
+            const firstChatWithAttachment = (cloudData.chats || []).find(c => c.messages && c.messages.some(m => m.attachments && m.attachments.length > 0));
+            if (firstChatWithAttachment) {
+                const msg = firstChatWithAttachment.messages.find(m => m.attachments && m.attachments.length > 0);
+                console.log('クラウドデータ内の最初の添付ファイル付きメッセージを検査:', msg.attachments[0]);
+            } else {
+                console.log('クラウドデータ内に添付ファイル付きメッセージは見つかりませんでした。');
+            }
+            console.groupEnd();
 
             const localAssetsBeforeClear = new Map();
             const localImageAssets = await dbUtils.getAllAssets();
