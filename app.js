@@ -786,6 +786,17 @@ const dbUtils = {
     _getStore(storeName, mode = 'readonly') {
         if (!state.db) throw new Error("データベースが開かれていません");
         const transaction = state.db.transaction([storeName], mode);
+
+        // ★★★ ここから追加 ★★★
+        console.log(`%c[DB_TRACE] Transaction started for store: ${storeName}, mode: ${mode}`, 'color: purple');
+        transaction.oncomplete = () => {
+            console.log(`%c[DB_TRACE] Transaction COMPLETED for store: ${storeName}`, 'color: green');
+        };
+        transaction.onerror = (event) => {
+            console.error(`%c[DB_TRACE] Transaction FAILED for store: ${storeName}`, 'color: red', event.target.error);
+        };
+        // ★★★ ここまで追加 ★★★
+
         return transaction.objectStore(storeName);
     },
 
@@ -797,6 +808,20 @@ const dbUtils = {
                 console.log(`[DEBUG] saveSetting: key='${key}' の保存トランザクションを開始します。`);
                 const transaction = state.db.transaction([SETTINGS_STORE], 'readwrite');
                 const store = transaction.objectStore(SETTINGS_STORE);
+
+                // ★★★ ここから追加 ★★★
+                console.log(`%c[DB_TRACE] Transaction started for saveSetting (key: ${key})`, 'color: purple');
+                transaction.oncomplete = () => {
+                    console.log(`%c[DB_TRACE] Transaction COMPLETED for saveSetting (key: ${key})`, 'color: green');
+                    resolve();
+                };
+                transaction.onerror = (event) => {
+                     console.error(`%c[DB_TRACE] Transaction FAILED for saveSetting (key: ${key})`, 'color: red', event.target.error);
+                     reject(event.target.error);
+                };
+                // ★★★ ここまで追加 ★★★
+
+                
                 store.put({ key, value });
 
                 transaction.oncomplete = () => {
@@ -879,6 +904,20 @@ const dbUtils = {
             try {
                 const transaction = state.db.transaction([CHATS_STORE], 'readwrite');
                 const store = transaction.objectStore(CHATS_STORE);
+
+                // ★★★ ここから追加 ★★★
+                const traceId = state.currentChatId || 'new_chat';
+                console.log(`%c[DB_TRACE] Transaction started for saveChat (id: ${traceId})`, 'color: purple');
+                transaction.oncomplete = () => {
+                    console.log(`%c[DB_TRACE] Transaction COMPLETED for saveChat (id: ${traceId})`, 'color: green');
+                    resolve(state.currentChatId);
+                };
+                transaction.onerror = (event) => {
+                    console.error(`%c[DB_TRACE] Transaction FAILED for saveChat (id: ${traceId})`, 'color: red', event.target.error);
+                    reject(new Error(`チャット保存トランザクション失敗: ${event.target.error.message}`));
+                };
+                // ★★★ ここまで追加 ★★★
+
                 const now = Date.now();
     
                 const processSave = (existingChatData = null) => {
@@ -1177,17 +1216,18 @@ const dbUtils = {
     async getSetting(key) {
         await this.openDB();
         return new Promise((resolve, reject) => {
-            console.log(`[DEBUG] getSetting: key='${key}' の読み出しを開始します。`);
-            const store = this._getStore(SETTINGS_STORE);
-            const request = store.get(key);
-            request.onsuccess = (event) => {
-                console.log(`[DEBUG] getSetting: key='${key}' の読み出し成功。結果:`, event.target.result);
-                resolve(event.target.result);
-            };
-            request.onerror = (event) => {
-                console.error(`[DEBUG] getSetting: key='${key}' の読み出しエラー:`, event.target.error);
-                reject(event.target.error);
-            };
+            try { // ★ try-catch を追加
+                const store = this._getStore(SETTINGS_STORE); // ★ _getStore を使うように変更
+                const request = store.get(key);
+                request.onsuccess = (event) => {
+                    resolve(event.target.result);
+                };
+                request.onerror = (event) => {
+                    reject(event.target.error);
+                };
+            } catch (e) {
+                reject(e);
+            }
         });
     },
 
