@@ -3100,6 +3100,7 @@ const apiUtils = {
         if (!state.settings.apiKey) {
             throw new Error("APIキーが設定されていません。");
         }
+        
         state.abortController = new AbortController();
         const { signal } = state.abortController;
 
@@ -3190,6 +3191,15 @@ const apiUtils = {
             return value;
         }, 2));
         console.log("ターゲットエンドポイント:", endpoint);
+
+        // ★★★ ここからログ追加 ★★★
+        console.log("%c[DEBUG_SDK] Step A: Checking for GoogleGenAI SDK...", "color: orange;");
+        if (typeof window.GoogleGenAI === 'undefined') {
+            console.error("%c[DEBUG_SDK] FATAL: window.GoogleGenAI is undefined. SDK failed to load.", "color: red; font-weight: bold;");
+            throw new Error("Google GenAI SDKがロードされていません。");
+        }
+        console.log("%c[DEBUG_SDK] Step B: GoogleGenAI SDK found. Starting fetch.", "color: orange;");
+        // ★★★ ここまでログ追加 ★★★
 
         try {
             const response = await fetch(endpoint, {
