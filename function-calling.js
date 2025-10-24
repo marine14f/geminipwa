@@ -1439,7 +1439,7 @@ async function generate_image(args = {}) {
                 const base64Data = await window.appLogic.fileToBase64(imageBlob);
                 imageParts.push({
                     inlineData: {
-                        mimeType: imageBlob.type || 'image/png',
+                        mimeType: 'image/png',
                         data: base64Data
                     }
                 });
