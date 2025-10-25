@@ -8,62 +8,6 @@ import("https://esm.run/@google/genai").then(module => {
     document.body.innerHTML = `<p style="color: red; padding: 20px;">SDKの読み込みに失敗しました。アプリを起動できません。</p>`;
 });
 
-// 【デバッグ用一時コード】DBから直接チャットを読み込み、添付ファイルの状態をログに出力する
-async function logDbAttachmentState(label, chatId) {
-    console.group(`%c${label}`, 'color: purple; font-weight: bold;');
-    if (!chatId) {
-        console.log("チャットIDが指定されていません。");
-        console.groupEnd();
-        return;
-    }
-    try {
-        // この関数内でのみ使用する一時的なdbUtilsオブジェクトを定義
-        const tempDbUtils = {
-            openDB: () => new Promise((resolve, reject) => {
-                const request = indexedDB.open('GeminiPWA_DB'); // DB名とバージョンは環境に合わせてください
-                request.onsuccess = e => resolve(e.target.result);
-                request.onerror = e => reject(e.target.error);
-            }),
-            getChat: async (id, db) => new Promise((resolve, reject) => {
-                const transaction = db.transaction('chats', 'readonly');
-                const store = transaction.objectStore('chats');
-                const request = store.get(id);
-                request.onsuccess = e => resolve(e.target.result);
-                request.onerror = e => reject(e.target.error);
-            })
-        };
-
-        const db = await tempDbUtils.openDB();
-        const chat = await tempDbUtils.getChat(chatId, db);
-        db.close();
-
-        if (!chat) {
-            console.log(`チャットID ${chatId} がDB内に見つかりません。`);
-            console.groupEnd();
-            return;
-        }
-        const messageWithAttachment = (chat.messages || []).find(m => m.attachments && m.attachments.length > 0);
-        if (messageWithAttachment) {
-            const attachment = messageWithAttachment.attachments[0];
-            console.log(`DB内のチャットID ${chatId} の最初の添付ファイルを検査します。`);
-            console.log(`- ファイル名: ${attachment.name}`);
-            if (typeof attachment.base64Data === 'string' && attachment.base64Data.length > 0) {
-                console.log(`- base64Dataプロパティ: ✅ 文字列が存在します (長さ: ${attachment.base64Data.length})`);
-            } else {
-                console.log(`- base64Dataプロパティ: ❌ undefined または空です`);
-            }
-        } else {
-            console.log(`チャットID ${chatId} 内に添付ファイル付きメッセージが見つかりません。`);
-        }
-    } catch (error) {
-        console.error("DBからのチャットデータ取得中にエラー:", error);
-    }
-    console.groupEnd();
-}
-
-
-
-
 // --- 定数 ---
 const DB_NAME = 'GeminiPWA_DB';
 const DB_VERSION = 13; 
@@ -101,6 +45,7 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 最大ファイルサイズ (例: 10M
 const MAX_TOTAL_ATTACHMENT_SIZE = 50 * 1024 * 1024; // 1メッセージあたりの合計添付ファイルサイズ上限 (例: 50MB) - API制限も考慮
 const INITIAL_RETRY_DELAY = 100; // 初期リトライ遅延時間 (ミリ秒)
 const MAX_PROFILES = 5; // プロファイル作成の上限数
+let broadcastChannel = null; // タブ間通信用
 
 // 添付を確定する処理
 const extensionToMimeTypeMap = {
@@ -111,12 +56,31 @@ const extensionToMimeTypeMap = {
     'txt': 'text/plain',
     'html': 'text/html',
     'htm': 'text/html',
-    'json': 'text/json',
+    'json': 'application/json',
     'css': 'text/css',
-    'md': 'text/md',
+    'md': 'text/markdown',
     'csv': 'text/csv',
-    'xml': 'text/xml',
-    'rtf': 'text/rtf',
+    'xml': 'application/xml',
+    'rtf': 'application/rtf',
+    'java': 'text/x-java-source',
+    'c': 'text/x-c',
+    'cpp': 'text/x-c++src',
+    'hpp': 'text/x-c++hdr',
+    'h': 'text/x-chdr',
+    'cs': 'text/plain',
+    'php': 'application/x-httpd-php',
+    'rb': 'text/x-ruby',
+    'go': 'text/x-go',
+    'swift': 'text/x-swift',
+    'kt': 'text/x-kotlin',
+    'kts': 'text/x-kotlin',
+    'rs': 'text/rust',
+    'ts': 'text/typescript',
+    'tsx': 'text/typescript',
+    'sql': 'application/sql',
+    'sh': 'application/x-sh',
+    'yml': 'text/yaml',
+    'yaml': 'text/yaml',
 
     // Image Data
     'png': 'image/png',
@@ -369,6 +333,7 @@ try {
 
 // --- アプリ状態 ---
 const state = {
+    tabId: `tab_${Date.now()}_${Math.random()}`, // このタブを識別するユニークID
     db: null,
     currentChatId: null,
     currentMessages: [],
@@ -816,16 +781,6 @@ const dbUtils = {
         if (!state.db) throw new Error("データベースが開かれていません");
         const transaction = state.db.transaction([storeName], mode);
 
-        // ★★★ ここから追加 ★★★
-        console.log(`%c[DB_TRACE] Transaction started for store: ${storeName}, mode: ${mode}`, 'color: purple');
-        transaction.oncomplete = () => {
-            console.log(`%c[DB_TRACE] Transaction COMPLETED for store: ${storeName}`, 'color: green');
-        };
-        transaction.onerror = (event) => {
-            console.error(`%c[DB_TRACE] Transaction FAILED for store: ${storeName}`, 'color: red', event.target.error);
-        };
-        // ★★★ ここまで追加 ★★★
-
         return transaction.objectStore(storeName);
     },
 
@@ -837,19 +792,6 @@ const dbUtils = {
                 console.log(`[DEBUG] saveSetting: key='${key}' の保存トランザクションを開始します。`);
                 const transaction = state.db.transaction([SETTINGS_STORE], 'readwrite');
                 const store = transaction.objectStore(SETTINGS_STORE);
-
-                // ★★★ ここから追加 ★★★
-                console.log(`%c[DB_TRACE] Transaction started for saveSetting (key: ${key})`, 'color: purple');
-                transaction.oncomplete = () => {
-                    console.log(`%c[DB_TRACE] Transaction COMPLETED for saveSetting (key: ${key})`, 'color: green');
-                    resolve();
-                };
-                transaction.onerror = (event) => {
-                     console.error(`%c[DB_TRACE] Transaction FAILED for saveSetting (key: ${key})`, 'color: red', event.target.error);
-                     reject(event.target.error);
-                };
-                // ★★★ ここまで追加 ★★★
-
                 
                 store.put({ key, value });
 
@@ -933,20 +875,6 @@ const dbUtils = {
             try {
                 const transaction = state.db.transaction([CHATS_STORE], 'readwrite');
                 const store = transaction.objectStore(CHATS_STORE);
-
-                // ★★★ ここから追加 ★★★
-                const traceId = state.currentChatId || 'new_chat';
-                console.log(`%c[DB_TRACE] Transaction started for saveChat (id: ${traceId})`, 'color: purple');
-                transaction.oncomplete = () => {
-                    console.log(`%c[DB_TRACE] Transaction COMPLETED for saveChat (id: ${traceId})`, 'color: green');
-                    resolve(state.currentChatId);
-                };
-                transaction.onerror = (event) => {
-                    console.error(`%c[DB_TRACE] Transaction FAILED for saveChat (id: ${traceId})`, 'color: red', event.target.error);
-                    reject(new Error(`チャット保存トランザクション失敗: ${event.target.error.message}`));
-                };
-                // ★★★ ここまで追加 ★★★
-
                 const now = Date.now();
     
                 const processSave = (existingChatData = null) => {
@@ -1245,8 +1173,8 @@ const dbUtils = {
     async getSetting(key) {
         await this.openDB();
         return new Promise((resolve, reject) => {
-            try { // ★ try-catch を追加
-                const store = this._getStore(SETTINGS_STORE); // ★ _getStore を使うように変更
+            try {
+                const store = this._getStore(SETTINGS_STORE);
                 const request = store.get(key);
                 request.onsuccess = (event) => {
                     resolve(event.target.result);
@@ -1409,17 +1337,6 @@ const dbUtils = {
             }
         });
 
-        // 【デバッグ用一時コード】
-        console.group('%c【Pull検証③】 clearAndImportData DB書き込み直前', 'color: purple; font-weight: bold;');
-        const firstChatWithAttachment = (chats || []).find(c => c.messages && c.messages.some(m => m.attachments && m.attachments.length > 0));
-        if (firstChatWithAttachment) {
-            const msg = firstChatWithAttachment.messages.find(m => m.attachments && m.attachments.length > 0);
-            console.log('DBに書き込む直前の最初の添付ファイル付きメッセージを検査:', msg.attachments[0]);
-        } else {
-            console.log('DBに書き込むデータ内に添付ファイル付きメッセージは見つかりませんでした。');
-        }
-        console.groupEnd();
-
         const profilesWithBlobs = (profiles || []).map(p => {
             if (p.iconAssetId && allAvailableAssets.has(p.iconAssetId)) {
                 p.icon = allAvailableAssets.get(p.iconAssetId);
@@ -1578,7 +1495,6 @@ const uiUtils = {
 
 renderChatMessages() {
     const renderStartTime = performance.now();
-    console.log(`[PERF_DEBUG] renderChatMessages 開始`);
 
     const container = elements.messageContainer;
     
@@ -1657,10 +1573,8 @@ renderChatMessages() {
     
     if (window.Prism) {
         const highlightStartTime = performance.now();
-        console.log(`[PERF_DEBUG] Prism.highlightAll 開始`);
         Prism.highlightAll();
         const highlightEndTime = performance.now();
-        console.log(`[PERF_DEBUG] Prism.highlightAll 完了 (所要時間: ${highlightEndTime - highlightStartTime}ms)`);
     }
     
     requestAnimationFrame(() => {
@@ -1669,7 +1583,6 @@ renderChatMessages() {
     
     appLogic.updateSummarizeButtonState();
     const renderEndTime = performance.now();
-    console.log(`[PERF_DEBUG] renderChatMessages 完了 (合計所要時間: ${renderEndTime - renderStartTime}ms)`);
 },
 
 createMessageElement(role, content, index, isStreamingPlaceholder = false, cascadeInfo = null, attachments = null) {
@@ -2558,11 +2471,9 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
     showScreen(screenName, fromPopState = false) {
         return new Promise((resolve) => {
           const startTime = performance.now();
-          console.log(`%c[PERF_DEBUG] showScreen('${screenName}') 開始`, 'color: orange; font-weight: bold;', { startTime });
       
           // --- 同一画面への重複遷移は無視 ---
           if (screenName === state.currentScreen) {
-            console.log('[NAV] skip same screen:', screenName);
             resolve();
             return;
           }
@@ -2639,11 +2550,6 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
             finished = true;
             state.currentScreen = screenName;
             const endTime = performance.now();
-            console.log(`%cNavigated to screen: ${screenName}`, 'color: orange; font-weight: bold;');
-            console.log(`%c[PERF_DEBUG] showScreen('${screenName}') アニメーション完了/タイムアウト`, 'color: orange; font-weight: bold;', {
-              endTime,
-              duration: endTime - startTime,
-            });
             resolve();
           };
           requestAnimationFrame(() => requestAnimationFrame(finish));
@@ -3224,15 +3130,6 @@ const apiUtils = {
         }, 2));
         console.log("ターゲットエンドポイント:", endpoint);
 
-        // ★★★ ここからログ追加 ★★★
-        console.log("%c[DEBUG_SDK] Step A: Checking for GoogleGenAI SDK...", "color: orange;");
-        if (typeof window.GoogleGenAI === 'undefined') {
-            console.error("%c[DEBUG_SDK] FATAL: window.GoogleGenAI is undefined. SDK failed to load.", "color: red; font-weight: bold;");
-            throw new Error("Google GenAI SDKがロードされていません。");
-        }
-        console.log("%c[DEBUG_SDK] Step B: GoogleGenAI SDK found. Starting fetch.", "color: orange;");
-        // ★★★ ここまでログ追加 ★★★
-
         try {
             const response = await fetch(endpoint, {
                 method: 'POST',
@@ -3427,6 +3324,50 @@ function updateCurrentSystemPrompt() {
 
     // ログ出力は関数の最後に移動
     console.log(`システムプロンプトを更新しました。Provider: ${provider}, Current Prompt: "${state.currentSystemPrompt.substring(0, 30)}..."`);
+}
+
+/**
+ * タブ間通信のためのBroadcastChannelを設定する
+ */
+ function setupBroadcastChannel() {
+    if ('BroadcastChannel' in window) {
+        try {
+            broadcastChannel = new BroadcastChannel('gemini-pwa-sync-channel');
+            console.log('[BroadcastChannel] チャンネルに接続しました。');
+
+            broadcastChannel.onmessage = async (event) => {
+                const { type, newSyncId, sourceTabId } = event.data;
+
+                // 自分のタブからのメッセージは無視
+                if (sourceTabId === state.tabId) {
+                    return;
+                }
+
+                console.log(`[BroadcastChannel] 他のタブからメッセージを受信:`, event.data);
+
+                if (type === 'SYNC_COMPLETED' && newSyncId) {
+                    // 自身のメモリ上の状態を更新
+                    state.sync.lastSyncId = newSyncId;
+                    state.sync.isDirty = false;
+                    state.sync.lastError = null;
+                    
+                    // DBにも保存
+                    await dbUtils.saveSetting('lastSyncId', newSyncId);
+                    await dbUtils.saveSetting('syncIsDirty', false);
+                    await dbUtils.saveSetting('syncLastError', null);
+                    await dbUtils.saveSetting('lastSyncTimestamp', Date.now());
+
+                    // UIを更新
+                    await appLogic.updateDropboxUIState();
+                    uiUtils.showSyncNotification("他のタブで同期が完了したため、状態を更新しました。");
+                }
+            };
+        } catch (error) {
+            console.error('[BroadcastChannel] チャンネルの作成に失敗しました:', error);
+        }
+    } else {
+        console.warn('[BroadcastChannel] このブラウザはBroadcastChannelをサポートしていません。');
+    }
 }
 
 // --- アプリケーションロジック (appLogic) ---
@@ -3861,9 +3802,6 @@ const appLogic = {
             historyToProcess.push({ role: 'model', content: state.settings.dummyModel, attachments: [] });
         }
         
-        console.log('--- [DEBUG] API送信前の履歴チェック ---');
-        console.log(`APIに送信されるメッセージ件数: ${historyToProcess.length}件`);
-
         return historyToProcess.map(msg => {
             const parts = [];
             let contentText = msg.content || '';
@@ -4165,7 +4103,9 @@ const appLogic = {
         // isSyncReloadフラグはメッセージの切り替えにのみ使用
         const isSyncReload = sessionStorage.getItem('isSyncReload') === 'true';
         // 条件分岐の外で必ずダイアログを表示する
-        uiUtils.showProgressDialog(isSyncReload ? 'データベースを準備しています...' : '初期化処理を開始しています...');
+        uiUtils.showProgressDialog(isSyncReload ? 'データベースを準備中...' : '初期化処理を開始中...');
+
+        setupBroadcastChannel();
     
         // --- ステップ0: バージョンアップ通知 ---
         try {
@@ -4191,7 +4131,7 @@ const appLogic = {
         }
         // --- ステップ1: 最初にDB接続を一度だけ確立する ---
         try {
-            if (isSyncReload) uiUtils.updateProgressMessage('データベースを準備しています...');
+            if (isSyncReload) uiUtils.updateProgressMessage('データベースを準備中...');
     
             await dbUtils.openDB();
         } catch (dbError) {
@@ -4376,9 +4316,9 @@ const appLogic = {
     
         try {
             // --- ステップ4: データ読み込みとUI更新 ---
-            if (isSyncReload) uiUtils.updateProgressMessage('各種設定を読み込んでいます...');
+            if (isSyncReload) uiUtils.updateProgressMessage('各種設定を読み込み中...');
             await this.loadGlobalSettings();
-            if (isSyncReload) uiUtils.updateProgressMessage('プロファイル情報を読み込んでいます...');
+            if (isSyncReload) uiUtils.updateProgressMessage('プロファイル情報を読み込み中...');
             await this.loadProfiles();
             await this._checkAndResetApiUsage();
             this.updateApiUsageUI();
@@ -4455,7 +4395,7 @@ const appLogic = {
                 }
             }
     
-            if (isSyncReload) uiUtils.updateProgressMessage('チャット履歴を読み込んでいます...');
+            if (isSyncReload) uiUtils.updateProgressMessage('チャット履歴を読み込み中...');
     
             const chats = await dbUtils.getAllChats(state.settings.historySortOrder);
             if (chats && chats.length > 0) {
@@ -4469,7 +4409,7 @@ const appLogic = {
             await uiUtils.showCustomAlert(`データの読み込みに失敗しました: ${error.message}`);
         } finally {
             // --- ステップ5: 最終的なUI設定と表示 ---
-            if (isSyncReload) uiUtils.updateProgressMessage('画面を描画しています...');
+            if (isSyncReload) uiUtils.updateProgressMessage('画面を描画中...');
             elements.chatScreen.style.transform = 'translateX(0)';
             elements.historyScreen.style.transform = 'translateX(-100%)';
             elements.settingsScreen.style.transform = 'translateX(100%)';
@@ -4612,12 +4552,6 @@ const appLogic = {
      * @private
      */
      async _doPush(isManual = false) {
-        // ★★★ デバッグ用ログを追加 ★★★
-        console.log('%c[DEBUG_SYNC] Push直前の全チャットデータをログ出力します。', 'color: red; font-weight: bold;');
-        const allChatsForDebug = await dbUtils.getAllChats();
-        console.log(allChatsForDebug);
-        // ★★★ デバッグ用ログここまで ★★★
-
         console.log(`[SYNC_DEBUG] _doPush: 開始。isManual = ${isManual}`);
 
         if (state.sync.isSyncing) {
@@ -4679,21 +4613,11 @@ const appLogic = {
             const cloudAssetsList = await window.dropboxApi.listAssets();
             const cloudAssetIds = new Set(cloudAssetsList.map(asset => asset.name));
 
-            // ローカルとクラウドのアセットIDリストを比較
-            console.log('%c[DEBUG_SYNC] --- Asset ID Comparison ---', 'color: red; font-weight: bold;');
-            console.log(`%c[DEBUG_SYNC] Local Asset IDs (${localAssetIds.size} items):`, 'color: blue;', Array.from(localAssetIds).sort());
-            console.log(`%c[DEBUG_SYNC] Cloud Asset IDs (${cloudAssetIds.size} items):`, 'color: orange;', Array.from(cloudAssetIds).sort());
-
             const assetsToUploadArray = Array.from(localAssets.entries())
                 .filter(([assetId]) => !cloudAssetIds.has(assetId))
                 .map(([assetId, asset]) => ({ assetId, asset }));
                 
             const assetsToDelete = Array.from(cloudAssetIds).filter(id => !localAssetIds.has(id));
-
-            // 差分計算の結果
-            console.log(`%c[DEBUG_SYNC] Assets to Upload (${assetsToUploadArray.length} items):`, 'color: green;', assetsToUploadArray.map(a => a.assetId).sort());
-            console.log(`%c[DEBUG_SYNC] Assets to Delete (${assetsToDelete.length} items):`, 'color: magenta;', assetsToDelete.sort());
-            console.log('%c[DEBUG_SYNC] --- End Comparison ---', 'color: red; font-weight: bold;');
 
             // --- Step 3: アセットのアップロード（バッチ処理） ---
             if (assetsToUploadArray.length > 0) {
@@ -4716,16 +4640,6 @@ const appLogic = {
             // --- Step 5: メタデータのアップロード ---
             updateProgress('最終データを保存中...');
             const parsedMetadata = JSON.parse(metadataJson);
-            // 【デバッグ用一時コード】アップロード直前のJSONデータを検査
-            const chatInJson = parsedMetadata.data.chats.find(c => c.id === state.currentChatId);
-            console.group('%c【Push検証②】 アップロード直前のJSONデータ', 'color: purple; font-weight: bold;');
-            if (chatInJson && chatInJson.messages) {
-                const msgInJson = chatInJson.messages.find(m => m.attachments && m.attachments.length > 0);
-                if (msgInJson) {
-                    console.log('JSON内の最初の添付ファイルオブジェクトを検査:', msgInJson.attachments[0]);
-                } else { console.log('JSON内に添付ファイル付きメッセージなし'); }
-            } else { console.log('JSON内に該当チャットなし'); }
-            console.groupEnd();
 
             await window.dropboxApi.uploadMetadata(metadataJson);
 
@@ -4740,6 +4654,14 @@ const appLogic = {
                 dbUtils.saveSetting('syncLastError', null),
                 dbUtils.saveSetting('lastSyncTimestamp', syncTimestamp)
             ]);
+
+            if (broadcastChannel) {
+                broadcastChannel.postMessage({
+                    type: 'SYNC_COMPLETED',
+                    newSyncId: parsedMetadata.syncId,
+                    sourceTabId: state.tabId
+                });
+            }
             
             this.updateSyncStatusUI('idle');
             await this.updateDropboxUIState();
@@ -4842,15 +4764,6 @@ const appLogic = {
             }
 
             const cloudData = JSON.parse(cloudMetadataString);
-            
-            // 【デバッグ用一時コード】ダウンロードしたJSONデータを検査
-            const chatInCloudData = (cloudData.data.chats || []).find(c => c.messages && c.messages.some(m => m.attachments && m.attachments.length > 0));
-            console.group('%c【Pull検証③】 クラウドから受信したJSONデータ', 'color: purple; font-weight: bold;');
-            if (chatInCloudData) {
-                const msgInCloudData = chatInCloudData.messages.find(m => m.attachments && m.attachments.length > 0);
-                console.log('受信JSON内の最初の添付ファイルオブジェクトを検査:', msgInCloudData.attachments[0]);
-            } else { console.log('受信JSON内に添付ファイル付きメッセージなし'); }
-            console.groupEnd();
 
             const cloudSyncId = cloudData.syncId;
 
@@ -4892,6 +4805,14 @@ const appLogic = {
                     dbUtils.saveSetting('syncLastError', null),
                     dbUtils.saveSetting('lastSyncTimestamp', syncTimestamp)
                 ]);
+
+                if (broadcastChannel) {
+                    broadcastChannel.postMessage({
+                        type: 'SYNC_COMPLETED',
+                        newSyncId: importResult.syncId,
+                        sourceTabId: state.tabId
+                    });
+                }
 
                 this.updateSyncStatusUI('idle');
                 if (isManual) uiUtils.hideProgressDialog();
@@ -4940,14 +4861,9 @@ const appLogic = {
         if (!this._popstateBound) {
             window.addEventListener('popstate', this.handlePopState.bind(this));
             this._popstateBound = true;
-            console.log("popstate listener added (once).");
         }
     
         this._setupEventListenersCallCount++;
-        console.log(`[Debug Event] setupEventListeners が呼び出されました。(${this._setupEventListenersCallCount}回目)`);
-        if (this._setupEventListenersCallCount > 1) {
-            console.error('%c[CRITICAL_BUG] setupEventListenersが複数回呼び出されています！これがバグの根本原因である可能性が非常に高いです。', 'color: red; font-size: 1.2em; font-weight: bold;');
-        }
     
         // --- 画面遷移 ---
         elements.gotoHistoryBtn.addEventListener('click', () => uiUtils.showScreen('history'));
@@ -5956,15 +5872,9 @@ const appLogic = {
     async loadChat(id) {
         state.pendingCascadeResponses = null; // 保留中のカスケードデータをクリア
         const loadChatStartTime = performance.now();
-        console.log(`%c[PERF_DEBUG] loadChat: START - チャットID ${id} の読み込み処理を開始...`, 'color: red; font-weight: bold;');
-
         state.syncMessageCounter = 0;
 
-        console.log(`%c[Debug LoadChat] START: チャットID ${id} の読み込みを開始...`, 'color: blue; font-weight: bold;');
-        console.log(`[Debug LoadChat] 1. 読み込み前の state.currentMessages.length: ${state.currentMessages.length}`);
-
         state.currentMessages = [];
-        console.log(`[Debug LoadChat] 2. state.currentMessages をクリアしました。 length: ${state.currentMessages.length}`);
 
         if (state.isSending) {
             const confirmed = await uiUtils.showCustomConfirm("送信中です。中断して別のチャットを読み込みますか？");
@@ -5993,7 +5903,6 @@ const appLogic = {
             const dbGetStartTime = performance.now();
             const chat = await dbUtils.getChat(id);
             const dbGetEndTime = performance.now();
-            console.log(`%c[PERF_DEBUG] loadChat: DBからのデータ取得完了 (所要時間: ${dbGetEndTime - dbGetStartTime}ms)`, 'color: red; font-weight: bold;');
             
             if (chat) {
                 state.currentChatId = chat.id;
@@ -6001,7 +5910,6 @@ const appLogic = {
                     ...msg,
                     attachments: msg.attachments || []
                 })) || [];
-                console.log(`[Debug LoadChat] 3. DBから新しいチャットを読み込みました。 new length: ${state.currentMessages.length}`);
                 
                 state.currentPersistentMemory = chat.persistentMemory || {};
                 state.currentSummarizedContext = chat.summarizedContext || null;
@@ -6031,12 +5939,9 @@ const appLogic = {
                 uiUtils.updateChatTitle(chat.title);
                 uiUtils.updateSystemPromptUI();
                 
-                console.log(`[Debug LoadChat] 4. renderChatMessages を呼び出します...`);
-
                 const renderStartTime = performance.now();
                 uiUtils.renderChatMessages();
                 const renderEndTime = performance.now();
-                console.log(`%c[PERF_DEBUG] loadChat: renderChatMessages DOM再構築完了 (所要時間: ${renderEndTime - renderStartTime}ms)`, 'color: red; font-weight: bold;');
                 
                 this.scrollToBottom();
 
@@ -6049,7 +5954,6 @@ const appLogic = {
                     await dbUtils.saveChat();
                 }
 
-                console.log(`%c[Debug LoadChat] END: チャット読み込み完了: ${id}`, 'color: blue; font-weight: bold;');
             } else {
                 await uiUtils.showCustomAlert("チャット履歴が見つかりませんでした。");
                 this.startNewChat();
@@ -6061,11 +5965,7 @@ const appLogic = {
 
         }
         const loadChatEndTime = performance.now();
-        console.log(`%c[PERF_DEBUG] loadChat: END - 全処理完了 (合計所要時間: ${loadChatEndTime - loadChatStartTime}ms)`, 'color: red; font-weight: bold;');
     },
-
-
-
 
     // チャットを複製
     async duplicateChat(id) {
@@ -6173,7 +6073,7 @@ const appLogic = {
             }
         }
 
-        delete profileToExport.id; // DBのIDは不要なので削除
+        delete profileToExport.id;
 
         const jsonString = JSON.stringify(profileToExport, null, 2);
         const blob = new Blob([jsonString], { type: 'application/json' });
@@ -6776,10 +6676,6 @@ const appLogic = {
             }
         }
         
-        console.log("--- [_internalHandleSend] Final Output ---");
-        console.log("最終的に返却される turnResults の内容:", JSON.stringify(finalTurnResults, null, 2));
-        console.log("--------------------------------------");
-
         return finalTurnResults;
     },
 
@@ -6790,10 +6686,6 @@ const appLogic = {
      * @private _internalHandleSendから返されたメッセージ配列を単一のオブジェクトに集約する。
      */
      _aggregateMessages(messages) {
-        console.log("--- [_aggregateMessages] Input ---");
-        console.log("集約処理の入力となる messages の内容:", JSON.stringify(messages, null, 2));
-        console.log("---------------------------------");
-
         // 最後に content を持つ model メッセージを探す。なければ、最後の model メッセージを探す。
         const primaryModelMessage = [...messages].reverse().find(m => m.role === 'model' && m.content) 
                                  || [...messages].reverse().find(m => m.role === 'model');
@@ -6841,10 +6733,6 @@ const appLogic = {
 
         // タイムスタンプを更新
         finalAggregatedMessage.timestamp = Date.now();
-
-        console.log("--- [_aggregateMessages] Output ---");
-        console.log("集約処理が返却する finalAggregatedMessage の内容:", JSON.stringify(finalAggregatedMessage, null, 2));
-        console.log("----------------------------------");
 
         return finalAggregatedMessage;
     },
@@ -7473,7 +7361,6 @@ const appLogic = {
         textarea.value = rawContent;
         textarea.classList.add('edit-textarea');
         textarea.rows = 3;
-        // textarea.oninput の行を削除
 
         const actionsDiv = document.createElement('div');
         actionsDiv.classList.add('message-edit-actions');
@@ -8167,11 +8054,6 @@ const appLogic = {
             return;
         }
 
-        console.log("--- [DEBUG ②] 添付が確定されました ---");
-        state.selectedFilesForUpload.forEach(item => {
-            console.log(`[DEBUG ②-A] 確定されたファイル: ${item.file.name}, サイズ: ${item.file.size}, 種類: ${item.file.type}`);
-        });
-
         elements.confirmAttachBtn.disabled = true;
         elements.confirmAttachBtn.textContent = '処理中...';
 
@@ -8183,13 +8065,6 @@ const appLogic = {
                 // 確実なキャッシュ回避のため、一度Base64に変換し、そこから新しいBlobを再生成する
                 const base64Data = await this.fileToBase64(item.file);
                 const rehydratedBlob = await this.base64ToBlob(base64Data, item.file.type);
-                
-                console.log(`[DEBUG ②-B] ファイル「${item.file.name}」をBase64経由で再生成しました。`, {
-                    originalSize: item.file.size,
-                    newBlobSize: rehydratedBlob.size,
-                    originalType: item.file.type,
-                    newBlobType: rehydratedBlob.type
-                });
 
                 let browserMimeType = item.file.type || '';
                 const fileName = item.file.name;
@@ -8239,9 +8114,6 @@ const appLogic = {
             uiUtils.updateAttachmentBadgeVisibility();
         }
     },
-
-
-
 
     cancelAttachment() {
         state.selectedFilesForUpload = [];
@@ -8907,7 +8779,7 @@ const appLogic = {
         }
     },
 
-    // --- ここから Character Profile Dialog Functions ---
+    // --- Character Profile Dialog Functions ---
     updateCharacterProfileButtonVisibility() {
         const memory = state.currentPersistentMemory || {};
         const hasCharacterData = Object.keys(memory).some(key => key.startsWith('character_memory_'));
@@ -9020,14 +8892,12 @@ const appLogic = {
                     `).join('')}
                 </div>
             </div>
-            <!-- ここから追加 -->
             <div class="profile-detail-section profile-delete-character-section">
                 <button id="delete-character-btn" class="delete-character-btn">
                     <span class="material-symbols-outlined">person_remove</span>
                     このキャラクターを削除
                 </button>
             </div>
-            <!-- ここまで追加 -->
         `;
 
         // イベントリスナーを設定
@@ -9866,9 +9736,6 @@ const appLogic = {
      * @returns {Promise<{metadataJson: string, localAssets: Map<string, {blob: Blob, hash: string}>}>}
      */
      async _prepareExportData() {
-        console.log("[Data Export V2] 分離形式でのデータエクスポートを開始します。");
-        console.log(`%c[DEBUG_SYNC] _prepareExportData CALLED at ${new Date().toISOString()}`, 'color: blue; font-weight: bold;');
-
         try {
             // ディープコピーの対象を、Blobを含まないメタデータのみに限定する
             const [profiles, chats, memories, allSettings] = await Promise.all([
@@ -10082,17 +9949,6 @@ const appLogic = {
             
             const cloudData = parsedData.data;
 
-            // 【デバッグ用一時コード】
-            console.group('%c【Pull検証②】 importDataFromString パース直後', 'color: purple; font-weight: bold;');
-            const firstChatWithAttachment = (cloudData.chats || []).find(c => c.messages && c.messages.some(m => m.attachments && m.attachments.length > 0));
-            if (firstChatWithAttachment) {
-                const msg = firstChatWithAttachment.messages.find(m => m.attachments && m.attachments.length > 0);
-                console.log('クラウドデータ内の最初の添付ファイル付きメッセージを検査:', msg.attachments[0]);
-            } else {
-                console.log('クラウドデータ内に添付ファイル付きメッセージは見つかりませんでした。');
-            }
-            console.groupEnd();
-
             const localAssetsBeforeClear = new Map();
             const localImageAssets = await dbUtils.getAllAssets();
             localImageAssets.forEach(asset => {
@@ -10281,7 +10137,7 @@ const appLogic = {
         });
     },
 
-    // --- ここからStable Diffusion連携機能の本体ロジック ---
+    // --- Stable Diffusion連携機能の本体ロジック ---
     handleStableDiffusionGeneration: async function(args, responseText = '') {
         if (!state.settings.sdApiUrl) {
             return { error: "Stable Diffusion WebUIのURLが設定されていません。" };
