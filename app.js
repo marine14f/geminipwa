@@ -3075,28 +3075,17 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
 
     // --- 進捗ダイアログ ヘルパー ---
     showProgressDialog(message) {
-        console.log(`[PROGRESS_DEBUG] showProgressDialog CALLED with message: "${message}"`);
         elements.progressMessage.textContent = message;
         if (!elements.progressDialog.open) {
-            console.log('[PROGRESS_DEBUG] dialog is not open, calling showModal().');
             elements.progressDialog.showModal();
-        } else {
-            console.log('[PROGRESS_DEBUG] dialog is already open.');
         }
-        // 呼び出し直後の状態を確認
-        console.log(`[PROGRESS_DEBUG] After showModal(), dialog.open = ${elements.progressDialog.open}`);
     },
     updateProgressMessage(message) {
-        console.log(`[PROGRESS_DEBUG] updateProgressMessage CALLED with message: "${message}"`);
         elements.progressMessage.textContent = message;
     },
     hideProgressDialog() {
-        console.log('[PROGRESS_DEBUG] hideProgressDialog CALLED.');
         if (elements.progressDialog.open) {
             elements.progressDialog.close();
-            console.log('[PROGRESS_DEBUG] Called close() on the dialog.');
-        } else {
-            console.log('[PROGRESS_DEBUG] hideProgressDialog was called, but dialog was not open.');
         }
     },
 
@@ -4173,21 +4162,21 @@ const appLogic = {
 
     // アプリ初期化
     async initializeApp() {
+        // isSyncReloadフラグはメッセージの切り替えにのみ使用
         const isSyncReload = sessionStorage.getItem('isSyncReload') === 'true';
-        if (isSyncReload) {
-            uiUtils.showProgressDialog('初期化処理を開始しています...');
-        }
-
+        // 条件分岐の外で必ずダイアログを表示する
+        uiUtils.showProgressDialog(isSyncReload ? 'データベースを準備しています...' : '初期化処理を開始しています...');
+    
         // --- ステップ0: バージョンアップ通知 ---
         try {
             const lastVersion = localStorage.getItem('appVersion');
             const currentVersion = APP_VERSION;
-
+    
             // バージョンが上がった場合のみ通知
             if (lastVersion && lastVersion !== currentVersion) {
                 const newFeatures = VERSION_HISTORY[currentVersion];
                 let message = `アプリがバージョン ${currentVersion} にアップデートされました。`;
-
+    
                 if (newFeatures && newFeatures.length > 0) {
                     message += "\n\n主な更新内容:\n- " + newFeatures.join("\n- ");
                 }
@@ -4203,7 +4192,7 @@ const appLogic = {
         // --- ステップ1: 最初にDB接続を一度だけ確立する ---
         try {
             if (isSyncReload) uiUtils.updateProgressMessage('データベースを準備しています...');
-
+    
             await dbUtils.openDB();
         } catch (dbError) {
             console.error("初期化中のDBオープンに失敗:", dbError);
@@ -4211,7 +4200,7 @@ const appLogic = {
             elements.appContainer.innerHTML = `<p style="padding: 20px; text-align: center; color: red;">アプリの起動に失敗しました。</p>`;
             return;
         }
-
+    
         // --- 孤児画像データのクリーンアップ処理 (一度だけ実行) ---
         try {
             const cleanupFlag = await dbUtils.getSetting('imageStoreCleanup_v1_complete');
@@ -4227,7 +4216,7 @@ const appLogic = {
                     });
                 });
                 console.log(`[Cleanup] ${activeImageIds.size}件の有効な画像IDを検出しました。`);
-
+    
                 // 2. image_storeに存在するすべての画像IDを取得
                 const allStoredImageIds = await new Promise((resolve, reject) => {
                     const store = dbUtils._getStore(IMAGE_STORE);
@@ -4236,7 +4225,7 @@ const appLogic = {
                     request.onerror = (e) => reject(e.target.error);
                 });
                 console.log(`[Cleanup] image_storeには ${allStoredImageIds.size}件の画像が存在します。`);
-
+    
                 // 3. 孤児IDを特定 (存在するIDのうち、有効でないもの)
                 const orphanImageIds = [];
                 allStoredImageIds.forEach(storedId => {
@@ -4244,7 +4233,7 @@ const appLogic = {
                         orphanImageIds.push(storedId);
                     }
                 });
-
+    
                 // 4. 孤児データを削除
                 if (orphanImageIds.length > 0) {
                     console.log(`[Cleanup] ${orphanImageIds.length}件の孤児画像を削除します。`, orphanImageIds);
@@ -4260,7 +4249,7 @@ const appLogic = {
                 } else {
                     console.log("[Cleanup] 孤児画像は見つかりませんでした。");
                 }
-
+    
                 // 5. 処理完了フラグを立てる
                 await dbUtils.saveSetting('imageStoreCleanup_v1_complete', true);
                 console.log("[Cleanup] クリーンアップ処理が正常に完了しました。");
@@ -4271,7 +4260,7 @@ const appLogic = {
             console.error("[Cleanup] 孤児画像データのクリーンアップ中にエラーが発生しました:", error);
             // このエラーはアプリの起動を妨げない
         }
-
+    
         // --- ステップ2: Dropbox OAuthコールバック処理 ---
         const handleAuthCallback = async () => {
             console.log("[SYNC_DEBUG] handleAuthCallback: 開始");
@@ -4294,14 +4283,14 @@ const appLogic = {
                     await window.dropboxApi.getAccessToken(authCode, REDIRECT_URI, codeVerifier);
                     
                     console.log("Dropbox連携に成功し、トークンを保存しました。");
-
+    
                     await this.updateDropboxUIState();
                     
                     console.log("[SYNC_DEBUG] handleAuthCallback: 初回連携のため、handlePull(true)を呼び出します。");
                     await this.handlePull(true);
-
+    
                     console.log("[SYNC_DEBUG] handleAuthCallback: handlePullが完了しました。");
-
+    
                 } catch (error) {
                     console.error("Dropboxのトークン取得に失敗:", error);
                     uiUtils.hideProgressDialog();
@@ -4313,7 +4302,7 @@ const appLogic = {
         };
         
         await handleAuthCallback();
-
+    
         // --- ステップ3: メイン初期化処理 ---
         
         // ライブラリと基本設定
@@ -4364,7 +4353,7 @@ const appLogic = {
                 }
             }
         }, { rootMargin: '200px' });
-
+    
         const mutationObserver = new MutationObserver((mutationsList) => {
             for (const mutation of mutationsList) {
                 if (mutation.type === 'childList') {
@@ -4384,7 +4373,7 @@ const appLogic = {
             }
         });
         mutationObserver.observe(elements.messageContainer, { childList: true, subtree: true });
-
+    
         try {
             // --- ステップ4: データ読み込みとUI更新 ---
             if (isSyncReload) uiUtils.updateProgressMessage('各種設定を読み込んでいます...');
@@ -4395,7 +4384,7 @@ const appLogic = {
             this.updateApiUsageUI();
             await this.initializeSyncState();
             await this.updateDropboxUIState();
-
+    
             const tokenData = await dbUtils.getSetting('dropboxTokens');
             let recoveryFlowExecuted = false; // リカバリーフローが実行されたかどうかのフラグ
             if (tokenData && tokenData.value) {
@@ -4404,7 +4393,7 @@ const appLogic = {
                     recoveryFlowExecuted = true;
                     console.warn(`[Sync Recovery] 同期ロックファイルを検出。中断された操作: ${lockData.operation}`);
                     this.updateSyncStatusUI('syncing', `中断された${lockData.operation === 'push' ? '同期' : '復元'}を再開中...`);
-
+    
                     if (lockData.operation === 'push') {
                         // isDirtyフラグを強制的に立ててからPushを実行
                         state.sync.isDirty = true;
@@ -4427,7 +4416,7 @@ const appLogic = {
                     }
                 }
             }
-
+    
             // 起動時にPull処理を実行 (OAuthコールバックがなく、リカバリーフローも実行されなかった場合)
             if (!new URLSearchParams(window.location.search).has('code') && !recoveryFlowExecuted) {
                 console.log("[SYNC_DEBUG] initializeApp: 通常起動のため、handlePull(false)を呼び出します。");
@@ -4435,9 +4424,9 @@ const appLogic = {
             } else {
                 console.log("[SYNC_DEBUG] initializeApp: OAuthコールバックまたは復旧フローが実行されたため、通常のPullはスキップします。");
             }
-
+    
             await this.updateDropboxUIState();
-
+    
             const profiles = await dbUtils.getAllProfiles();
             if (profiles.length === 0) {
                 const oldSettingsArray = await new Promise((resolve, reject) => {
@@ -4446,7 +4435,7 @@ const appLogic = {
                     request.onsuccess = () => resolve(request.result.filter(s => s.key !== 'dropboxTokens'));
                     request.onerror = (e) => reject(e.target.error);
                 });
-
+    
                 if (oldSettingsArray.length > 0) {
                     console.log("[Migration] プロファイルが存在せず、古い設定データが見つかったため移行処理を実行します。");
                     const oldSettingsObject = {};
@@ -4465,16 +4454,16 @@ const appLogic = {
                     await this.loadProfiles();
                 }
             }
-
+    
             if (isSyncReload) uiUtils.updateProgressMessage('チャット履歴を読み込んでいます...');
-
+    
             const chats = await dbUtils.getAllChats(state.settings.historySortOrder);
             if (chats && chats.length > 0) {
                 await this.loadChat(chats[0].id);
             } else {
                 this.startNewChat();
             }
-
+    
         } catch (error) {
             console.error("初期化中のデータ処理で失敗:", error);
             await uiUtils.showCustomAlert(`データの読み込みに失敗しました: ${error.message}`);
@@ -4497,14 +4486,13 @@ const appLogic = {
             this.toggleSummaryButtonVisibility();
             this.scrollToBottom();
             this.applyFloatingPanelBehavior();
-            if (isSyncReload) {
-                uiUtils.hideProgressDialog();
-                sessionStorage.removeItem('isSyncReload');
-            }
+            
+            // finallyブロックで必ずダイアログを閉じる
+            uiUtils.hideProgressDialog();
+            sessionStorage.removeItem('isSyncReload');
         }
     },
-
-
+    
     // 復旧ダイアログを表示するヘルパー関数
     async showRecoveryDialog() {
         // このダイアログは汎用的なconfirmでは作れないため、専用のHTMLとロジックが必要
