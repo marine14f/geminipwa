@@ -17,7 +17,26 @@ async function logDbAttachmentState(label, chatId) {
         return;
     }
     try {
-        const chat = await dbUtils.getChat(chatId);
+        // この関数内でのみ使用する一時的なdbUtilsオブジェクトを定義
+        const tempDbUtils = {
+            openDB: () => new Promise((resolve, reject) => {
+                const request = indexedDB.open('GeminiPWA_DB'); // DB名とバージョンは環境に合わせてください
+                request.onsuccess = e => resolve(e.target.result);
+                request.onerror = e => reject(e.target.error);
+            }),
+            getChat: async (id, db) => new Promise((resolve, reject) => {
+                const transaction = db.transaction('chats', 'readonly');
+                const store = transaction.objectStore('chats');
+                const request = store.get(id);
+                request.onsuccess = e => resolve(e.target.result);
+                request.onerror = e => reject(e.target.error);
+            })
+        };
+
+        const db = await tempDbUtils.openDB();
+        const chat = await tempDbUtils.getChat(chatId, db);
+        db.close();
+
         if (!chat) {
             console.log(`チャットID ${chatId} がDB内に見つかりません。`);
             console.groupEnd();
@@ -41,6 +60,7 @@ async function logDbAttachmentState(label, chatId) {
     }
     console.groupEnd();
 }
+
 
 
 
@@ -4570,7 +4590,7 @@ const appLogic = {
      * [V2 Core Push] 実際にアップロード処理を行うコア関数
      * @private
      */
-    async _doPush(isManual = false) {
+     async _doPush(isManual = false) {
         // 【デバッグ用一時コード】Push処理開始前の状態を記録
         logAttachmentState("【Push検証①】 _doPush 開始直後");
 
@@ -4751,9 +4771,6 @@ const appLogic = {
      * [V2 Pull] Dropboxからデータをダウンロードして同期する
      */
      async handlePull(isManual = false) {
-        // 【デバッグ用一時コード】
-        logAttachmentState("【Pull検証①】 handlePull 開始直後");
-
         console.log(`[SYNC_DEBUG] handlePull: 開始。isManual = ${isManual}`);
 
         if (state.sync.isSyncing) {
@@ -4826,7 +4843,7 @@ const appLogic = {
                         "クラウド上に、このデバイスとは異なるデータが見つかりました。\n\n" +
                         "同期を実行すると、このデバイスの全てのデータ（チャット、プロファイル等）が完全に削除され、クラウド上のデータで置き換えられます。\n" +
                         "（データが統合・マージされるわけではありません）\n\n" +
-                        "このデバイスのデータを残したい場合は、一度「キャンセル」を押し、履歴画面から各チャットを、設定画面からプロファイルやアセットを個別に出力してバックアップを作成してください。\n\n" +
+                        "このデバイスのデータを残したい場合は、一度「キャンセル」を押し、履歴画面から各チャットを個別に出力してバックアップを作成してください。\n\n" +
                         "クラウドのデータで同期を開始してもよろしいですか？"
                     );
                     if (!confirmed) {
@@ -4840,7 +4857,6 @@ const appLogic = {
                     if (isManual) uiUtils.showProgressDialog('同期を再開しています...');
                 }
 
-                // importDataFromStringの戻り値を受け取る
                 const importResult = await this.importDataFromString(cloudMetadataString);
                 const removedAssetInfo = importResult.removedAssetInfo;
 
@@ -4859,7 +4875,6 @@ const appLogic = {
                 this.updateSyncStatusUI('idle');
                 if (isManual) uiUtils.hideProgressDialog();
 
-                // クレンジング結果があれば通知
                 let finalMessage = "クラウドからデータを同期しました。アプリを再起動します。";
                 if (removedAssetInfo && Object.keys(removedAssetInfo).length > 0) {
                     let cleanupDetails = "\n\n【通知】\nクラウド上で実体が見つからなかったため、以下のチャットから画像添付の記録を削除しました：\n";
@@ -4868,9 +4883,6 @@ const appLogic = {
                     }
                     finalMessage += cleanupDetails;
                 }
-
-                // リロード直前であるこのタイミングで、sessionStorageにフラグを立てる
-                sessionStorage.setItem('isSyncReload', 'true');
 
                 await uiUtils.showCustomAlert(finalMessage);
                 window.location.reload();
@@ -4897,11 +4909,9 @@ const appLogic = {
             state.sync.isSyncing = false;
             await window.dropboxApi.deleteLockFile();
             console.log(`[SYNC_DEBUG] handlePull: 終了。`);
-
-            // 【デバッグ用一時コード】
-            logAttachmentState("【Pull検証④】 handlePull 完了直後");
         }
     },
+
 
     // イベントリスナーを設定
     setupEventListeners() {
