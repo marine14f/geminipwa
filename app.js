@@ -4591,8 +4591,6 @@ const appLogic = {
      * @private
      */
      async _doPush(isManual = false) {
-        // 【デバッグ用一時コード】Push処理開始前の状態を記録
-        logAttachmentState("【Push検証①】 _doPush 開始直後");
 
         console.log(`[SYNC_DEBUG] _doPush: 開始。isManual = ${isManual}`);
 
@@ -4736,9 +4734,6 @@ const appLogic = {
             state.sync.isSyncing = false;
             await window.dropboxApi.deleteLockFile();
             console.log(`[SYNC_DEBUG] _doPush: 終了。`);
-
-            // 【デバッグ用一時コード】Push処理完了後の状態を記録
-            logAttachmentState("【Push検証②】 _doPush 完了直後");
         }
     },
 
@@ -6886,11 +6881,7 @@ const appLogic = {
 
             const systemInstruction = finalSystemPrompt ? { role: "system", parts: [{ text: finalSystemPrompt }] } : null;
 
-            // 【デバッグ用一時コード】_prepareApiHistoryの呼び出し前後でログを出力
-            logAttachmentState("【検証①】 _prepareApiHistory 呼び出し直前");
             const historyForApi = this._prepareApiHistory(baseHistory);
-            logAttachmentState("【検証②】 _prepareApiHistory 完了直後");
-
             const newMessages = await this._internalHandleSend(historyForApi, generationConfig, systemInstruction);
             
             const finalAggregatedMessage = this._aggregateMessages(newMessages);
@@ -9970,12 +9961,7 @@ const appLogic = {
 
                     // メモリ上のstate.currentMessagesは、base64Dataが削除されていない元のchatオブジェクトで更新する
                     if (chat.id === state.currentChatId) {
-                        // 【デバッグ用一時コード】データ破壊の瞬間を観測する
-                        console.group('%c【仮説検証】データ破壊の瞬間', 'color: red; font-weight: bold;');
-                        logAttachmentState("【検証①】 state.currentMessages 上書き直前");
                         state.currentMessages = chat.messages;
-                        logAttachmentState("【検証②】 state.currentMessages 上書き直後");
-                        console.groupEnd();
                     }
                 }
             }
