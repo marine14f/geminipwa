@@ -2649,3 +2649,43 @@ body.dark-mode #sd-test-connection-btn {
     white-space: nowrap;
     flex-shrink: 0; /* カウント表示は縮まないように */
 }
+
+/* --- Settings Screen Header Profile Card --- */
+#settings-screen .app-header .profile-card {
+    /* 既存の背景色とボーダーをリセット */
+    background-color: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+
+    /* 新しいグラデーション背景を適用 */
+    background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.2), rgba(0, 0, 0, 0.1));
+
+    /* 立体感とグラスエフェクトを追加 */
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px); /* Safari向け */
+
+    /* パディングと形状を調整 */
+    padding: 4px 12px 4px 4px;
+    border-radius: 20px;
+    transition: all 0.2s ease-in-out;
+}
+
+#settings-screen .app-header .profile-card:hover {
+    /* ホバー時に少し明るくする */
+    background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.3), rgba(0, 0, 0, 0.15));
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* テキストの可読性を向上 */
+#settings-screen .app-header .profile-card .profile-card-name,
+#settings-screen .app-header .profile-card .profile-card-arrow {
+    color: #ffffff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+/* アイコンコンテナの背景を調整してコントラストを改善 */
+#settings-screen .app-header .profile-card .profile-icon-container {
+    background-color: rgba(255, 255, 255, 0.1);
+}

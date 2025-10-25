@@ -3359,7 +3359,6 @@ function updateCurrentSystemPrompt() {
 
                     // UIを更新
                     await appLogic.updateDropboxUIState();
-                    uiUtils.showSyncNotification("他のタブで同期が完了したため、状態を更新しました。");
                 }
             };
         } catch (error) {
