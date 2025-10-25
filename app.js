@@ -1672,477 +1672,499 @@ renderChatMessages() {
     console.log(`[PERF_DEBUG] renderChatMessages 完了 (合計所要時間: ${renderEndTime - renderStartTime}ms)`);
 },
 
+createMessageElement(role, content, index, isStreamingPlaceholder = false, cascadeInfo = null, attachments = null) {
+    const messageData = state.currentMessages[index];
+    if (!messageData) return null;
 
-    createMessageElement(role, content, index, isStreamingPlaceholder = false, cascadeInfo = null, attachments = null) {
-        const messageData = state.currentMessages[index];
-        if (!messageData) return null;
+    const summaryEndIndex = state.currentSummarizedContext?.summaryRange?.end;
+    const isSummarized = summaryEndIndex !== undefined && index < summaryEndIndex;
 
-        const summaryEndIndex = state.currentSummarizedContext?.summaryRange?.end;
-        const isSummarized = summaryEndIndex !== undefined && index < summaryEndIndex;
-
-        const messageDiv = document.createElement('div');
-        messageDiv.classList.add('message', role);
-        messageDiv.dataset.index = index;
-        
-        if (role === 'model' && messageData && messageData.thoughtSummary) {
-            const thoughtDetails = document.createElement('details');
-            thoughtDetails.classList.add('thought-summary-details');
-            const thoughtSummaryElem = document.createElement('summary');
-            thoughtSummaryElem.textContent = '思考プロセス';
-            thoughtDetails.appendChild(thoughtSummaryElem);
-            const thoughtContentDiv = document.createElement('div');
-            thoughtContentDiv.classList.add('thought-summary-content');
-            if (isStreamingPlaceholder) {
-                thoughtContentDiv.id = `streaming-thought-summary-${index}`;
-            } else {
-                try {
-                    thoughtContentDiv.innerHTML = marked.parse(messageData.thoughtSummary || '');
-                } catch (e) {
-                    console.error("Thought Summary Markdownパースエラー:", e);
-                    thoughtContentDiv.textContent = messageData.thoughtSummary || '';
-                }
-            }
-            thoughtDetails.appendChild(thoughtContentDiv);
-            messageDiv.appendChild(thoughtDetails);
-        }
-
-        const contentDiv = document.createElement('div');
-        contentDiv.classList.add('message-content');
-        
+    const messageDiv = document.createElement('div');
+    messageDiv.classList.add('message', role);
+    messageDiv.dataset.index = index;
+    
+    if (role === 'model' && messageData && messageData.thoughtSummary) {
+        const thoughtDetails = document.createElement('details');
+        thoughtDetails.classList.add('thought-summary-details');
+        const thoughtSummaryElem = document.createElement('summary');
+        thoughtSummaryElem.textContent = '思考プロセス';
+        thoughtDetails.appendChild(thoughtSummaryElem);
+        const thoughtContentDiv = document.createElement('div');
+        thoughtContentDiv.classList.add('thought-summary-content');
         if (isStreamingPlaceholder) {
-            contentDiv.id = `streaming-content-${index}`;
+            thoughtContentDiv.id = `streaming-thought-summary-${index}`;
+        } else {
+            try {
+                thoughtContentDiv.innerHTML = marked.parse(messageData.thoughtSummary || '');
+            } catch (e) {
+                console.error("Thought Summary Markdownパースエラー:", e);
+                thoughtContentDiv.textContent = messageData.thoughtSummary || '';
+            }
         }
+        thoughtDetails.appendChild(thoughtContentDiv);
+        messageDiv.appendChild(thoughtDetails);
+    }
 
-        if (role === 'user' && attachments && attachments.length > 0) {
-            const details = document.createElement('details');
-            details.classList.add('attachment-details');
-            const summary = document.createElement('summary');
-            summary.textContent = `添付ファイル (${attachments.length}件)`;
-            details.appendChild(summary);
-            const list = document.createElement('ul');
-            list.classList.add('attachment-list');
+    const contentDiv = document.createElement('div');
+    contentDiv.classList.add('message-content');
+    
+    if (isStreamingPlaceholder) {
+        contentDiv.id = `streaming-content-${index}`;
+    }
+
+    if (role === 'user' && attachments && attachments.length > 0) {
+        const details = document.createElement('details');
+        details.classList.add('attachment-details');
+        details.open = true; // 最初から展開状態にする
+        const summary = document.createElement('summary');
+        summary.textContent = `添付ファイル (${attachments.length}件)`;
+        details.appendChild(summary);
+        const list = document.createElement('ul');
+        list.classList.add('attachment-list');
+        
+        attachments.forEach(att => {
+            const listItem = document.createElement('li');
             
-            attachments.forEach(att => {
-                const listItem = document.createElement('li');
+            const mimeType = att.mimeType || '';
+            let previewElement;
+
+            if (mimeType.startsWith('image/')) {
+                previewElement = document.createElement('img');
+                previewElement.className = 'attachment-thumbnail';
+                previewElement.alt = att.name;
                 
-                const mimeType = att.mimeType || '';
-                let previewElement;
-
-                if (mimeType.startsWith('image/')) {
-                    previewElement = document.createElement('img');
-                    previewElement.className = 'attachment-thumbnail';
-                    previewElement.alt = att.name;
-                    // attachment.file は Blob オブジェクト
-                    if (att.file instanceof Blob) {
-                        const objectURL = URL.createObjectURL(att.file);
-                        previewElement.src = objectURL;
-                        state.imageUrlCache.set(objectURL, true); // 解放のためにURLを記録
-                    }
-                } else if (mimeType.startsWith('video/')) {
-                    previewElement = document.createElement('video');
-                    previewElement.className = 'attachment-thumbnail';
-                    previewElement.muted = true;
-                    previewElement.playsInline = true;
-                    if (att.file instanceof Blob) {
-                        const objectURL = URL.createObjectURL(att.file);
-                        previewElement.src = objectURL;
-                        state.videoUrlCache.set(objectURL, true); // 解放のためにURLを記録
-                    }
-                } else {
-                    // 画像・動画以外はアイコンを表示
-                    previewElement = document.createElement('span');
-                    previewElement.className = 'attachment-thumbnail material-symbols-outlined';
-                    previewElement.textContent = 'description'; // ファイルアイコン
-                }
-                
-                // クリックで拡大・再生するモーダルを開くイベント
-                if (previewElement.tagName === 'IMG' || previewElement.tagName === 'VIDEO') {
-                    previewElement.onclick = () => {
-                        const modalOverlay = document.getElementById('image-modal-overlay');
-                        const modalContent = document.getElementById('image-modal-content');
-                        modalContent.innerHTML = ''; // 中身をクリア
-                        
-                        let mediaElement;
-                        if (previewElement.tagName === 'IMG') {
-                            mediaElement = document.createElement('img');
-                            mediaElement.src = previewElement.src;
-                        } else {
-                            mediaElement = document.createElement('video');
-                            mediaElement.src = previewElement.src;
-                            mediaElement.controls = true;
-                            mediaElement.autoplay = true;
-                        }
-                        modalContent.appendChild(mediaElement);
-                        modalOverlay.classList.remove('hidden');
-                    };
-                }
-
-                const filenameSpan = document.createElement('span');
-                filenameSpan.className = 'attachment-filename';
-                filenameSpan.textContent = att.name;
-                filenameSpan.title = `${att.name} (${att.mimeType})`;
-
-                listItem.appendChild(previewElement);
-                listItem.appendChild(filenameSpan);
-                list.appendChild(listItem);
-            });
-            details.appendChild(list);
-            contentDiv.appendChild(details);
-
-            // テキストコンテンツがあれば、それも表示
-            if (content && content.trim() !== '') {
-                const pre = document.createElement('pre');
-                pre.textContent = content;
-                pre.style.marginTop = '8px';
-                contentDiv.appendChild(pre);
-            }
-        } 
-
-        else {
-            try {
-                if (content && (role === 'model' || role === 'user')) {
-                     if (role === 'model' && !isStreamingPlaceholder && typeof marked !== 'undefined') {
-                        contentDiv.innerHTML = marked.parse(content || '');
-                    } else {
-                        const pre = document.createElement('pre'); pre.textContent = content; contentDiv.appendChild(pre);
-                    }
-                } else if (role === 'error') {
-                     const p = document.createElement('p'); p.textContent = content; contentDiv.appendChild(p);
-                }
-            } catch (e) {
-                 console.error("Markdownパースエラー:", e);
-                 const pre = document.createElement('pre'); pre.textContent = content; contentDiv.innerHTML = ''; contentDiv.appendChild(pre);
-            }
-        }
-        messageDiv.appendChild(contentDiv);
-                
-        const imagePlaceholderRegex = /<p>\[IMAGE_HERE\]<\/p>|\[IMAGE_HERE\]/g;
-        if (role === 'model' && messageData && messageData.imageIds && messageData.imageIds.length > 0) {
-            let imageIndex = 0;
-            const replacedHtml = contentDiv.innerHTML.replace(imagePlaceholderRegex, () => {
-                if (imageIndex < messageData.imageIds.length) {
-                    const imageId = messageData.imageIds[imageIndex++];
-                    return `<img class="lazy-load-image" alt="生成画像（読み込み中...）" data-image-id="${imageId}">`;
-                }
-                return '';
-            });
-            contentDiv.innerHTML = replacedHtml;
-
-            if (imageIndex < messageData.imageIds.length) {
-                const fragment = document.createDocumentFragment();
-                for (let i = imageIndex; i < messageData.imageIds.length; i++) {
-                    const imageId = messageData.imageIds[i];
-                    const img = document.createElement('img');
-                    img.className = 'lazy-load-image';
-                    img.alt = '生成画像（読み込み中...）';
-                    img.dataset.imageId = imageId;
-                    fragment.appendChild(img);
-                }
-                contentDiv.appendChild(fragment);
-            }
-            requestAnimationFrame(() => {
-                const newImages = contentDiv.querySelectorAll('.lazy-load-image');
-                newImages.forEach(img => appLogic.imageObserver.observe(img));
-            });
-        }
-        
-        if (role === 'model' && messageData && messageData.groundingMetadata &&
-            ( (messageData.groundingMetadata.groundingChunks && messageData.groundingMetadata.groundingChunks.length > 0) ||
-              (messageData.groundingMetadata.webSearchQueries && messageData.groundingMetadata.webSearchQueries.length > 0) )
-           )
-        {
-            try {
-                const details = document.createElement('details');
-                details.classList.add('citation-details');
-                const summary = document.createElement('summary');
-                summary.textContent = '引用元/検索クエリ';
-                details.appendChild(summary);
-                let detailsHasContent = false;
-                if (messageData.groundingMetadata.groundingChunks && messageData.groundingMetadata.groundingChunks.length > 0) {
-                    const citationList = document.createElement('ul');
-                    citationList.classList.add('citation-list');
-                    const citationMap = new Map();
-                    let displayIndexCounter = 1;
-                    if (messageData.groundingMetadata.groundingSupports) {
-                        messageData.groundingMetadata.groundingSupports.forEach(support => {
-                            if (support.groundingChunkIndices) {
-                                support.groundingChunkIndices.forEach(chunkIndex => {
-                                    if (!citationMap.has(chunkIndex) && chunkIndex >= 0 && chunkIndex < messageData.groundingMetadata.groundingChunks.length) {
-                                        const chunk = messageData.groundingMetadata.groundingChunks[chunkIndex];
-                                        if (chunk?.web?.uri) {
-                                            citationMap.set(chunkIndex, {
-                                                uri: chunk.web.uri,
-                                                title: chunk.web.title || 'タイトル不明',
-                                                displayIndex: displayIndexCounter++
-                                            });
-                                        }
-                                    }
-                                });
-                            }
-                        });
-                    }
-                    const sortedCitations = Array.from(citationMap.entries())
-                                                .sort(([, a], [, b]) => a.displayIndex - b.displayIndex);
-                    sortedCitations.forEach(([chunkIndex, citationInfo]) => {
-                        const listItem = document.createElement('li');
-                        const link = document.createElement('a');
-                        link.href = citationInfo.uri;
-                        link.textContent = `[${citationInfo.displayIndex}] ${citationInfo.title}`;
-                        link.title = citationInfo.title;
-                        link.target = '_blank';
-                        link.rel = 'noopener noreferrer';
-                        listItem.appendChild(link);
-                        citationList.appendChild(listItem);
-                    });
-                    if (sortedCitations.length === 0) {
-                         messageData.groundingMetadata.groundingChunks.forEach((chunk, idx) => {
-                             if (chunk?.web?.uri) {
-                                 const listItem = document.createElement('li');
-                                 const link = document.createElement('a');
-                                 link.href = chunk.web.uri;
-                                 link.textContent = chunk.web.title || `ソース ${idx + 1}`;
-                                 link.title = chunk.web.title || 'タイトル不明';
-                                 link.target = '_blank';
-                                 link.rel = 'noopener noreferrer';
-                                 listItem.appendChild(link);
-                                 citationList.appendChild(listItem);
-                             }
-                         });
-                    }
-                    if (citationList.hasChildNodes()) {
-                        details.appendChild(citationList);
-                        detailsHasContent = true;
-                    }
-                }
-                if (messageData.groundingMetadata.webSearchQueries && messageData.groundingMetadata.webSearchQueries.length > 0) {
-                    if (detailsHasContent) {
-                        const separator = document.createElement('hr');
-                        separator.style.marginTop = '10px';
-                        separator.style.marginBottom = '8px';
-                        separator.style.border = 'none';
-                        separator.style.borderTop = '1px dashed var(--border-tertiary)'; 
-                        details.appendChild(separator);
-                    }
-                    const queryHeader = document.createElement('div');
-                    queryHeader.textContent = '検索に使用されたクエリ:';
-                    queryHeader.style.fontWeight = '500';
-                    queryHeader.style.marginTop = detailsHasContent ? '0' : '8px';
-                    queryHeader.style.marginBottom = '4px';
-                    queryHeader.style.fontSize = '11px';
-                    queryHeader.style.color = 'var(--text-secondary)';
-                    details.appendChild(queryHeader);
-                    const queryList = document.createElement('ul');
-                    queryList.classList.add('search-query-list');
-                    queryList.style.listStyle = 'none';
-                    queryList.style.paddingLeft = '0';
-                    queryList.style.margin = '0';
-                    queryList.style.fontSize = '11px';
-                    queryList.style.color = 'var(--text-secondary)';
-                    messageData.groundingMetadata.webSearchQueries.forEach(query => {
-                        const queryItem = document.createElement('li');
-                        queryItem.textContent = `• ${query}`;
-                        queryItem.style.marginBottom = '3px';
-                        queryList.appendChild(queryItem);
-                    });
-                    details.appendChild(queryList);
-                    detailsHasContent = true;
-                }
-                if (detailsHasContent) {
-                    contentDiv.appendChild(details);
-                }
-            } catch (e) {
-                console.error(`引用元/検索クエリ表示の生成中にエラーが発生しました (index: ${index}):`, e);
-            }
-        }
-        
-        if (role === 'model' && messageData && messageData.executedFunctions && messageData.executedFunctions.length > 0) {
-            const details = document.createElement('details');
-            details.classList.add('function-call-details');
-            const uniqueFunctions = [...new Set(messageData.executedFunctions)];
-            const summary = document.createElement('summary');
-            summary.innerHTML = `⚙️ ツール使用 (${uniqueFunctions.length}件)`;
-            details.appendChild(summary);
-            const list = document.createElement('ul');
-            list.classList.add('function-call-list');
-            uniqueFunctions.forEach(funcName => {
-                const listItem = document.createElement('li');
-                listItem.textContent = funcName;
-                list.appendChild(listItem);
-            });
-            details.appendChild(list);
-            if (contentDiv.innerHTML.trim() !== '') {
-                contentDiv.appendChild(details);
-            } else {
-                messageDiv.appendChild(details);
-            }
-        }
-
-        if (role === 'model' && messageData && messageData.search_web_results && messageData.search_web_results.length > 0) {
-            const details = document.createElement('details');
-            details.classList.add('function-call-details');
-            const summary = document.createElement('summary');
-            summary.innerHTML = `🌐 Web検索結果 (${messageData.search_web_results.length}件)`;
-            details.appendChild(summary);
-            const list = document.createElement('ul');
-            list.classList.add('function-call-list');
-            messageData.search_web_results.forEach(result => {
-                const listItem = document.createElement('li');
-                const link = document.createElement('a');
-                link.href = result.link;
-                link.textContent = result.title;
-                link.title = result.snippet;
-                link.target = '_blank';
-                link.rel = 'noopener noreferrer';
-                listItem.appendChild(link);
-                list.appendChild(listItem);
-            });
-            details.appendChild(list);
-            if (contentDiv.innerHTML.trim() !== '') {
-                contentDiv.appendChild(details);
-            } else {
-                messageDiv.appendChild(details);
-            }
-        }
-
-        if (role === 'model' && messageData && messageData.generated_videos && messageData.generated_videos.length > 0) {
-            const videoData = messageData.generated_videos[0];
-            if (videoData && (videoData.url || videoData.base64Data)) {
-                const video = document.createElement('video');
-                video.controls = true; 
-                video.playsInline = true; 
-                video.muted = true; 
-                video.loop = true; 
-                video.style.maxWidth = '100%';
-                video.style.borderRadius = 'var(--border-radius-md)';
-                video.style.display = 'block';
-
-                if (videoData.url) {
-                    video.src = videoData.url;
-                } else if (videoData.base64Data) {
-                    base64ToBlob(videoData.base64Data, 'video/mp4')
+                // 同期後のデータ(base64Data)からもサムネイルを生成できるようにする
+                if (att.file instanceof Blob) {
+                    const objectURL = URL.createObjectURL(att.file);
+                    previewElement.src = objectURL;
+                    state.imageUrlCache.set(objectURL, true);
+                } else if (att.base64Data) {
+                    // base64からBlobを生成してURLを作成
+                    base64ToBlob(att.base64Data, att.mimeType)
                         .then(blob => {
                             const objectURL = URL.createObjectURL(blob);
-                            video.src = objectURL;
+                            previewElement.src = objectURL;
+                            state.imageUrlCache.set(objectURL, true);
                         })
                         .catch(err => {
-                            console.error("Base64からの動画Blob生成に失敗:", err);
-                            video.remove();
+                            console.error('Base64からサムネイル用Blobへの変換に失敗:', err);
+                            previewElement.alt = 'プレビュー失敗';
                         });
                 }
 
-                const placeholderRegex = /\[VIDEO_HERE\]/g;
-                if (placeholderRegex.test(contentDiv.innerHTML)) {
-                    let replaced = false;
-                    contentDiv.innerHTML = contentDiv.innerHTML.replace(placeholderRegex, (match) => {
-                        if (!replaced) {
-                            replaced = true;
-                            return video.outerHTML;
-                        }
-                        return '';
-                    });
+            } else if (mimeType.startsWith('video/')) {
+                previewElement = document.createElement('video');
+                previewElement.className = 'attachment-thumbnail';
+                previewElement.muted = true;
+                previewElement.playsInline = true;
+                if (att.file instanceof Blob) {
+                    const objectURL = URL.createObjectURL(att.file);
+                    previewElement.src = objectURL;
+                    state.videoUrlCache.set(objectURL, true);
+                } else if (att.base64Data) {
+                    base64ToBlob(att.base64Data, att.mimeType)
+                        .then(blob => {
+                            const objectURL = URL.createObjectURL(blob);
+                            previewElement.src = objectURL;
+                            state.videoUrlCache.set(objectURL, true);
+                        })
+                        .catch(err => console.error('Base64から動画用Blobへの変換に失敗:', err));
                 }
-            }
-        }
-
-        const editArea = document.createElement('div');
-        editArea.classList.add('message-edit-area', 'hidden');
-        messageDiv.appendChild(editArea);
-
-        if (role === 'model' && cascadeInfo && cascadeInfo.total > 1) {
-            const cascadeControlsDiv = document.createElement('div');
-            cascadeControlsDiv.classList.add('message-cascade-controls');
-            const prevButton = document.createElement('button');
-            prevButton.innerHTML = '<span class="material-symbols-outlined">chevron_left</span>';
-            prevButton.title = '前の応答';
-            prevButton.classList.add('cascade-prev-btn');
-            prevButton.disabled = cascadeInfo.currentIndex <= 1;
-            prevButton.onclick = () => appLogic.navigateCascade(index, 'prev');
-            cascadeControlsDiv.appendChild(prevButton);
-            const indicatorSpan = document.createElement('span');
-            indicatorSpan.classList.add('cascade-indicator');
-            indicatorSpan.textContent = `${cascadeInfo.currentIndex}/${cascadeInfo.total}`;
-            cascadeControlsDiv.appendChild(indicatorSpan);
-            const nextButton = document.createElement('button');
-            nextButton.innerHTML = '<span class="material-symbols-outlined">chevron_right</span>';
-            nextButton.title = '次の応答';
-            nextButton.classList.add('cascade-next-btn');
-            nextButton.disabled = cascadeInfo.currentIndex >= cascadeInfo.total;
-            nextButton.onclick = () => appLogic.navigateCascade(index, 'next');
-            cascadeControlsDiv.appendChild(nextButton);
-            const deleteCascadeButton = document.createElement('button');
-            deleteCascadeButton.innerHTML = '<span class="material-symbols-outlined">delete</span>';
-            deleteCascadeButton.title = 'この応答を削除';
-            deleteCascadeButton.classList.add('cascade-delete-btn');
-            deleteCascadeButton.onclick = () => appLogic.confirmDeleteCascadeResponse(index);
-            cascadeControlsDiv.appendChild(deleteCascadeButton);
-            messageDiv.appendChild(cascadeControlsDiv);
-        }
-
-        if (role !== 'error') {
-            const actionsDiv = document.createElement('div');
-            actionsDiv.classList.add('message-actions');
-
-            if (!isSummarized) {
-                const editButton = document.createElement('button');
-                editButton.innerHTML = '<span class="material-symbols-outlined">edit</span> 編集'; 
-                editButton.title = 'メッセージを編集'; 
-                editButton.classList.add('js-edit-btn');
-                editButton.onclick = () => appLogic.startEditMessage(index, messageDiv);
-                actionsDiv.appendChild(editButton);
-                const deleteButton = document.createElement('button');
-                deleteButton.innerHTML = '<span class="material-symbols-outlined">delete</span> 削除'; 
-                deleteButton.title = 'この会話ターンを削除'; 
-                deleteButton.classList.add('js-delete-btn');
-                deleteButton.onclick = () => appLogic.deleteMessage(index);
-                actionsDiv.appendChild(deleteButton);
-                if (role === 'user') {
-                    const retryButton = document.createElement('button');
-                    retryButton.innerHTML = '<span class="material-symbols-outlined">replay</span> 再生成'; 
-                    retryButton.title = 'このメッセージから再生成'; 
-                    retryButton.classList.add('js-retry-btn');
-                    retryButton.onclick = () => appLogic.retryFromMessage(index);
-                    actionsDiv.appendChild(retryButton);
-                }
-            }
-
-            if (role === 'model' && messageData?.usageMetadata &&
-                typeof messageData.usageMetadata.candidatesTokenCount === 'number' &&
-                typeof messageData.usageMetadata.totalTokenCount === 'number')
-            {
-                const usage = messageData.usageMetadata;
-                const tokenSpan = document.createElement('span');
-                tokenSpan.classList.add('token-count-display');
-                let finalTotalTokenCount = usage.totalTokenCount;
-                if (typeof messageData.usageMetadata.thoughtsTokenCount === 'number') {
-                    finalTotalTokenCount -= messageData.usageMetadata.thoughtsTokenCount;
-                }
-                const formattedCandidates = usage.candidatesTokenCount.toLocaleString('en-US');
-                const formattedTotal = finalTotalTokenCount.toLocaleString('en-US');
-                tokenSpan.textContent = `${formattedCandidates} / ${formattedTotal}`;
-                tokenSpan.title = `Candidate Tokens / Total Tokens`;
-                actionsDiv.appendChild(tokenSpan);
-            }
-            if (role === 'model' && typeof messageData?.retryCount === 'number' && messageData.retryCount > 0) {
-                const retrySpan = document.createElement('span');
-                retrySpan.classList.add('token-count-display');
-                retrySpan.textContent = `(リトライ: ${messageData.retryCount}回)`;
-                retrySpan.title = `APIリクエストを${messageData.retryCount}回再試行した結果です`;
-                if (actionsDiv.querySelector('.token-count-display')) {
-                    retrySpan.style.marginLeft = '8px';
-                }
-                actionsDiv.appendChild(retrySpan);
+            } else {
+                previewElement = document.createElement('span');
+                previewElement.className = 'attachment-thumbnail material-symbols-outlined';
+                previewElement.style.display = 'flex';
+                previewElement.style.alignItems = 'center';
+                previewElement.style.justifyContent = 'center';
+                previewElement.textContent = 'description';
             }
             
-            if (actionsDiv.hasChildNodes()) {
-                messageDiv.appendChild(actionsDiv);
+            if (previewElement.tagName === 'IMG' || previewElement.tagName === 'VIDEO') {
+                previewElement.onclick = () => {
+                    const modalOverlay = document.getElementById('image-modal-overlay');
+                    const modalImg = document.getElementById('image-modal-img'); // 正しいIDを参照
+                    
+                    // modalContentではなく、存在する要素を直接操作する
+                    if (modalOverlay && modalImg) {
+                        if (previewElement.tagName === 'IMG') {
+                            modalImg.src = previewElement.src;
+                            modalOverlay.classList.remove('hidden');
+                        } else {
+                            // 動画の場合は新しいタブで開くなどの代替案も考えられる
+                            console.warn("動画のモーダル表示は現在サポートされていません。");
+                        }
+                    } else {
+                        console.error("画像拡大用のモーダル要素が見つかりません。");
+                    }
+                };
+            }
+
+            const filenameSpan = document.createElement('span');
+            filenameSpan.className = 'attachment-filename';
+            filenameSpan.textContent = att.name;
+            filenameSpan.title = `${att.name} (${att.mimeType})`;
+
+            listItem.appendChild(previewElement);
+            listItem.appendChild(filenameSpan);
+            list.appendChild(listItem);
+        });
+        details.appendChild(list);
+        contentDiv.appendChild(details);
+
+        if (content && content.trim() !== '') {
+            const pre = document.createElement('pre');
+            pre.textContent = content;
+            pre.style.marginTop = '8px';
+            contentDiv.appendChild(pre);
+        }
+    } 
+
+    else {
+        try {
+            if (content && (role === 'model' || role === 'user')) {
+                 if (role === 'model' && !isStreamingPlaceholder && typeof marked !== 'undefined') {
+                    contentDiv.innerHTML = marked.parse(content || '');
+                } else {
+                    const pre = document.createElement('pre'); pre.textContent = content; contentDiv.appendChild(pre);
+                }
+            } else if (role === 'error') {
+                 const p = document.createElement('p'); p.textContent = content; contentDiv.appendChild(p);
+            }
+        } catch (e) {
+             console.error("Markdownパースエラー:", e);
+             const pre = document.createElement('pre'); pre.textContent = content; contentDiv.innerHTML = ''; contentDiv.appendChild(pre);
+        }
+    }
+    messageDiv.appendChild(contentDiv);
+            
+    const imagePlaceholderRegex = /<p>\[IMAGE_HERE\]<\/p>|\[IMAGE_HERE\]/g;
+    if (role === 'model' && messageData && messageData.imageIds && messageData.imageIds.length > 0) {
+        let imageIndex = 0;
+        const replacedHtml = contentDiv.innerHTML.replace(imagePlaceholderRegex, () => {
+            if (imageIndex < messageData.imageIds.length) {
+                const imageId = messageData.imageIds[imageIndex++];
+                return `<img class="lazy-load-image" alt="生成画像（読み込み中...）" data-image-id="${imageId}">`;
+            }
+            return '';
+        });
+        contentDiv.innerHTML = replacedHtml;
+
+        if (imageIndex < messageData.imageIds.length) {
+            const fragment = document.createDocumentFragment();
+            for (let i = imageIndex; i < messageData.imageIds.length; i++) {
+                const imageId = messageData.imageIds[i];
+                const img = document.createElement('img');
+                img.className = 'lazy-load-image';
+                img.alt = '生成画像（読み込み中...）';
+                img.dataset.imageId = imageId;
+                fragment.appendChild(img);
+            }
+            contentDiv.appendChild(fragment);
+        }
+        requestAnimationFrame(() => {
+            const newImages = contentDiv.querySelectorAll('.lazy-load-image');
+            newImages.forEach(img => appLogic.imageObserver.observe(img));
+        });
+    }
+    
+    if (role === 'model' && messageData && messageData.groundingMetadata &&
+        ( (messageData.groundingMetadata.groundingChunks && messageData.groundingMetadata.groundingChunks.length > 0) ||
+          (messageData.groundingMetadata.webSearchQueries && messageData.groundingMetadata.webSearchQueries.length > 0) )
+       )
+    {
+        try {
+            const details = document.createElement('details');
+            details.classList.add('citation-details');
+            const summary = document.createElement('summary');
+            summary.textContent = '引用元/検索クエリ';
+            details.appendChild(summary);
+            let detailsHasContent = false;
+            if (messageData.groundingMetadata.groundingChunks && messageData.groundingMetadata.groundingChunks.length > 0) {
+                const citationList = document.createElement('ul');
+                citationList.classList.add('citation-list');
+                const citationMap = new Map();
+                let displayIndexCounter = 1;
+                if (messageData.groundingMetadata.groundingSupports) {
+                    messageData.groundingMetadata.groundingSupports.forEach(support => {
+                        if (support.groundingChunkIndices) {
+                            support.groundingChunkIndices.forEach(chunkIndex => {
+                                if (!citationMap.has(chunkIndex) && chunkIndex >= 0 && chunkIndex < messageData.groundingMetadata.groundingChunks.length) {
+                                    const chunk = messageData.groundingMetadata.groundingChunks[chunkIndex];
+                                    if (chunk?.web?.uri) {
+                                        citationMap.set(chunkIndex, {
+                                            uri: chunk.web.uri,
+                                            title: chunk.web.title || 'タイトル不明',
+                                            displayIndex: displayIndexCounter++
+                                        });
+                                    }
+                                }
+                            });
+                        }
+                    });
+                }
+                const sortedCitations = Array.from(citationMap.entries())
+                                            .sort(([, a], [, b]) => a.displayIndex - b.displayIndex);
+                sortedCitations.forEach(([chunkIndex, citationInfo]) => {
+                    const listItem = document.createElement('li');
+                    const link = document.createElement('a');
+                    link.href = citationInfo.uri;
+                    link.textContent = `[${citationInfo.displayIndex}] ${citationInfo.title}`;
+                    link.title = citationInfo.title;
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer';
+                    listItem.appendChild(link);
+                    citationList.appendChild(listItem);
+                });
+                if (sortedCitations.length === 0) {
+                     messageData.groundingMetadata.groundingChunks.forEach((chunk, idx) => {
+                         if (chunk?.web?.uri) {
+                             const listItem = document.createElement('li');
+                             const link = document.createElement('a');
+                             link.href = chunk.web.uri;
+                             link.textContent = chunk.web.title || `ソース ${idx + 1}`;
+                             link.title = chunk.web.title || 'タイトル不明';
+                             link.target = '_blank';
+                             link.rel = 'noopener noreferrer';
+                             listItem.appendChild(link);
+                             citationList.appendChild(listItem);
+                         }
+                     });
+                }
+                if (citationList.hasChildNodes()) {
+                    details.appendChild(citationList);
+                    detailsHasContent = true;
+                }
+            }
+            if (messageData.groundingMetadata.webSearchQueries && messageData.groundingMetadata.webSearchQueries.length > 0) {
+                if (detailsHasContent) {
+                    const separator = document.createElement('hr');
+                    separator.style.marginTop = '10px';
+                    separator.style.marginBottom = '8px';
+                    separator.style.border = 'none';
+                    separator.style.borderTop = '1px dashed var(--border-tertiary)'; 
+                    details.appendChild(separator);
+                }
+                const queryHeader = document.createElement('div');
+                queryHeader.textContent = '検索に使用されたクエリ:';
+                queryHeader.style.fontWeight = '500';
+                queryHeader.style.marginTop = detailsHasContent ? '0' : '8px';
+                queryHeader.style.marginBottom = '4px';
+                queryHeader.style.fontSize = '11px';
+                queryHeader.style.color = 'var(--text-secondary)';
+                details.appendChild(queryHeader);
+                const queryList = document.createElement('ul');
+                queryList.classList.add('search-query-list');
+                queryList.style.listStyle = 'none';
+                queryList.style.paddingLeft = '0';
+                queryList.style.margin = '0';
+                queryList.style.fontSize = '11px';
+                queryList.style.color = 'var(--text-secondary)';
+                messageData.groundingMetadata.webSearchQueries.forEach(query => {
+                    const queryItem = document.createElement('li');
+                    queryItem.textContent = `• ${query}`;
+                    queryItem.style.marginBottom = '3px';
+                    queryList.appendChild(queryItem);
+                });
+                details.appendChild(queryList);
+                detailsHasContent = true;
+            }
+            if (detailsHasContent) {
+                contentDiv.appendChild(details);
+            }
+        } catch (e) {
+            console.error(`引用元/検索クエリ表示の生成中にエラーが発生しました (index: ${index}):`, e);
+        }
+    }
+    
+    if (role === 'model' && messageData && messageData.executedFunctions && messageData.executedFunctions.length > 0) {
+        const details = document.createElement('details');
+        details.classList.add('function-call-details');
+        const uniqueFunctions = [...new Set(messageData.executedFunctions)];
+        const summary = document.createElement('summary');
+        summary.innerHTML = `⚙️ ツール使用 (${uniqueFunctions.length}件)`;
+        details.appendChild(summary);
+        const list = document.createElement('ul');
+        list.classList.add('function-call-list');
+        uniqueFunctions.forEach(funcName => {
+            const listItem = document.createElement('li');
+            listItem.textContent = funcName;
+            list.appendChild(listItem);
+        });
+        details.appendChild(list);
+        if (contentDiv.innerHTML.trim() !== '') {
+            contentDiv.appendChild(details);
+        } else {
+            messageDiv.appendChild(details);
+        }
+    }
+
+    if (role === 'model' && messageData && messageData.search_web_results && messageData.search_web_results.length > 0) {
+        const details = document.createElement('details');
+        details.classList.add('function-call-details');
+        const summary = document.createElement('summary');
+        summary.innerHTML = `🌐 Web検索結果 (${messageData.search_web_results.length}件)`;
+        details.appendChild(summary);
+        const list = document.createElement('ul');
+        list.classList.add('function-call-list');
+        messageData.search_web_results.forEach(result => {
+            const listItem = document.createElement('li');
+            const link = document.createElement('a');
+            link.href = result.link;
+            link.textContent = result.title;
+            link.title = result.snippet;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            listItem.appendChild(link);
+            list.appendChild(listItem);
+        });
+        details.appendChild(list);
+        if (contentDiv.innerHTML.trim() !== '') {
+            contentDiv.appendChild(details);
+        } else {
+            messageDiv.appendChild(details);
+        }
+    }
+
+    if (role === 'model' && messageData && messageData.generated_videos && messageData.generated_videos.length > 0) {
+        const videoData = messageData.generated_videos[0];
+        if (videoData && (videoData.url || videoData.base64Data)) {
+            const video = document.createElement('video');
+            video.controls = true; 
+            video.playsInline = true; 
+            video.muted = true; 
+            video.loop = true; 
+            video.style.maxWidth = '100%';
+            video.style.borderRadius = 'var(--border-radius-md)';
+            video.style.display = 'block';
+
+            if (videoData.url) {
+                video.src = videoData.url;
+            } else if (videoData.base64Data) {
+                base64ToBlob(videoData.base64Data, 'video/mp4')
+                    .then(blob => {
+                        const objectURL = URL.createObjectURL(blob);
+                        video.src = objectURL;
+                    })
+                    .catch(err => {
+                        console.error("Base64からの動画Blob生成に失敗:", err);
+                        video.remove();
+                    });
+            }
+
+            const placeholderRegex = /\[VIDEO_HERE\]/g;
+            if (placeholderRegex.test(contentDiv.innerHTML)) {
+                let replaced = false;
+                contentDiv.innerHTML = contentDiv.innerHTML.replace(placeholderRegex, (match) => {
+                    if (!replaced) {
+                        replaced = true;
+                        return video.outerHTML;
+                    }
+                    return '';
+                });
+            }
+        }
+    }
+
+    const editArea = document.createElement('div');
+    editArea.classList.add('message-edit-area', 'hidden');
+    messageDiv.appendChild(editArea);
+
+    if (role === 'model' && cascadeInfo && cascadeInfo.total > 1) {
+        const cascadeControlsDiv = document.createElement('div');
+        cascadeControlsDiv.classList.add('message-cascade-controls');
+        const prevButton = document.createElement('button');
+        prevButton.innerHTML = '<span class="material-symbols-outlined">chevron_left</span>';
+        prevButton.title = '前の応答';
+        prevButton.classList.add('cascade-prev-btn');
+        prevButton.disabled = cascadeInfo.currentIndex <= 1;
+        prevButton.onclick = () => appLogic.navigateCascade(index, 'prev');
+        cascadeControlsDiv.appendChild(prevButton);
+        const indicatorSpan = document.createElement('span');
+        indicatorSpan.classList.add('cascade-indicator');
+        indicatorSpan.textContent = `${cascadeInfo.currentIndex}/${cascadeInfo.total}`;
+        cascadeControlsDiv.appendChild(indicatorSpan);
+        const nextButton = document.createElement('button');
+        nextButton.innerHTML = '<span class="material-symbols-outlined">chevron_right</span>';
+        nextButton.title = '次の応答';
+        nextButton.classList.add('cascade-next-btn');
+        nextButton.disabled = cascadeInfo.currentIndex >= cascadeInfo.total;
+        nextButton.onclick = () => appLogic.navigateCascade(index, 'next');
+        cascadeControlsDiv.appendChild(nextButton);
+        const deleteCascadeButton = document.createElement('button');
+        deleteCascadeButton.innerHTML = '<span class="material-symbols-outlined">delete</span>';
+        deleteCascadeButton.title = 'この応答を削除';
+        deleteCascadeButton.classList.add('cascade-delete-btn');
+        deleteCascadeButton.onclick = () => appLogic.confirmDeleteCascadeResponse(index);
+        cascadeControlsDiv.appendChild(deleteCascadeButton);
+        messageDiv.appendChild(cascadeControlsDiv);
+    }
+
+    if (role !== 'error') {
+        const actionsDiv = document.createElement('div');
+        actionsDiv.classList.add('message-actions');
+
+        if (!isSummarized) {
+            const editButton = document.createElement('button');
+            editButton.innerHTML = '<span class="material-symbols-outlined">edit</span> 編集'; 
+            editButton.title = 'メッセージを編集'; 
+            editButton.classList.add('js-edit-btn');
+            editButton.onclick = () => appLogic.startEditMessage(index, messageDiv);
+            actionsDiv.appendChild(editButton);
+            const deleteButton = document.createElement('button');
+            deleteButton.innerHTML = '<span class="material-symbols-outlined">delete</span> 削除'; 
+            deleteButton.title = 'この会話ターンを削除'; 
+            deleteButton.classList.add('js-delete-btn');
+            deleteButton.onclick = () => appLogic.deleteMessage(index);
+            actionsDiv.appendChild(deleteButton);
+            if (role === 'user') {
+                const retryButton = document.createElement('button');
+                retryButton.innerHTML = '<span class="material-symbols-outlined">replay</span> 再生成'; 
+                retryButton.title = 'このメッセージから再生成'; 
+                retryButton.classList.add('js-retry-btn');
+                retryButton.onclick = () => appLogic.retryFromMessage(index);
+                actionsDiv.appendChild(retryButton);
             }
         }
 
-        if (isStreamingPlaceholder) {
-            messageDiv.id = `streaming-message-${index}`;
+        if (role === 'model' && messageData?.usageMetadata &&
+            typeof messageData.usageMetadata.candidatesTokenCount === 'number' &&
+            typeof messageData.usageMetadata.totalTokenCount === 'number')
+        {
+            const usage = messageData.usageMetadata;
+            const tokenSpan = document.createElement('span');
+            tokenSpan.classList.add('token-count-display');
+            let finalTotalTokenCount = usage.totalTokenCount;
+            if (typeof messageData.usageMetadata.thoughtsTokenCount === 'number') {
+                finalTotalTokenCount -= messageData.usageMetadata.thoughtsTokenCount;
+            }
+            const formattedCandidates = usage.candidatesTokenCount.toLocaleString('en-US');
+            const formattedTotal = finalTotalTokenCount.toLocaleString('en-US');
+            tokenSpan.textContent = `${formattedCandidates} / ${formattedTotal}`;
+            tokenSpan.title = `Candidate Tokens / Total Tokens`;
+            actionsDiv.appendChild(tokenSpan);
         }
-        return messageDiv;
-    },
+        if (role === 'model' && typeof messageData?.retryCount === 'number' && messageData.retryCount > 0) {
+            const retrySpan = document.createElement('span');
+            retrySpan.classList.add('token-count-display');
+            retrySpan.textContent = `(リトライ: ${messageData.retryCount}回)`;
+            retrySpan.title = `APIリクエストを${messageData.retryCount}回再試行した結果です`;
+            if (actionsDiv.querySelector('.token-count-display')) {
+                retrySpan.style.marginLeft = '8px';
+            }
+            actionsDiv.appendChild(retrySpan);
+        }
+        
+        if (actionsDiv.hasChildNodes()) {
+            messageDiv.appendChild(actionsDiv);
+        }
+    }
+
+    if (isStreamingPlaceholder) {
+        messageDiv.id = `streaming-message-${index}`;
+    }
+    return messageDiv;
+},
+
 
     // エラーメッセージを表示
     displayError(message, isApiError = false) {
