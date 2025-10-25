@@ -4591,6 +4591,11 @@ const appLogic = {
      * @private
      */
      async _doPush(isManual = false) {
+        // ★★★ デバッグ用ログを追加 ★★★
+        console.log('%c[DEBUG_SYNC] Push直前の全チャットデータをログ出力します。', 'color: red; font-weight: bold;');
+        const allChatsForDebug = await dbUtils.getAllChats();
+        console.log(allChatsForDebug);
+        // ★★★ デバッグ用ログここまで ★★★
 
         console.log(`[SYNC_DEBUG] _doPush: 開始。isManual = ${isManual}`);
 
