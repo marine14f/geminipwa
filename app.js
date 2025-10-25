@@ -8,31 +8,40 @@ import("https://esm.run/@google/genai").then(module => {
     document.body.innerHTML = `<p style="color: red; padding: 20px;">SDKの読み込みに失敗しました。アプリを起動できません。</p>`;
 });
 
-// 【デバッグ用一時コード】添付ファイルの状態をログに出力するヘルパー関数
-function logAttachmentState(label) {
-    console.group(`%c${label}`, 'color: blue; font-weight: bold;');
-    const lastUserMessage = [...state.currentMessages].reverse().find(m => m.role === 'user' && m.attachments && m.attachments.length > 0);
-    if (lastUserMessage && lastUserMessage.attachments.length > 0) {
-        const attachment = lastUserMessage.attachments[0];
-        console.log(`最新の添付ファイル付きメッセージ (index: ${state.currentMessages.indexOf(lastUserMessage)}) を検査します。`);
-        console.log(`- ファイル名: ${attachment.name}`);
-        // fileプロパティ（Blob本体）の存在を確認
-        if (attachment.file && attachment.file instanceof Blob) {
-            console.log(`- fileプロパティ: ✅ Blobオブジェクトが存在します (サイズ: ${attachment.file.size} bytes)`);
-        } else {
-            console.log(`- fileプロパティ: ❌ undefined (存在しません)`);
+// 【デバッグ用一時コード】DBから直接チャットを読み込み、添付ファイルの状態をログに出力する
+async function logDbAttachmentState(label, chatId) {
+    console.group(`%c${label}`, 'color: purple; font-weight: bold;');
+    if (!chatId) {
+        console.log("チャットIDが指定されていません。");
+        console.groupEnd();
+        return;
+    }
+    try {
+        const chat = await dbUtils.getChat(chatId);
+        if (!chat) {
+            console.log(`チャットID ${chatId} がDB内に見つかりません。`);
+            console.groupEnd();
+            return;
         }
-        // base64Dataの存在を確認
-        if (typeof attachment.base64Data === 'string') {
-            console.log(`- base64Dataプロパティ: ✅ 文字列が存在します (長さ: ${attachment.base64Data.length})`);
+        const messageWithAttachment = (chat.messages || []).find(m => m.attachments && m.attachments.length > 0);
+        if (messageWithAttachment) {
+            const attachment = messageWithAttachment.attachments[0];
+            console.log(`DB内のチャットID ${chatId} の最初の添付ファイルを検査します。`);
+            console.log(`- ファイル名: ${attachment.name}`);
+            if (typeof attachment.base64Data === 'string' && attachment.base64Data.length > 0) {
+                console.log(`- base64Dataプロパティ: ✅ 文字列が存在します (長さ: ${attachment.base64Data.length})`);
+            } else {
+                console.log(`- base64Dataプロパティ: ❌ undefined または空です`);
+            }
         } else {
-            console.log(`- base64Dataプロパティ: ❌ undefined (存在しません)`);
+            console.log(`チャットID ${chatId} 内に添付ファイル付きメッセージが見つかりません。`);
         }
-    } else {
-        console.log("検査対象の添付ファイル付きメッセージが見つかりません。");
+    } catch (error) {
+        console.error("DBからのチャットデータ取得中にエラー:", error);
     }
     console.groupEnd();
 }
+
 
 
 // --- 定数 ---
@@ -1533,20 +1542,6 @@ const uiUtils = {
         console.log(`オーバーレイ透明度適用: ${opacityValue}`);
     },
 
-        // 新しいメッセージ要素をコンテナの末尾に追加する（ちらつき防止用）
-    appendMessage(role, content, index, isStreamingPlaceholder = false, cascadeInfo = null, attachments = null) {
-        const messageElement = this.createMessageElement(role, content, index, isStreamingPlaceholder, cascadeInfo, attachments);
-        if (messageElement) {
-            elements.messageContainer.appendChild(messageElement);
-            if (window.Prism) {
-                // 追加した要素内のコードブロックのみをハイライトする
-                messageElement.querySelectorAll('pre code').forEach((block) => {
-                    Prism.highlightElement(block);
-                });
-            }
-        }
-    },
-
     // 新しいメッセージ要素をコンテナの末尾に追加する（ちらつき防止用）
     appendMessage(role, content, index, isStreamingPlaceholder = false, cascadeInfo = null, attachments = null) {
         const messageElement = this.createMessageElement(role, content, index, isStreamingPlaceholder, cascadeInfo, attachments);
@@ -2894,15 +2889,6 @@ renderChatMessages() {
             menu.addEventListener('click', e => e.stopPropagation());
         });
 
-        const STORAGE_KEY = 'gemini_pro_api_usage';
-        let usage = { count: 0 };
-        try {
-            const storedUsage = JSON.parse(localStorage.getItem(STORAGE_KEY));
-            if (storedUsage) {
-                usage = storedUsage;
-            }
-        } catch (e) { /* ignore */ }
-
         state.profiles.forEach(profile => {
             const menuItem = document.createElement('div');
             menuItem.classList.add('profile-menu-item');
@@ -2942,14 +2928,7 @@ renderChatMessages() {
             modelLineDiv.appendChild(modelSpan);
 
             if (profile.settings?.modelName === 'gemini-2.5-pro') {
-                const STORAGE_KEY = `gemini_pro_api_usage_${profile.id}`;
-                let usage = { count: 0 };
-                try {
-                    const storedUsage = JSON.parse(localStorage.getItem(STORAGE_KEY));
-                    if (storedUsage) {
-                        usage = storedUsage;
-                    }
-                } catch (e) { /* ignore */ }
+                const usage = profile.apiUsage || { count: 0 };
     
                 const countSpan = document.createElement('span');
                 countSpan.classList.add('profile-menu-api-count');
@@ -4045,89 +4024,90 @@ const appLogic = {
     _updateApiUsageCount: async function(profileId) {
         if (!profileId) return;
     
-        const STORAGE_KEY = `gemini_pro_api_usage_${profileId}`;
+        const profileToUpdate = state.profiles.find(p => p.id === profileId);
+        if (!profileToUpdate) return;
+    
         const now = new Date();
-        
-        const getPacificDate = (date) => {
-            const options = { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' };
-            const formatter = new Intl.DateTimeFormat('en-CA', options); // 'en-CA' は YYYY-MM-DD 形式を得やすい
-            return formatter.format(date);
-        };
-    
-        const todayPacific = getPacificDate(now);
-    
-        let usage = { date: todayPacific, count: 0 };
-        try {
-            // 日付チェックは行わず、単純に読み込むだけ
-            const storedUsage = JSON.parse(localStorage.getItem(STORAGE_KEY));
-            if (storedUsage && storedUsage.date === todayPacific) {
-                usage = storedUsage;
-            }
-        } catch (e) {
-            console.error("API使用回数データの読み込みに失敗:", e);
-        }
-    
-        usage.count++;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(usage));
-        console.log(`[API Count] gemini-2.5-pro call detected for profile ${profileId}. Count for ${usage.date}: ${usage.count}`);
-        
-        // UIを更新
-        this.updateApiUsageUI();
-        uiUtils.updateProfileSwitcherUI();
-    },
-    
-    _checkAndResetApiUsage: async function() {
-        console.log("[API Count] Checking for daily reset...");
-        const activeProfile = state.activeProfile;
-        if (!activeProfile || activeProfile.settings?.modelName !== 'gemini-2.5-pro' || !activeProfile.settings?.apiKey) {
-            return; // チェック対象外
-        }
-    
-        const STORAGE_KEY = `gemini_pro_api_usage_${activeProfile.id}`;
-        const now = new Date();
-    
         const getPacificDate = (date) => {
             const options = { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' };
             const formatter = new Intl.DateTimeFormat('en-CA', options);
             return formatter.format(date);
         };
-    
         const todayPacific = getPacificDate(now);
     
+        // プロファイルにapiUsageオブジェクトがなければ初期化
+        if (!profileToUpdate.apiUsage || profileToUpdate.apiUsage.date !== todayPacific) {
+            profileToUpdate.apiUsage = { date: todayPacific, count: 0 };
+        }
+    
+        profileToUpdate.apiUsage.count++;
+    
         try {
-            const storedUsage = JSON.parse(localStorage.getItem(STORAGE_KEY));
-            if (storedUsage && storedUsage.date !== todayPacific) {
-                console.log(`[API Count] Pacific date has changed from ${storedUsage.date} to ${todayPacific}. Resetting count for profile ${activeProfile.id}.`);
-                localStorage.removeItem(STORAGE_KEY);
-                // UIを更新してリセットを反映
-                this.updateApiUsageUI();
-                uiUtils.updateProfileSwitcherUI();
-            }
-        } catch (e) {
-            console.error("API使用回数データのリセットチェック中にエラー:", e);
+            // 更新されたプロファイル情報をDBに保存
+            await dbUtils.updateProfile(profileToUpdate);
+            console.log(`[API Count] Profile ${profileId} の使用回数を更新しました。 Count for ${todayPacific}: ${profileToUpdate.apiUsage.count}`);
+            
+            // UIを更新
+            this.updateApiUsageUI();
+            uiUtils.updateProfileSwitcherUI();
+        } catch (error) {
+            console.error(`[API Count] プロファイルID ${profileId} の使用回数保存に失敗:`, error);
         }
     },
 
-    updateApiUsageUI: function() {
-        const profileId = state.activeProfileId;
-        if (!profileId) {
-            document.getElementById('api-usage-container').classList.add('hidden');
-            return;
+    
+    _checkAndResetApiUsage: async function() {
+        console.log("[API Count] 全プロファイルのAPI使用回数リセットチェックを開始します...");
+        
+        const now = new Date();
+        const getPacificDate = (date) => {
+            const options = { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' };
+            const formatter = new Intl.DateTimeFormat('en-CA', options);
+            return formatter.format(date);
+        };
+        const todayPacific = getPacificDate(now);
+    
+        let profilesWereUpdated = false;
+    
+        for (const profile of state.profiles) {
+            if (profile.apiUsage && profile.apiUsage.date !== todayPacific) {
+                console.log(`[API Count] プロファイル「${profile.name}」(ID: ${profile.id}) の日付が古いため (${profile.apiUsage.date})、使用回数をリセットします。`);
+                // apiUsageオブジェクトごと削除する
+                delete profile.apiUsage;
+                
+                try {
+                    // 更新されたプロファイルをDBに保存
+                    await dbUtils.updateProfile(profile);
+                    profilesWereUpdated = true;
+                } catch (error) {
+                    console.error(`[API Count] プロファイルID ${profile.id} のリセット保存に失敗:`, error);
+                }
+            }
         }
-        const STORAGE_KEY = `gemini_pro_api_usage_${profileId}`;
+    
+        if (profilesWereUpdated) {
+            console.log("[API Count] 1つ以上のプロファイルが更新されたため、UIを再描画します。");
+            // state.activeProfileも更新されている可能性があるので再適用
+            this.applyActiveProfile(); 
+            uiUtils.updateProfileSwitcherUI();
+        } else {
+            console.log("[API Count] リセットが必要なプロファイルはありませんでした。");
+        }
+    },
+
+
+    updateApiUsageUI: function() {
+        const profile = state.activeProfile;
         const usageContainer = document.getElementById('api-usage-container');
         const usageText = document.getElementById('api-usage-text');
         
-        if (!usageContainer || !usageText) return;
-
-        let usage = { count: 0 };
-        try {
-            const storedUsage = JSON.parse(localStorage.getItem(STORAGE_KEY));
-            if (storedUsage) {
-                usage = storedUsage;
-            }
-        } catch (e) { /* ignore */ }
-
+        if (!usageContainer || !usageText || !profile) {
+            if(usageContainer) usageContainer.classList.add('hidden');
+            return;
+        }
+    
+        const usage = profile.apiUsage || { count: 0 };
+    
         if (state.settings.modelName === 'gemini-2.5-pro') {
             usageText.textContent = `gemini-2.5-pro 本日の使用回数: ${usage.count} 回 (日本時間16/17時リセット)`;
             usageContainer.classList.remove('hidden');
@@ -4140,6 +4120,11 @@ const appLogic = {
 
     // アプリ初期化
     async initializeApp() {
+        const isSyncReload = sessionStorage.getItem('isSyncReload') === 'true';
+        if (isSyncReload) {
+            uiUtils.showProgressDialog('初期化処理を開始しています...');
+        }
+
         // --- ステップ0: バージョンアップ通知 ---
         try {
             const lastVersion = localStorage.getItem('appVersion');
@@ -4164,6 +4149,8 @@ const appLogic = {
         }
         // --- ステップ1: 最初にDB接続を一度だけ確立する ---
         try {
+            if (isSyncReload) uiUtils.updateProgressMessage('データベースを準備しています...');
+
             await dbUtils.openDB();
         } catch (dbError) {
             console.error("初期化中のDBオープンに失敗:", dbError);
@@ -4347,8 +4334,9 @@ const appLogic = {
 
         try {
             // --- ステップ4: データ読み込みとUI更新 ---
-            
+            if (isSyncReload) uiUtils.updateProgressMessage('各種設定を読み込んでいます...');
             await this.loadGlobalSettings();
+            if (isSyncReload) uiUtils.updateProgressMessage('プロファイル情報を読み込んでいます...');
             await this.loadProfiles();
             await this._checkAndResetApiUsage();
             this.updateApiUsageUI();
@@ -4425,6 +4413,8 @@ const appLogic = {
                 }
             }
 
+            if (isSyncReload) uiUtils.updateProgressMessage('チャット履歴を読み込んでいます...');
+
             const chats = await dbUtils.getAllChats(state.settings.historySortOrder);
             if (chats && chats.length > 0) {
                 await this.loadChat(chats[0].id);
@@ -4437,6 +4427,7 @@ const appLogic = {
             await uiUtils.showCustomAlert(`データの読み込みに失敗しました: ${error.message}`);
         } finally {
             // --- ステップ5: 最終的なUI設定と表示 ---
+            if (isSyncReload) uiUtils.updateProgressMessage('画面を描画しています...');
             elements.chatScreen.style.transform = 'translateX(0)';
             elements.historyScreen.style.transform = 'translateX(-100%)';
             elements.settingsScreen.style.transform = 'translateX(100%)';
@@ -4453,6 +4444,10 @@ const appLogic = {
             this.toggleSummaryButtonVisibility();
             this.scrollToBottom();
             this.applyFloatingPanelBehavior();
+            if (isSyncReload) {
+                uiUtils.hideProgressDialog();
+                sessionStorage.removeItem('isSyncReload');
+            }
         }
     },
 
@@ -4677,6 +4672,17 @@ const appLogic = {
             // --- Step 5: メタデータのアップロード ---
             updateProgress('最終データを保存中...');
             const parsedMetadata = JSON.parse(metadataJson);
+            // 【デバッグ用一時コード】アップロード直前のJSONデータを検査
+            const chatInJson = parsedMetadata.data.chats.find(c => c.id === state.currentChatId);
+            console.group('%c【Push検証②】 アップロード直前のJSONデータ', 'color: purple; font-weight: bold;');
+            if (chatInJson && chatInJson.messages) {
+                const msgInJson = chatInJson.messages.find(m => m.attachments && m.attachments.length > 0);
+                if (msgInJson) {
+                    console.log('JSON内の最初の添付ファイルオブジェクトを検査:', msgInJson.attachments[0]);
+                } else { console.log('JSON内に添付ファイル付きメッセージなし'); }
+            } else { console.log('JSON内に該当チャットなし'); }
+            console.groupEnd();
+
             await window.dropboxApi.uploadMetadata(metadataJson);
 
             // --- Step 6: 状態の更新 ---
@@ -4798,6 +4804,16 @@ const appLogic = {
             }
 
             const cloudData = JSON.parse(cloudMetadataString);
+            
+            // 【デバッグ用一時コード】ダウンロードしたJSONデータを検査
+            const chatInCloudData = (cloudData.data.chats || []).find(c => c.messages && c.messages.some(m => m.attachments && m.attachments.length > 0));
+            console.group('%c【Pull検証③】 クラウドから受信したJSONデータ', 'color: purple; font-weight: bold;');
+            if (chatInCloudData) {
+                const msgInCloudData = chatInCloudData.messages.find(m => m.attachments && m.attachments.length > 0);
+                console.log('受信JSON内の最初の添付ファイルオブジェクトを検査:', msgInCloudData.attachments[0]);
+            } else { console.log('受信JSON内に添付ファイル付きメッセージなし'); }
+            console.groupEnd();
+
             const cloudSyncId = cloudData.syncId;
 
             console.log(`[Sync Pull V2] Cloud syncId: ${cloudSyncId}, Local lastSyncId: ${state.sync.lastSyncId}`);
@@ -4852,6 +4868,9 @@ const appLogic = {
                     }
                     finalMessage += cleanupDetails;
                 }
+
+                // リロード直前であるこのタイミングで、sessionStorageにフラグを立てる
+                sessionStorage.setItem('isSyncReload', 'true');
 
                 await uiUtils.showCustomAlert(finalMessage);
                 window.location.reload();
@@ -4980,18 +4999,23 @@ const appLogic = {
             e.target.value = null;
         });
 
-    
         // カウンターリセットボタンの処理
         document.getElementById('reset-api-count-btn').addEventListener('click', async () => {
             const confirmed = await uiUtils.showCustomConfirm("API使用回数のカウントを0にリセットしますか？");
             if (confirmed) {
-                const profileId = state.activeProfileId;
-                if (profileId) {
-                    const STORAGE_KEY = `gemini_pro_api_usage_${profileId}`;
-                    localStorage.removeItem(STORAGE_KEY);
-                    this.updateApiUsageUI();
-                    uiUtils.updateProfileSwitcherUI();
-                    console.log(`[API Count] カウンターが手動でリセットされました (Profile ID: ${profileId})`);
+                const profile = state.activeProfile;
+                if (profile) {
+                    if (profile.apiUsage) {
+                        delete profile.apiUsage;
+                        try {
+                            await dbUtils.updateProfile(profile);
+                            console.log(`[API Count] カウンターが手動でリセットされました (Profile ID: ${profile.id})`);
+                            this.updateApiUsageUI();
+                            uiUtils.updateProfileSwitcherUI();
+                        } catch (error) {
+                            console.error(`[API Count] カウンターリセットの保存に失敗:`, error);
+                        }
+                    }
                 }
             }
         });
