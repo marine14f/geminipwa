@@ -1715,7 +1715,7 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
     if (role === 'user' && attachments && attachments.length > 0) {
         const details = document.createElement('details');
         details.classList.add('attachment-details');
-        details.open = true; // 最初から展開状態にする
+        details.open = false; // 最初から展開状態にする
         const summary = document.createElement('summary');
         summary.textContent = `添付ファイル (${attachments.length}件)`;
         details.appendChild(summary);
@@ -3075,17 +3075,28 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
 
     // --- 進捗ダイアログ ヘルパー ---
     showProgressDialog(message) {
+        console.log(`[PROGRESS_DEBUG] showProgressDialog CALLED with message: "${message}"`);
         elements.progressMessage.textContent = message;
         if (!elements.progressDialog.open) {
+            console.log('[PROGRESS_DEBUG] dialog is not open, calling showModal().');
             elements.progressDialog.showModal();
+        } else {
+            console.log('[PROGRESS_DEBUG] dialog is already open.');
         }
+        // 呼び出し直後の状態を確認
+        console.log(`[PROGRESS_DEBUG] After showModal(), dialog.open = ${elements.progressDialog.open}`);
     },
     updateProgressMessage(message) {
+        console.log(`[PROGRESS_DEBUG] updateProgressMessage CALLED with message: "${message}"`);
         elements.progressMessage.textContent = message;
     },
     hideProgressDialog() {
+        console.log('[PROGRESS_DEBUG] hideProgressDialog CALLED.');
         if (elements.progressDialog.open) {
             elements.progressDialog.close();
+            console.log('[PROGRESS_DEBUG] Called close() on the dialog.');
+        } else {
+            console.log('[PROGRESS_DEBUG] hideProgressDialog was called, but dialog was not open.');
         }
     },
 
@@ -5930,6 +5941,7 @@ const appLogic = {
 
     // 新規チャットを開始する (状態リセット)
     startNewChat() {
+        state.pendingCascadeResponses = null; // 保留中のカスケードデータをクリア
         state.currentChatId = null;
         state.currentMessages = [];
         state.currentSystemPrompt = state.settings.systemPrompt || ''; 
@@ -5953,6 +5965,7 @@ const appLogic = {
 
     // app.js の appLogic オブジェクト内
     async loadChat(id) {
+        state.pendingCascadeResponses = null; // 保留中のカスケードデータをクリア
         const loadChatStartTime = performance.now();
         console.log(`%c[PERF_DEBUG] loadChat: START - チャットID ${id} の読み込み処理を開始...`, 'color: red; font-weight: bold;');
 
@@ -6850,6 +6863,7 @@ const appLogic = {
     
     async handleSend() {
 
+        state.pendingCascadeResponses = null; // 保留中のカスケードデータをクリア
         if (state.isSending) { return; }
         if (state.editingMessageIndex !== null) { await uiUtils.showCustomAlert("他のメッセージを編集中です。"); return; }
         if (state.isEditingSystemPrompt) { await uiUtils.showCustomAlert("システムプロンプトを編集中です。"); return; }
@@ -7808,35 +7822,40 @@ const appLogic = {
         }
     },
 
-
-    
-    
-    
     async retryFromMessage(index) {
         if (state.isSending) { await uiUtils.showCustomAlert("送信中です。"); return; }
         
         const userMessage = state.currentMessages[index];
         if (!userMessage || userMessage.role !== 'user') return;
-
+    
         const messageContentPreview = userMessage.content.substring(0, 30) + "...";
         const confirmed = await uiUtils.showCustomConfirm(`「${messageContentPreview}」から再生成しますか？\n(これより未来の会話履歴は削除され、既存の応答は別候補として保持されます)`);
-
+    
         if (confirmed) {
             uiUtils.setSendingState(true);
-
-            const futureMessages = state.currentMessages.slice(index + 1);
+    
             let originalResponses = [];
-            
-            const firstModelResponse = futureMessages.find(msg => msg.role === 'model');
-            if (firstModelResponse && firstModelResponse.isCascaded && firstModelResponse.siblingGroupId) {
-                const groupId = firstModelResponse.siblingGroupId;
-                originalResponses = state.currentMessages.filter(
-                    msg => msg.siblingGroupId === groupId
-                );
-            } else if (firstModelResponse) {
-                originalResponses.push(firstModelResponse);
+            // 保留中のカスケード応答があれば、それを使用する
+            if (state.pendingCascadeResponses) {
+                originalResponses = state.pendingCascadeResponses;
+                console.log("保留中のカスケード応答を復元しました。");
+            } else {
+                const futureMessages = state.currentMessages.slice(index + 1);
+                const firstModelResponse = futureMessages.find(msg => msg.role === 'model');
+                if (firstModelResponse && firstModelResponse.isCascaded && firstModelResponse.siblingGroupId) {
+                    const groupId = firstModelResponse.siblingGroupId;
+                    originalResponses = state.currentMessages.filter(
+                        msg => msg.siblingGroupId === groupId
+                    );
+                } else if (firstModelResponse) {
+                    originalResponses.push(firstModelResponse);
+                }
             }
+    
+            // 次の再生成に備えて、元の応答をstateに待避させる
+            state.pendingCascadeResponses = originalResponses;
             
+            // UI上から古い応答を削除し、stateもユーザープロンプトまでの状態に戻す
             const messagesToRemove = state.currentMessages.slice(index + 1);
             messagesToRemove.forEach((msg, i) => {
                 const elementToRemove = elements.messageContainer.querySelector(`.message[data-index="${index + 1 + i}"]`);
@@ -7845,19 +7864,19 @@ const appLogic = {
                 }
             });
             state.currentMessages.splice(index + 1);
-
+    
             let modelMessage;
-
+    
             try {
                 const baseHistory = state.currentMessages.filter(msg => !msg.isCascaded || msg.isSelected);
                 const historyForApi = this._prepareApiHistory(baseHistory);
-
+    
                 modelMessage = { role: 'model', content: '', timestamp: Date.now() };
                 state.currentMessages.push(modelMessage);
                 const modelMessageIndex = state.currentMessages.length - 1;
                 uiUtils.appendMessage(modelMessage.role, modelMessage.content, modelMessageIndex, true);
                 this.scrollToBottom();
-
+    
                 const generationConfig = {};
                 if (state.settings.temperature !== null) generationConfig.temperature = state.settings.temperature;
                 if (state.settings.maxTokens !== null) generationConfig.maxOutputTokens = state.settings.maxTokens;
@@ -7866,44 +7885,61 @@ const appLogic = {
                  if (state.settings.thinkingBudget !== null || state.settings.includeThoughts) {
                     generationConfig.thinkingConfig = {};
                     if(state.settings.thinkingBudget !== null) generationConfig.thinkingConfig.thinkingBudget = state.settings.thinkingBudget;
-
                     if(state.settings.includeThoughts) generationConfig.thinkingConfig.includeThoughts = true;
                 }
                 const systemInstruction = state.currentSystemPrompt?.trim() ? { role: "system", parts: [{ text: state.currentSystemPrompt.trim() }] } : null;
-
+    
                 const newMessages = await this._internalHandleSend(historyForApi, generationConfig, systemInstruction);
                 const newAggregatedMessage = this._aggregateMessages(newMessages);
-
-                const siblingGroupId = (originalResponses.length > 0 && originalResponses[0].siblingGroupId)
-                    ? originalResponses[0].siblingGroupId
+    
+                // 成功したので、待避していたデータを取得し、待避領域をクリア
+                const finalOriginalResponses = state.pendingCascadeResponses || [];
+                state.pendingCascadeResponses = null;
+    
+                const siblingGroupId = (finalOriginalResponses.length > 0 && finalOriginalResponses[0].siblingGroupId)
+                    ? finalOriginalResponses[0].siblingGroupId
                     : `gid-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-
-                originalResponses.forEach(msg => {
+    
+                finalOriginalResponses.forEach(msg => {
                     msg.isCascaded = true;
                     msg.isSelected = false;
                     msg.siblingGroupId = siblingGroupId;
                 });
-
+    
                 newAggregatedMessage.isCascaded = true;
                 newAggregatedMessage.isSelected = true;
                 newAggregatedMessage.siblingGroupId = siblingGroupId;
-
-                state.currentMessages.splice(modelMessageIndex, 1, ...originalResponses, newAggregatedMessage);
-                uiUtils.renderChatMessages(); // renderChatMessages自体はスクロールをトリガーしない
-                this.scrollToBottom();
-                await dbUtils.saveChat();
-
-            } catch(error) {
-                console.error("--- retryFromMessage: 最終catchブロックでエラー捕捉 ---", error);
-                const errorMessage = (error.name !== 'AbortError') ? (error.message || "不明なエラーが発生しました。") : "リクエストがキャンセルされました。";
-                
-                const errorIndex = state.currentMessages.findIndex(m => m.timestamp === modelMessage.timestamp);
-                if (errorIndex !== -1) {
-                    state.currentMessages[errorIndex] = { role: 'error', content: errorMessage, timestamp: Date.now() };
-                }
+    
+                state.currentMessages.splice(modelMessageIndex, 1, ...finalOriginalResponses, newAggregatedMessage);
                 uiUtils.renderChatMessages();
                 this.scrollToBottom();
                 await dbUtils.saveChat();
+    
+            } catch(error) {
+                console.error("再生成エラー:", error);
+                const errorMessage = (error.name !== 'AbortError') ? (error.message || "不明なエラーが発生しました。") : "リクエストがキャンセルされました。";
+                
+    
+                // 1. プレースホルダーを履歴から削除
+                const placeholderIndex = state.currentMessages.findIndex(m => m.timestamp === modelMessage.timestamp);
+                if (placeholderIndex !== -1) {
+                    state.currentMessages.splice(placeholderIndex, 1);
+                }
+    
+                // 2. DBにはエラーメッセージを含まない現在の履歴（ユーザープロンプトまで）を保存
+                await dbUtils.saveChat();
+    
+                // 3. UI表示のためだけに、エラーメッセージを現在のメッセージリストに追加
+                state.currentMessages.push({ role: 'error', content: errorMessage, timestamp: Date.now(), isNonPersistent: true });
+    
+                // 4. UIを再描画（これで「ユーザープロンプト → エラー」表示になる）
+                uiUtils.renderChatMessages();
+    
+                // 5. 次の操作に備え、UI表示用に追加したエラーメッセージを履歴から削除
+                state.currentMessages = state.currentMessages.filter(m => !m.isNonPersistent);
+                
+                this.scrollToBottom();
+    
             } finally {
                 uiUtils.setSendingState(false);
                 state.abortController = null; 
@@ -7914,10 +7950,7 @@ const appLogic = {
                 }
             }
         }
-    },
-
-
-
+    },    
 
     // --- カスケード応答操作 ---
     getCascadedSiblings(index, includeSelf = false) {
