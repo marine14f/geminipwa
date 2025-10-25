@@ -9971,6 +9971,31 @@ const appLogic = {
                 }
             }
 
+            // エクスポート用の `chats` 配列（DBから取得した全チャットデータ）に対して、
+            // 添付ファイルのbase64Dataを復元する処理を追加
+            for (const chat of chats) {
+                if (chat.messages) {
+                    for (const message of chat.messages) {
+                        if (message.attachments && message.attachments.length > 0) {
+                            for (const attachment of message.attachments) {
+                                // base64Dataがなく、assetIdがある場合に復元を試みる
+                                if (!attachment.base64Data && attachment.assetId) {
+                                    const assetBlobData = localAssets.get(attachment.assetId);
+                                    if (assetBlobData && assetBlobData.blob) {
+                                        try {
+                                            // fileToBase64 を使って Blob から Base64 文字列を生成
+                                            attachment.base64Data = await this.fileToBase64(assetBlobData.blob);
+                                        } catch (e) {
+                                            console.error(`[Data Export V2] エクスポート中に assetId: ${attachment.assetId} から base64Data の復元に失敗しました。`, e);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // エクスポート用の `chats` 配列から base64Data を削除
             chats.forEach(chat => {
                 if (chat.messages) {
@@ -10010,6 +10035,7 @@ const appLogic = {
             throw new Error("データのエクスポート準備に失敗しました。");
         }
     },
+
 
 
 
