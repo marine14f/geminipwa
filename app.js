@@ -9996,20 +9996,6 @@ const appLogic = {
                 }
             }
 
-            // エクスポート用の `chats` 配列から base64Data を削除
-            chats.forEach(chat => {
-                if (chat.messages) {
-                    chat.messages.forEach(message => {
-                        if (message.attachments && message.attachments.length > 0) {
-                            message.attachments.forEach(attachment => {
-                                delete attachment.base64Data;
-                                delete attachment.file;
-                            });
-                        }
-                    });
-                }
-            });
-
             const syncId = 'sync_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
             const metadata = {
                 version: "2.0",
