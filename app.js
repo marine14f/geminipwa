@@ -4918,6 +4918,7 @@ const appLogic = {
                 }
 
                 await uiUtils.showCustomAlert(finalMessage);
+                sessionStorage.setItem('isSyncReload', 'true'); // リロード後の処理のためにフラグを立てる
                 window.location.reload();
 
             } else {
