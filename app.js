@@ -3131,12 +3131,18 @@ const apiUtils = {
         console.log("ターゲットエンドポイント:", endpoint);
 
         try {
+            const timestamp = new Date().toLocaleTimeString();
+            console.log(`[API_DEBUG ${timestamp}] Sending fetch request to Gemini API...`);
+
             const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestBody),
                 signal
             });
+
+            const receivedTimestamp = new Date().toLocaleTimeString();
+            console.log(`[API_DEBUG ${receivedTimestamp}] Received response from Gemini API. Status: ${response.status}`);
 
             if (!response.ok) {
                 let errorMsg = `APIエラー (${response.status}): ${response.statusText}`;
