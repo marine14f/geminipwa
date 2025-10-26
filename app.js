@@ -4479,53 +4479,61 @@ const appLogic = {
      * ローカルデータに変更があったことを記録し、設定に応じてPush処理をスケジュールする
      * @param {boolean} [forcePush=false] - trueの場合、同期頻度の設定を無視して即時Pushを実行する
      */
-    markAsDirtyAndSchedulePush(forcePush = false) {
+     markAsDirtyAndSchedulePush(forcePush = false) {
+        const timestamp = new Date().toLocaleTimeString();
+        console.log(`[SYNC_DEBUG ${timestamp}] markAsDirtyAndSchedulePush called. forcePush=${forcePush}, isSending=${state.isSending}, isSyncing=${state.sync.isSyncing}, isDirty=${state.sync.isDirty}`);
+
         const tokenData = dbUtils.getSetting('dropboxTokens');
         if (!tokenData) {
-            console.log("[Sync] Dropbox未連携のため、同期処理をスキップします。");
+            console.log(`[SYNC_DEBUG ${timestamp}] -> SKIPPED: Dropbox not connected.`);
             return;
         }
 
         if (state.sync.isSyncing) {
-            console.log("[Sync] 現在同期処理中のため、新たな同期要求をスキップします。");
+            console.log(`[SYNC_DEBUG ${timestamp}] -> SKIPPED: Already syncing.`);
             return;
         }
         
         if (!state.sync.isDirty) {
             state.sync.isDirty = true;
             dbUtils.saveSetting('syncIsDirty', true);
+            console.log(`[SYNC_DEBUG ${timestamp}] -> State set to DIRTY.`);
         }
         this.updateSyncStatusUI('dirty');
 
         // AIが応答中の場合は、同期処理のスケジュールを遅延させる
         if (state.isSending) {
-            console.log("[Sync] AIが応答中のため、同期スケジュールを保留します。");
+            console.log(`[SYNC_DEBUG ${timestamp}] -> SKIPPED: AI is responding (isSending=true).`);
             return;
         }
 
         // 強制Pushフラグがある場合は、設定を無視して即時同期
         if (forcePush) {
-            console.log("[Sync] 強制Pushが要求されたため、即時同期を開始します。");
+            console.log(`[SYNC_DEBUG ${timestamp}] -> EXECUTING: forcePush=true. Calling handlePush now.`);
             this.handlePush();
             return;
         }
 
         // メッセージ送受信時の処理
         state.syncMessageCounter++;
-        console.log(`[Sync] メッセージカウンターをインクリメント: ${state.syncMessageCounter}`);
+        console.log(`[SYNC_DEBUG ${timestamp}] Message counter incremented to: ${state.syncMessageCounter}`);
 
         const frequency = state.settings.dropboxSyncFrequency;
 
         if (frequency === 'manual') {
-            console.log("[Sync] 手動同期モードのため、自動Pushは行いません。");
+            console.log(`[SYNC_DEBUG ${timestamp}] -> SKIPPED: Manual sync mode.`);
             return;
         }
 
         if (frequency === 'instant') {
-            console.log("[Sync] 即時同期モードのため、Pushをスケジュールします。");
-            // 以前のsetTimeoutのロジックを流用して、連続変更をまとめる
-            if (state.sync.pushTimeoutId) clearTimeout(state.sync.pushTimeoutId);
+            if (state.sync.pushTimeoutId) {
+                clearTimeout(state.sync.pushTimeoutId);
+                console.log(`[SYNC_DEBUG ${timestamp}] Cleared existing timeout for instant sync.`);
+            }
+            console.log(`[SYNC_DEBUG ${timestamp}] -> SCHEDULING: Instant sync mode. Setting 3-second timeout.`);
             state.sync.pushTimeoutId = setTimeout(() => {
+                const scheduledTimestamp = new Date().toLocaleTimeString();
+                console.log(`[SYNC_DEBUG ${scheduledTimestamp}] -> EXECUTING: Timeout finished for instant sync. Calling handlePush.`);
                 this.handlePush();
             }, 3000); // 3秒のデバウンス
             return;
@@ -4533,17 +4541,23 @@ const appLogic = {
 
         const threshold = parseInt(frequency, 10);
         if (!isNaN(threshold) && state.syncMessageCounter >= threshold) {
-            console.log(`[Sync] メッセージカウンターが閾値(${threshold})に達したため、Pushをスケジュールします。`);
-            if (state.sync.pushTimeoutId) clearTimeout(state.sync.pushTimeoutId);
+            if (state.sync.pushTimeoutId) {
+                clearTimeout(state.sync.pushTimeoutId);
+                console.log(`[SYNC_DEBUG ${timestamp}] Cleared existing timeout for threshold sync.`);
+            }
+            console.log(`[SYNC_DEBUG ${timestamp}] -> SCHEDULING: Threshold (${threshold}) reached. Setting 3-second timeout.`);
             state.sync.pushTimeoutId = setTimeout(() => {
+                const scheduledTimestamp = new Date().toLocaleTimeString();
+                console.log(`[SYNC_DEBUG ${scheduledTimestamp}] -> EXECUTING: Timeout finished for threshold sync. Calling handlePush.`);
                 this.handlePush();
                 state.syncMessageCounter = 0; // Push後にカウンターをリセット
-                console.log("[Sync] メッセージカウンターをリセットしました。");
+                console.log(`[SYNC_DEBUG ${scheduledTimestamp}] Message counter reset to 0.`);
             }, 3000);
         } else {
-            console.log(`[Sync] 同期閾値(${frequency})に達していないため、今回はPushを見送ります。`);
+            console.log(`[SYNC_DEBUG ${timestamp}] -> SKIPPED: Threshold (${frequency}) not reached.`);
         }
     },
+
 
 
     /**
