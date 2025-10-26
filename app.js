@@ -3052,7 +3052,6 @@ const apiUtils = {
         const isImageGenModel = model === 'gemini-2.5-flash-image-preview';
 
         const endpointMethod = 'generateContent?';
-        console.log(`使用モード: 非ストリーミング`);
 
         const endpoint = `${GEMINI_API_BASE_URL}${model}:${endpointMethod}key=${apiKey}`;
         
@@ -8179,7 +8178,9 @@ const appLogic = {
                 const getFinishReasonError = (candidate) => {
                     const reason = candidate?.finishReason;
                     if (reason && reason !== 'STOP' && reason !== 'MAX_TOKENS') {
-                        return new Error(`モデルが応答をブロックしました (理由: ${reason})`);
+                        const error = new Error(`モデルが応答をブロックしました (理由: ${reason})`);
+                        error.candidate = candidate; // エラーオブジェクトに詳細情報を添付
+                        return error;
                     }
                     return null;
                 };
@@ -8271,6 +8272,9 @@ const appLogic = {
                     throw error;
                 }
                 console.warn(`API呼び出し/処理試行 ${attempt + 1} が失敗しました。`, error);
+                if (error.candidate) {
+                    console.error("ブロックされた応答の詳細:", JSON.stringify(error.candidate, null, 2));
+                }
             }
         }
 
