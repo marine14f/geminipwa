@@ -60,6 +60,9 @@
                 <button id="summarize-history-btn" class="floating-action-button" title="履歴を要約" disabled>
                     <span class="material-symbols-outlined">article_shortcut</span>
                 </button>
+                <button id="debug-log-btn" class="floating-action-button hidden" title="デバッグログを表示">
+                    <span class="material-symbols-outlined">bug_report</span>
+                </button>
                 <button id="memory-toggle-btn" class="floating-action-button hidden" title="このチャットの長期記憶を切り替え">
                     <span class="material-symbols-outlined">auto_stories</span>
                 </button>
@@ -714,6 +717,13 @@
                        ※ 追加後は設定を保存の上、ページをリロード。
                    </p>
 
+                   <label class="checkbox-label" style="margin-top: 15px;">
+                    <input type="checkbox" id="debug-mode-toggle">
+                    デバッグモードを有効にする
+                </label>
+                <p style="font-size: 11px; color: var(--text-secondary); margin-top: -5px; margin-bottom: 10px;">
+                    ※ アプリ内の動作ログを収集・表示する機能です。開発者向け。
+                </p>
                    
                 </div>
 
@@ -892,6 +902,23 @@
                     <span class="dialog-note">※編集内容は自動的に保存されます</span>
                     <button id="close-profile-dialog-btn" value="close">閉じる</button>
                 </div>
+            </div>
+        </dialog>
+
+        <!-- Debug Log Dialog -->
+        <dialog id="debugLogDialog" class="custom-dialog">
+            <h3 class="dialog-title">デバッグログ</h3>
+            <div class="dialog-content">
+                <div id="log-container" class="log-container">
+                    <!-- ログはここに表示されます -->
+                </div>
+            </div>
+            <div class="dialog-actions" style="justify-content: space-between;">
+                <div class="log-actions-left">
+                    <button id="copy-logs-btn" value="copy">クリップボードにコピー</button>
+                    <button id="clear-logs-btn" value="clear" class="dialog-delete-btn">クリア</button>
+                </div>
+                <button id="close-log-dialog-btn" value="close">閉じる</button>
             </div>
         </dialog>
 

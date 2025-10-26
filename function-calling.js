@@ -1104,7 +1104,7 @@ async function set_ui_opacity({ overlay, message_bubble }) {
             const base64Data = await window.appLogic.fileToBase64(imageBlob);
             request.image = {
                 imageBytes: base64Data,
-                mimeType: imageBlob.type || "image/png"
+                mimeType: "image/png"
             };
             console.log(`画像をリクエストに追加 (index: ${source_image_message_index}).`);
         } else {

@@ -46,6 +46,89 @@ const MAX_TOTAL_ATTACHMENT_SIZE = 50 * 1024 * 1024; // 1メッセージあたり
 const INITIAL_RETRY_DELAY = 100; // 初期リトライ遅延時間 (ミリ秒)
 const MAX_PROFILES = 5; // プロファイル作成の上限数
 let broadcastChannel = null; // タブ間通信用
+// --- デバッグログ機能 ---
+const DebugLogger = {
+    logs: [],
+    MAX_LOGS: 500,
+    originalConsole: {},
+    isInitialized: false,
+
+    init() {
+        if (state.settings.debugMode) {
+            this._patchConsole();
+        } else {
+            this._unpatchConsole();
+        }
+        this.isInitialized = true;
+        console.log(`[DebugLogger] 初期化完了。デバッグモード: ${state.settings.debugMode ? 'ON' : 'OFF'}`);
+    },
+
+    _patchConsole() {
+        if (this.originalConsole.log) return; // 既にパッチ済み
+
+        const consoleMethods = ['log', 'error', 'warn', 'info', 'debug'];
+        consoleMethods.forEach(method => {
+            this.originalConsole[method] = console[method];
+            console[method] = (...args) => {
+                // ログを内部配列に保存
+                this.addLog(method, args);
+                // 元のコンソールメソッドを呼び出す
+                this.originalConsole[method].apply(console, args);
+            };
+        });
+    },
+
+    _unpatchConsole() {
+        if (!this.originalConsole.log) return; // パッチされていない
+
+        Object.keys(this.originalConsole).forEach(method => {
+            console[method] = this.originalConsole[method];
+        });
+        this.originalConsole = {};
+    },
+
+    addLog(type, args) {
+        // 循環参照を避けるための簡易的なシリアライザ
+        const serialize = (obj) => {
+            try {
+                // DOM要素や特殊なオブジェクトは文字列に変換
+                if (obj instanceof HTMLElement) return `[HTMLElement: ${obj.tagName}]`;
+                if (obj instanceof Event) return `[Event: ${obj.type}]`;
+                // 通常のオブジェクトはJSONに変換
+                return JSON.stringify(obj, (key, value) => {
+                    if (typeof value === 'object' && value !== null) {
+                        if (value instanceof Blob) return '[Blob]';
+                        if (value instanceof File) return `[File: ${value.name}]`;
+                    }
+                    return value;
+                }, 2);
+            } catch (e) {
+                return '[Unserializable Object]';
+            }
+        };
+
+        this.logs.push({
+            type,
+            timestamp: new Date(),
+            args: args.map(arg => (typeof arg === 'object' && arg !== null) ? serialize(arg) : arg)
+        });
+
+        // ログが最大数を超えたら古いものから削除
+        if (this.logs.length > this.MAX_LOGS) {
+            this.logs.shift();
+        }
+    },
+
+    getLogs() {
+        return this.logs;
+    },
+
+    clearLogs() {
+        this.logs = [];
+        console.log("[DebugLogger] ログがクリアされました。");
+    }
+};
+
 
 // 添付を確定する処理
 const extensionToMimeTypeMap = {
@@ -157,6 +240,7 @@ try {
         enterToSendCheckbox: document.getElementById('enter-to-send'),
         historySortOrderSelect: document.getElementById('history-sort-order'),
         darkModeToggle: document.getElementById('dark-mode-toggle'),
+        debugModeToggle: document.getElementById('debug-mode-toggle'),
         fontFamilyInput: document.getElementById('font-family-input'),
         hideSystemPromptToggle: document.getElementById('hide-system-prompt-toggle'),
         geminiEnableGroundingToggle: document.getElementById('gemini-enable-grounding-toggle'),
@@ -311,7 +395,13 @@ try {
         sdQcPromptTextarea: document.getElementById('sd-qc-prompt'),
         sdQcRetriesInput: document.getElementById('sd-qc-retries'),
         sdPromptImproveModelSelect: document.getElementById('sd-prompt-improve-model'),
-        sdPromptImproveSystemPromptTextarea: document.getElementById('sd-prompt-improve-system-prompt')
+        sdPromptImproveSystemPromptTextarea: document.getElementById('sd-prompt-improve-system-prompt'),
+        debugLogBtn: document.getElementById('debug-log-btn'),
+        debugLogDialog: document.getElementById('debugLogDialog'),
+        logContainer: document.getElementById('log-container'),
+        copyLogsBtn: document.getElementById('copy-logs-btn'),
+        clearLogsBtn: document.getElementById('clear-logs-btn'),
+        closeLogDialogBtn: document.getElementById('close-log-dialog-btn'),
     };
     document.body.classList.toggle('dropbox-connected', false);
 } catch (error) {
@@ -427,7 +517,8 @@ Result: [OKまたはNG]
 Reason: [NGの場合の理由]`,
         sdQcRetries: 3,
         sdPromptImproveModel: 'gemini-2.5-flash',
-        sdPromptImproveSystemPrompt: `あなたはプロのプロンプトエンジニアです。提示された「元のプロンプト」と「失敗理由」に基づき、失敗理由を解決するための改善された英語の画像生成プロンプトを生成してください。余計な解説や前置きは一切含めず、改善されたプロンプト本体のみを出力してください。`
+        sdPromptImproveSystemPrompt: `あなたはプロのプロンプトエンジニアです。提示された「元のプロンプト」と「失敗理由」に基づき、失敗理由を解決するための改善された英語の画像生成プロンプトを生成してください。余計な解説や前置きは一切含めず、改善されたプロンプト本体のみを出力してください。`,
+        debugMode: false,
     },
     syncMessageCounter: 0,
     backgroundImageUrl: null,
@@ -2331,6 +2422,7 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
         elements.enterToSendCheckbox.checked = state.settings.enterToSend;
         elements.historySortOrderSelect.value = state.settings.historySortOrder || 'updatedAt';
         elements.darkModeToggle.checked = state.settings.darkMode;
+        elements.debugModeToggle.checked = state.settings.debugMode;
         elements.fontFamilyInput.value = state.settings.fontFamily || '';
         elements.hideSystemPromptToggle.checked = state.settings.hideSystemPromptInChat;
         elements.geminiEnableGroundingToggle.checked = state.settings.geminiEnableGrounding;
@@ -4100,8 +4192,6 @@ const appLogic = {
         }
     },
 
-
-
     // アプリ初期化
     async initializeApp() {
         // isSyncReloadフラグはメッセージの切り替えにのみ使用
@@ -4324,6 +4414,10 @@ const appLogic = {
             await this.loadGlobalSettings();
             if (isSyncReload) uiUtils.updateProgressMessage('プロファイル情報を読み込み中...');
             await this.loadProfiles();
+
+            // DebugLoggerを初期化。設定が読み込まれた後、UIが適用される前に実行する。
+            DebugLogger.init();
+
             await this._checkAndResetApiUsage();
             this.updateApiUsageUI();
             await this.initializeSyncState();
@@ -4436,6 +4530,7 @@ const appLogic = {
             sessionStorage.removeItem('isSyncReload');
         }
     },
+
     
     // 復旧ダイアログを表示するヘルパー関数
     async showRecoveryDialog() {
@@ -4873,7 +4968,6 @@ const appLogic = {
         }
     },
 
-
     // イベントリスナーを設定
     setupEventListeners() {
         if (!this._popstateBound) {
@@ -5068,6 +5162,10 @@ const appLogic = {
             enterToSend: { element: elements.enterToSendCheckbox, event: 'change' },
             historySortOrder: { element: elements.historySortOrderSelect, event: 'change' },
             darkMode: { element: elements.darkModeToggle, event: 'change', onUpdate: () => uiUtils.applyDarkMode() },
+            debugMode: { element: elements.debugModeToggle, event: 'change', onUpdate: (value) => {
+                DebugLogger.init();
+                this.toggleDebugLogButtonVisibility(value);
+            }},
             fontFamily: { element: elements.fontFamilyInput, event: 'input', onUpdate: () => uiUtils.applyFontFamily() },
             hideSystemPromptInChat: { element: elements.hideSystemPromptToggle, event: 'change', onUpdate: () => uiUtils.toggleSystemPromptVisibility() },
             geminiEnableGrounding: { element: elements.geminiEnableGroundingToggle, event: 'change' },
@@ -5691,10 +5789,14 @@ const appLogic = {
                 this._checkAndResetApiUsage();
             }
         });
+        
+        // --- デバッグログ関連 ---
+        elements.debugLogBtn.addEventListener('click', () => this.openLogDialog());
+        elements.closeLogDialogBtn.addEventListener('click', () => elements.debugLogDialog.close());
+        elements.clearLogsBtn.addEventListener('click', () => this.clearLogs());
+        elements.copyLogsBtn.addEventListener('click', () => this.copyLogsToClipboard());
             
     },
-
-    
 
     // popstateイベントハンドラ (戻るボタン/ジェスチャー)
     handlePopState(event) {
@@ -10219,6 +10321,79 @@ const appLogic = {
             return { success: false, error: { message: `画像生成エラー: ${error.message}` } };
         }
     },
+
+        // --- デバッグログUI関連 ---
+        toggleDebugLogButtonVisibility(isEnabled) {
+            elements.debugLogBtn.classList.toggle('hidden', !isEnabled);
+        },
+    
+        openLogDialog() {
+            this.renderLogDialogContent();
+            elements.debugLogDialog.showModal();
+        },
+    
+        renderLogDialogContent() {
+            const logs = DebugLogger.getLogs();
+            const container = elements.logContainer;
+            const fragment = document.createDocumentFragment();
+    
+            if (logs.length === 0) {
+                container.innerHTML = '<div class="log-entry">ログはありません。</div>';
+                return;
+            }
+    
+            logs.forEach(log => {
+                const entryDiv = document.createElement('div');
+                entryDiv.classList.add('log-entry', `log-type-${log.type}`);
+    
+                const timestampSpan = document.createElement('span');
+                timestampSpan.className = 'log-timestamp';
+                timestampSpan.textContent = log.timestamp.toLocaleTimeString('ja-JP', { hour12: false });
+    
+                const typeSpan = document.createElement('span');
+                typeSpan.className = 'log-type';
+                typeSpan.textContent = `[${log.type}]`;
+    
+                const messageText = log.args.join(' ');
+                const messageNode = document.createTextNode(messageText);
+    
+                entryDiv.appendChild(timestampSpan);
+                entryDiv.appendChild(typeSpan);
+                entryDiv.appendChild(messageNode);
+                fragment.appendChild(entryDiv);
+            });
+            
+            container.innerHTML = ''; // 一旦クリア
+            container.appendChild(fragment);
+            // ダイアログを開いたときに最下部にスクロール
+            container.scrollTop = container.scrollHeight;
+        },
+    
+        clearLogs() {
+            DebugLogger.clearLogs();
+            this.renderLogDialogContent(); // UIを更新
+        },
+    
+        async copyLogsToClipboard() {
+            const logs = DebugLogger.getLogs();
+            if (logs.length === 0) {
+                await uiUtils.showCustomAlert("コピーするログがありません。");
+                return;
+            }
+            const textToCopy = logs.map(log => {
+                const time = log.timestamp.toISOString();
+                const message = log.args.join(' ');
+                return `${time} [${log.type}] ${message}`;
+            }).join('\n');
+    
+            try {
+                await navigator.clipboard.writeText(textToCopy);
+                await uiUtils.showCustomAlert("ログをクリップボードにコピーしました。");
+            } catch (err) {
+                console.error('クリップボードへのコピーに失敗:', err);
+                await uiUtils.showCustomAlert("クリップボードへのコピーに失敗しました。");
+            }
+        },
 
     async _improveSdPrompt(originalPrompt, failedPrompt, ngReason) {
         const model = state.settings.sdPromptImproveModel;

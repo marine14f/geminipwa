@@ -2689,3 +2689,57 @@ body.dark-mode #sd-test-connection-btn {
 #settings-screen .app-header .profile-card .profile-icon-container {
     background-color: rgba(255, 255, 255, 0.1);
 }
+
+/* --- Debug Log Dialog Styles --- */
+#debugLogDialog[open] {
+    width: 95%;
+    max-width: 800px;
+    height: 80%;
+    max-height: 700px;
+    display: flex;
+    flex-direction: column;
+}
+
+.log-container {
+    height: 100%;
+    overflow-y: auto;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--border-radius-sm);
+    padding: 8px;
+    font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    flex-grow: 1;
+}
+
+.log-entry {
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--border-tertiary);
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+.log-entry:last-child {
+    border-bottom: none;
+}
+
+.log-entry .log-timestamp {
+    color: #999;
+    margin-right: 8px;
+}
+.log-entry .log-type {
+    font-weight: bold;
+    margin-right: 8px;
+    text-transform: uppercase;
+}
+
+.log-entry.log-type-log { color: var(--text-primary); }
+.log-entry.log-type-info { color: #2196F3; }
+.log-entry.log-type-warn { color: #FFC107; }
+.log-entry.log-type-error { color: #F44336; font-weight: bold; }
+
+.log-actions-left {
+    display: flex;
+    gap: 10px;
+}
