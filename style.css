@@ -2743,3 +2743,13 @@ body.dark-mode #sd-test-connection-btn {
     display: flex;
     gap: 10px;
 }
+
+.log-entry.collapsible {
+    cursor: pointer;
+}
+
+.log-entry .log-summary,
+.log-entry .log-full {
+    /* 将来的なスタイリングのために定義 */
+    display: inline;
+}

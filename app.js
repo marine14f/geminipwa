@@ -10338,6 +10338,7 @@ const appLogic = {
             const logs = DebugLogger.getLogs();
             const container = elements.logContainer;
             const fragment = document.createDocumentFragment();
+            const LOG_TRUNCATE_THRESHOLD = 200; // 省略を開始する文字数
     
             if (logs.length === 0) {
                 container.innerHTML = '<div class="log-entry">ログはありません。</div>';
@@ -10355,13 +10356,36 @@ const appLogic = {
                 const typeSpan = document.createElement('span');
                 typeSpan.className = 'log-type';
                 typeSpan.textContent = `[${log.type}]`;
-    
-                const messageText = log.args.join(' ');
-                const messageNode = document.createTextNode(messageText);
-    
+                
                 entryDiv.appendChild(timestampSpan);
                 entryDiv.appendChild(typeSpan);
-                entryDiv.appendChild(messageNode);
+    
+                const messageText = log.args.join(' ');
+    
+                if (messageText.length > LOG_TRUNCATE_THRESHOLD) {
+                    entryDiv.classList.add('collapsible');
+    
+                    const summarySpan = document.createElement('span');
+                    summarySpan.className = 'log-summary';
+                    summarySpan.textContent = messageText.substring(0, LOG_TRUNCATE_THRESHOLD) + '... (クリックして展開)';
+                    
+                    const fullSpan = document.createElement('span');
+                    fullSpan.className = 'log-full hidden';
+                    fullSpan.textContent = messageText;
+    
+                    entryDiv.appendChild(summarySpan);
+                    entryDiv.appendChild(fullSpan);
+    
+                    entryDiv.addEventListener('click', () => {
+                        summarySpan.classList.toggle('hidden');
+                        fullSpan.classList.toggle('hidden');
+                    });
+    
+                } else {
+                    const messageNode = document.createTextNode(messageText);
+                    entryDiv.appendChild(messageNode);
+                }
+                
                 fragment.appendChild(entryDiv);
             });
             
@@ -10370,6 +10394,7 @@ const appLogic = {
             // ダイアログを開いたときに最下部にスクロール
             container.scrollTop = container.scrollHeight;
         },
+    
     
         clearLogs() {
             DebugLogger.clearLogs();
