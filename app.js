@@ -2479,6 +2479,8 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
         this.applyBackgroundImage();
         appLogic.applyWideMode();
 
+        appLogic.toggleDebugLogButtonVisibility(state.settings.debugMode);
+
         elements.sdApiUrlInput.value = state.settings.sdApiUrl || '';
         elements.sdApiUserInput.value = state.settings.sdApiUser || '';
         elements.sdApiPasswordInput.value = state.settings.sdApiPassword || '';
