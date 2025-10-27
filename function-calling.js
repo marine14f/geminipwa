@@ -192,10 +192,10 @@ async function manage_image_assets({ action, asset_name, source_image_message_in
 
 
 /**
- * 現在のチャットセッションに紐づく永続メモリを管理する関数
+ * 物語の根幹をなす重要な設定（世界の法則、登場人物の秘密、事件の犯人など）、後から参照すべき情報を永続的に記憶・管理します。
  * @param {object} args - AIによって提供される引数オブジェクト
- * @param {string} args.action - "add", "get", "delete", "list" のいずれか
- * @param {string} [args.key] - 操作対象のキー (add, get, delete時に必須)
+ * @param {string} args.action - "add", "delete", "list" のいずれか
+ * @param {string} [args.key] - 操作対象のキー (add, delete時に必須)
  * @param {string} [args.value] - 保存する値 (add時に必須)
  * @returns {Promise<object>} 操作結果を含むオブジェクトを返すPromise
  */
@@ -210,12 +210,6 @@ async function manage_image_assets({ action, asset_name, source_image_message_in
               if (!key || value === undefined) return { error: "addアクションには 'key' と 'value' が必要です。" };
               memory[key] = value;
               resultData = { success: true, message: `キー「${key}」に値を保存しました。` };
-              break;
-          case "get":
-              if (!key) return { error: "getアクションには 'key' が必要です。" };
-              resultData = (key in memory)
-                  ? { success: true, key: key, value: memory[key] }
-                  : { success: false, message: `キー「${key}」は見つかりませんでした。` };
               break;
           case "delete":
               if (!key) return { error: "deleteアクションには 'key' が必要です。" };
@@ -387,10 +381,10 @@ async function manage_timer({ action, timer_name, duration_minutes }) {
 }
 
 /**
- * キャラクターのステータス（HP, MPなど）を管理する関数
+ * キャラクターのステータス（HP, MPなど）を設定、増減します。
  * @param {object} args - AIによって提供される引数オブジェクト
  * @param {string} args.character_name - 操作対象のキャラクター名
- * @param {string} args.action - "set", "increase", "decrease", "get" のいずれか
+ * @param {string} args.action - "set", "increase", "decrease" のいずれか
  * @param {string} args.status_key - 操作対象のステータス名 (例: "HP", "MP")
  * @param {number} [args.value] - "set", "increase", "decrease" アクションで使用する数値
  * @returns {Promise<object>} 操作結果を含むオブジェクトを返すPromise
@@ -420,11 +414,6 @@ async function manage_timer({ action, timer_name, duration_minutes }) {
               newValue = currentValue - value;
               message = `${character_name}の${status_key}が${value}減少し、${newValue}になりました。`;
               break;
-          case "get":
-              message = `${character_name}の現在の${status_key}は${currentValue}です。`;
-              const getResult = { success: true, character_name, status_key, value: currentValue, message };
-              console.log(`[Function Calling] 処理完了:`, getResult);
-              return getResult;
           default:
               return { error: `無効なアクションです: ${action}` };
       }
@@ -439,10 +428,10 @@ async function manage_timer({ action, timer_name, duration_minutes }) {
 }
 
 /**
- * キャラクターの所持品を管理する関数
+ * キャラクターの所持品を追加、削除します。
  * @param {object} args - AIによって提供される引数オブジェクト
  * @param {string} args.character_name - 操作対象のキャラクター名
- * @param {string} args.action - "add", "remove", "check" のいずれか
+ * @param {string} args.action - "add", "remove" のいずれか
  * @param {string} args.item_name - 操作対象のアイテム名
  * @param {number} [args.quantity=1] - "add", "remove" アクションで使用する個数 (デフォルト1)
  * @returns {Promise<object>} 操作結果を含むオブジェクトを返すPromise
@@ -481,11 +470,6 @@ async function manage_inventory({ character_name, action, item_name, quantity = 
                   ? `${character_name}は「${item_name}」を${removedAmount}個しか持っていなかったため、全て使った。(残り: 0)`
                   : `${character_name}は「${item_name}」を${removedAmount}個使った。(残り: ${newQuantityRemove})`;
               break;
-          case "check":
-              message = `${character_name}は「${item_name}」を${currentQuantity}個持っています。`;
-              const checkResult = { success: true, character_name, item_name, quantity: currentQuantity, message };
-              console.log(`[Function Calling] 処理完了:`, checkResult);
-              return checkResult;
           default:
               return { error: `無効なアクションです: ${action}` };
       }
@@ -499,9 +483,9 @@ async function manage_inventory({ character_name, action, item_name, quantity = 
 }
 
 /**
- * 物語のシーン（場所、時間、雰囲気など）を管理する関数
+ * 物語のシーン（場所、時間、雰囲気など）を管理します。
  * @param {object} args - AIによって提供される引数オブジェクト
- * @param {string} args.action - "set", "get", "push", "pop" のいずれか
+ * @param {string} args.action - "set", "push", "pop" のいずれか
  * @param {string} [args.scene_id] - シーンを識別するための一意のID
  * @param {string} [args.location] - 場所名
  * @param {string} [args.time_of_day] - 時間帯 ("morning", "noon", "evening", "night")
@@ -521,11 +505,6 @@ async function manage_scene(args, chat) { // chat引数を追加
       let message;
       let currentScene = scene_stack[scene_stack.length - 1];
       switch (action) {
-          case "get":
-              message = `現在のシーン情報を取得しました。`;
-              const getResult = { success: true, current_scene: currentScene, message };
-              console.log(`[Function Calling] 処理完了:`, getResult);
-              return getResult;
           case "set":
               Object.keys(scene_details).forEach(key => {
                   if (scene_details[key] !== undefined) currentScene[key] = scene_details[key];
@@ -559,7 +538,7 @@ async function manage_scene(args, chat) { // chat引数を追加
 /**
  * 物語のフラグやカウンターを管理する関数
  * @param {object} args - AIによって提供される引数オブジェクト
- * @param {string} args.action - "set", "get", "toggle", "increase", "decrease", "delete" のいずれか
+ * @param {string} args.action - "set", "toggle", "increase", "decrease", "delete" のいずれか
  * @param {string} args.key - フラグを識別するための一意のキー
  * @param {boolean|number} [args.value] - "set", "increase", "decrease" で使用する値
  * @param {number} [args.ttl_minutes] - フラグが自動的に消滅するまでの時間（分単位）
@@ -580,9 +559,6 @@ async function manage_flags({ action, key, value, ttl_minutes }, chat) { // chat
               newValue = value;
               message = `フラグ「${key}」を「${newValue}」に設定しました。`;
               break;
-          case "get":
-              message = currentValue !== undefined ? `フラグ「${key}」の現在の値は「${currentValue}」です。` : `フラグ「${key}」は設定されていません。`;
-              return { success: true, key, value: currentValue, message };
           case "toggle":
               newValue = !(currentValue === true);
               message = `フラグ「${key}」を「${newValue}」に切り替えました。`;
@@ -627,7 +603,7 @@ async function manage_flags({ action, key, value, ttl_minutes }, chat) { // chat
 /**
  * ゲーム内の経過日数を管理する関数
  * @param {object} args - AIによって提供される引数オブジェクト
- * @param {string} args.action - "pass_days", "get_current_day" のいずれか
+ * @param {string} args.action - "pass_days" のいずれか
  * @param {number} [args.days=1] - "pass_days" アクションで経過させる日数 (デフォルト1)
  * @returns {Promise<object>} 操作結果を含むオブジェクトを返すPromise
  */
@@ -646,11 +622,6 @@ async function manage_game_date({ action, days = 1 }, chat) { // chat引数を�
               chat.persistentMemory.game_day = currentDay;
               message = `${days}日が経過し、${currentDay}日目になりました。`;
               break;
-          case "get_current_day":
-              message = `現在は${currentDay}日目です。`;
-              const getResult = { success: true, current_day: currentDay, message };
-              console.log(`[Function Calling] 処理完了:`, getResult);
-              return getResult;
           default:
               return { error: `無効なアクションです: ${action}` };
       }
@@ -852,9 +823,9 @@ async function search_web({ query }) {
 }
 
 /**
- * キャラクターの口調や一人称などのスタイルプロファイルを管理します。
+ * キャラクターの口調や一人称などのスタイルプロファイルを設定します。
  * @param {object} args - AIによって提供される引数オブジェクト
- * @param {string} args.action - "set", "get", "list" のいずれか
+ * @param {string} args.action - "set", "list" のいずれか
  * @param {string} [args.character_name] - 操作対象のキャラクター名
  * @param {string} [args.profile_name] - "set"アクションで適用する定義済みプリセット名
  * @param {object} [args.overrides] - "set"アクションでプリセットの一部を上書きする設定
@@ -874,7 +845,7 @@ async function manage_style_profile({ action, character_name, profile_name, over
       "neutral_narration": { first_person: null, politeness: 0.5, sentence_ender: "だ,である", dialect: "standard", description: "地の文（三人称中立）" },
   };
   if (!action) return { error: "引数 'action' は必須です。" };
-  if (["set", "get"].includes(action) && !character_name) return { error: `アクション '${action}' には 'character_name' が必須です。` };
+  if (["set"].includes(action) && !character_name) return { error: `アクション '${action}' には 'character_name' が必須です。` };
   try {
       if (!chat.persistentMemory) chat.persistentMemory = {};
       if (!chat.persistentMemory.style_profiles) chat.persistentMemory.style_profiles = {};
@@ -891,11 +862,6 @@ async function manage_style_profile({ action, character_name, profile_name, over
               const finalProfile = { ...baseProfile, ...overrides, profile_name: profile_name || baseProfile.profile_name || "custom" };
               profiles[character_name] = finalProfile;
               return { success: true, message: `${character_name}の口調プロファイルを更新しました。`, profile: finalProfile };
-          }
-          case "get": {
-              const profile = profiles[character_name];
-              if (!profile) return { success: false, message: `${character_name}の口調プロファイルは設定されていません。` };
-              return { success: true, profile: profile };
           }
           case "list": {
               return { success: true, available_presets: STYLE_PRESETS };
@@ -992,39 +958,6 @@ async function set_ui_opacity({ overlay, message_bubble }) {
         console.error(`[Function Calling] set_background_imageでエラーが発生しました:`, error);
         return { error: `背景画像の設定中に内部エラーが発生しました: ${error.message}` };
     }
-}
-
-
-/**
- * 背景画像の上にキャラクター画像を重ねて、一つの画像としてメッセージに表示します。
- * @param {object} args - AIによって提供される引数オブジェクト
- * @param {string} args.character_url - 前景に表示するキャラクター画像のURL（必須）
- * @param {string} [args.background_url] - 背景画像のURL。指定しない場合、現在のチャット背景が使われます。
- * @returns {Promise<object>} 操作結果を含むオブジェクトを返すPromise
- */
- async function display_layered_image({ character_url, background_url }) {
-    console.log(`[Function Calling] display_layered_imageが呼び出されました。`, { character_url, background_url });
-
-    if (window.state && window.state.settings.allowPromptUiChanges === false) {
-        return { error: "ユーザー設定により、プロンプトによるUIの変更は許可されていません。" };
-    }
-    if (!character_url || typeof character_url !== 'string') {
-        return { error: "引数 'character_url' は必須です。" };
-    }
-
-    const imageData = {
-        character_url,
-        background_url: background_url || null,
-    };
-
-    return { 
-        success: true, 
-        message: "画像合成の描画をリクエストしました。",
-        _internal_ui_action: {
-            type: "display_layered_image",
-            data: imageData
-        }
-    };
 }
 
 /**
@@ -1565,14 +1498,6 @@ async function generate_image(args = {}) {
         const finalMemoryKey = existingKey || memoryKey;
 
         switch (action) {
-            case "get": {
-                const memory = chat.persistentMemory[finalMemoryKey] || null;
-                if (!memory) {
-                    return { success: false, message: `キャラクター「${character_name}」の記憶はまだありません。` };
-                }
-                return { success: true, memory_data: memory };
-            }
-
             case "update": {
                 // 既存のデータを取得するか、なければ新規作成する
                 const memory = chat.persistentMemory[finalMemoryKey] || {};
@@ -1719,7 +1644,6 @@ window.functionCallingTools = {
     manage_style_profile: manage_style_profile,
     set_ui_opacity: set_ui_opacity,
     set_background_image: set_background_image,
-    display_layered_image: display_layered_image,
     generate_video: generate_video,
     generate_image: generate_image,
 
@@ -1781,635 +1705,618 @@ window.functionCallingTools = {
 * AIに提供するツールの定義情報 (Tool Declaration)
 */
 window.functionDeclarations = [
-  {
-      "function_declarations": [
-        {
-            "name": "manage_image_assets",
-            "description": "ユーザーが提供した画像を、後から再利用できるように名前を付けてアプリ内に永続的に保存・管理します。キャラクターの立ち絵や背景など、繰り返し使用する画像を保存するのに使用します。'get'アクションで画像を取得した場合、モデルは応答テキスト内の画像を表示したい位置に `[IMAGE_HERE]` という目印を必ず配置してください。",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "action": {
-                        "type": "STRING",
-                        "description": "実行する操作を選択します。'save': 画像を保存/上書き, 'get': 保存済み画像を取得して表示, 'list': 保存されている全画像の名前を一覧表示。"
-                    },
-                    "asset_name": {
-                        "type": "STRING",
-                        "description": "画像を識別するための一意の名前。'list'アクション以外では必須です。例: 'キャラAの立ち絵', '森の背景'"
-                    },
-                    "source_image_message_index": {
-                        "type": "NUMBER",
-                        "description": "'save'アクション時に必須。保存元となる画像が含まれるメッセージのインデックス番号。ユーザーの現在のプロンプトが0、その一つ前のAIの応答が1となります。"
-                    }
-                },
-                "required": ["action"]
-            }
-          },
+    {
+        "function_declarations": [
           {
-              "name": "calculate",
-              "description": "ユーザーから与えられた数学的な計算式（四則演算）を評価し、その正確な結果を返します。複雑な計算や、信頼性が求められる計算の場合に必ず使用してください。",
-              "parameters": {
-                  "type": "OBJECT",
-                  "properties": {
-                      "expression": {
-                          "type": "STRING",
-                          "description": "計算する数式。例: '2 * (3 + 5)'"
-                      }
-                  },
-                  "required": ["expression"]
-              }
-          },
-          {
-              "name": "manage_persistent_memory",
-              "description": "現在の会話セッションに限定して、重要な情報（記念日、登場人物の設定、世界の法則など）を後から参照できるように記憶・管理します。他の会話には影響しません。",
+              "name": "manage_image_assets",
+              "description": "ユーザーが提供した画像を、後から再利用できるように名前を付けてアプリ内に永続的に保存・管理します。キャラクターの立ち絵や背景など、繰り返し使用する画像を保存するのに使用します。'get'アクションで画像を取得した場合、モデルは応答テキスト内の画像を表示したい位置に `[IMAGE_HERE]` という目印を必ず配置してください。",
               "parameters": {
                   "type": "OBJECT",
                   "properties": {
                       "action": {
                           "type": "STRING",
-                          "description": "実行する操作を選択します。'add': 情報を追加/上書き, 'get': 情報を取得, 'delete': 情報を削除, 'list': 記憶している全ての情報キーを一覧表示。"
+                          "description": "実行する操作を選択します。'save': 画像を保存/上書き, 'get': 保存済み画像を取得して表示, 'list': 保存されている全画像の名前を一覧表示。"
                       },
-                      "key": {
+                      "asset_name": {
                           "type": "STRING",
-                          "description": "情報を識別するための一意のキー（名前）。'add', 'get', 'delete' アクションで必須です。例: '主人公の性格', '次の目的地'"
+                          "description": "画像を識別するための一意の名前。'list'アクション以外では必須です。例: 'キャラAの立ち絵', '森の背景'"
                       },
-                      "value": {
-                          "type": "STRING",
-                          "description": "キーに紐付けて記憶させる情報の内容。'add' アクションで必須です。例: '冷静沈着', '東の塔'"
+                      "source_image_message_index": {
+                          "type": "NUMBER",
+                          "description": "'save'アクション時に必須。保存元となる画像が含まれるメッセージのインデックス番号。ユーザーの現在のプロンプトが0、その一つ前のAIの応答が1となります。"
                       }
                   },
                   "required": ["action"]
               }
-          },
-          {
-            "name": "getCurrentDateTime",
-            "description": "現実世界の現在の日付と時刻（日本時間）を取得します。この情報を利用することで、ユーザーとの会話がより現実的で没入感のあるものになる場合にのみ使用してください。会話の文脈を慎重に判断し、ロールプレイの世界観を壊すなど、不自然になる場合は絶対に使用しないでください。",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {},
-                "required": []
-            }
-          },
-          {
-            "name": "rollDice",
-            "description": "テーブルトークRPG（TRPG）やボードゲームなどで使用される、指定された形式のダイスを振って結果を返します。ユーザーが「1d100」や「2d6+3」のように、明確にダイスロールを要求した場合にのみ使用してください。一般的な確率計算には `get_random_integer` を使用してください。",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "expression": {
-                        "type": "STRING",
-                        "description": "ダイスロールの式。XdY+Z (X=個数, Y=面数, Z=補正値) の形式。例: '1d100', '2d6+5', '3d8-2'"
-                    }
-                },
-                "required": ["expression"]
-            }
-          },
-          {
-            "name": "manage_timer",
-            "description": "指定した時間（分単位）でタイマーを設定、確認、停止します。時間制限のあるイベントや、一定時間後の応答をシミュレートするのに使用します。タイマーが時間切れになると、AIにその事実が通知されます。",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "action": {
-                        "type": "STRING",
-                        "description": "実行する操作。'start': タイマーを開始, 'check': 残り時間を確認, 'stop': タイマーを停止。"
-                    },
-                    "timer_name": {
-                        "type": "STRING",
-                        "description": "タイマーを識別するための一意の名前。例: '爆弾解除タイマー', '返信待ちタイマー'"
-                    },
-                    "duration_minutes": {
-                        "type": "NUMBER",
-                        "description": "'start'アクション時に設定するタイマーの期間（分単位）。例: 5"
-                    }
-                },
-                "required": ["action", "timer_name"]
-            }
-          },
-          {
-            "name": "manage_character_status",
-            "description": "ロールプレイングゲームや物語に登場するキャラクターのステータス（HP, MP, 疲労度など、キャラクター単体で完結するパラメータ）を設定、増減、または確認します。キャラクターのパラメータが変動するイベントが発生した場合に使用します。",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "character_name": {
-                        "type": "STRING",
-                        "description": "操作対象のキャラクターの名前。例: '主人公', 'ヒロインA'"
-                    },
-                    "action": {
-                        "type": "STRING",
-                        "description": "実行する操作。'set': 値を直接設定, 'increase': 値を増加, 'decrease': 値を減少, 'get': 現在の値を確認。"
-                    },
-                    "status_key": {
-                        "type": "STRING",
-                        "description": "操作対象のステータスの種類。例: 'HP', 'MP', '疲労度'"
-                    },
-                    "value": {
-                        "type": "NUMBER",
-                        "description": "'set', 'increase', 'decrease' アクションで使用する数値。例: 10"
-                    }
-                },
-                "required": ["character_name", "action", "status_key"]
-            }
-          },
-          {
-            "name": "manage_inventory",
-            "description": "キャラクターの所持品（アイテム）を管理します。アイテムの追加、削除、所持確認ができます。物語の中でキャラクターがアイテムを手に入れたり、使ったりした場合に使用してください。",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "character_name": {
-                        "type": "STRING",
-                        "description": "操作対象のキャラクターの名前。例: '主人公'"
-                    },
-                    "action": {
-                        "type": "STRING",
-                        "description": "実行する操作。'add': アイテムを追加, 'remove': アイテムを削除/消費, 'check': 所持数を確認。"
-                    },
-                    "item_name": {
-                        "type": "STRING",
-                        "description": "操作対象のアイテムの名前。例: '薬草', 'ポーション'"
-                    },
-                    "quantity": {
-                        "type": "NUMBER",
-                        "description": "'add'または'remove'アクションで使用するアイテムの個数。指定がない場合は1として扱われます。"
-                    }
-                },
-                "required": ["character_name", "action", "item_name"]
-            }
-          },
-          {
-            "name": "manage_scene",
-            "description": "物語の場面設定（場所、時間帯、雰囲気、視点など）を管理します。場面転換や時間経過、視点変更が発生した際に呼び出し、現在のシーン情報を更新・確認します。",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "action": {
-                        "type": "STRING",
-                        "description": "実行する操作。'set': 現在のシーン情報を部分的に更新する。'get': 現在のシーン情報を取得する。'push': 新しいシーンに移行する（前のシーンは記憶される）。'pop': 一つ前のシーンに戻る。"
-                    },
-                    "scene_id": {
-                        "type": "STRING",
-                        "description": "シーンを識別するための一意のID。後で参照する場合などに使用します。"
-                    },
-                    "location": {
-                        "type": "STRING",
-                        "description": "場面の場所。例: '薄暗い酒場', '王城の謁見の間'"
-                    },
-                    "time_of_day": {
-                        "type": "STRING",
-                        "description": "場面の時間帯。'morning', 'noon', 'evening', 'night' から選択します。"
-                    },
-                    "mood": {
-                        "type": "STRING",
-                        "description": "場面の雰囲気。例: 'sweet'(甘い), 'calm'(穏やか), 'tense'(緊迫), 'dark'(不穏), 'comical'(滑稽)"
-                    },
-                    "pov": {
-                        "type": "STRING",
-                        "description": "物語の視点。'first'(一人称), 'third'(三人称) から選択します。"
-                    },
-                    "notes": {
-                        "type": "STRING",
-                        "description": "シーンに関するその他の補足情報。例: '外は土砂降りの雨が降っている'"
-                    }
-                },
-                "required": ["action"]
-            }
-          },
-          {
-            "name": "manage_flags",
-            "description": "物語の進行状況や世界の状況を示すフラグ（真偽値）やカウンター（数値）を管理します。キャラクターの行動結果やイベントの発生を記録し、後の会話の分岐条件として使用します。",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "action": {
-                        "type": "STRING",
-                        "description": "実行する操作。'set': 値を直接設定。'get': 現在の値を取得。'toggle': 真偽値を反転させる。'increase': 数値を増やす。'decrease': 数値を減らす。'delete': フラグ自体を削除。"
-                    },
-                    "key": {
-                        "type": "STRING",
-                        "description": "フラグやカウンターを識別するための一意の名前。例: '扉A解錠済', '街の警戒度'"
-                    },
-                    "value": {
-                        "type": "STRING", 
-                        "description": "'set', 'increase', 'decrease' アクションで使用する値 (真偽値または数値)。文字列として渡してください。"
-                    },
-                    "ttl_minutes": {
-                        "type": "NUMBER",
-                        "description": "フラグが自動的に削除されるまでの時間（分単位）。一時的な状態を表現するのに使います。"
-                    }
-                },
-                "required": ["action", "key"]
-            }
-          },
-          {
-            "name": "manage_game_date",
-            "description": "物語やゲーム内の経過日数を管理します。日付を進めたり、現在の日付を確認したりする場合に使用します。",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "action": {
-                        "type": "STRING",
-                        "description": "実行する操作。'pass_days': 指定した日数だけ日付を進める。'get_current_day': 現在の日付を確認する。"
-                    },
-                    "days": {
-                        "type": "NUMBER",
-                        "description": "'pass_days'アクションで使用する経過日数。指定がない場合は1として扱われます。"
-                    }
-                },
-                "required": ["action"]
-            }
-          },
-          {
-            "name": "get_random_integer",
-            "description": "指定された最小値と最大値の範囲内で、ランダムな整数を生成します。『50%の確率』や『1から10までのランダムな数字』など、一般的な確率計算や数値のランダム化が必要な場合に使用してください。TRPGのダイスロール（例: '2d6'）の場合は、代わりに `rollDice` 関数を使用してください。",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "min": {
-                        "type": "NUMBER",
-                        "description": "生成される乱数の最小値（この値も含まれる）。"
-                    },
-                    "max": {
-                        "type": "NUMBER",
-                        "description": "生成される乱数の最大値（この値も含まれる）。"
-                    },
-                    "count": {
-                        "type": "NUMBER",
-                        "description": "生成する乱数の個数。指定しない場合は1。"
-                    }
-                },
-                "required": ["min", "max"]
-            }
-          },
-          {
-            "name": "get_random_choice",
-            "description": "提供されたリストの中から、ランダムに一つまたは複数の項目を選択します。くじ引き、ガチャ、ランダムなアイテムの選択、登場人物の行動のランダム決定などに使用してください。",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "list": {
-                        "type": "ARRAY",
-                        "description": "選択肢となる項目を含む配列。例: ['リンゴ', 'バナナ', 'オレンジ']",
-                        "items": { "type": "STRING" }
-                    },
-                    "count": {
-                        "type": "NUMBER",
-                        "description": "選択する項目の個数（重複選択を許す）。指定しない場合は1。"
-                    }
-                },
-                "required": ["list"]
-            }
-          },
-          {
-            "name": "generate_random_string",
-            "description": "指定された条件に基づいて、ランダムな文字列（パスワード、シリアルナンバー、IDなど）を生成します。物語の中で、意味を持たないユニークな文字列や、機械的に生成されたようなコードが必要な場合に使用してください。",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "length": {
-                        "type": "NUMBER",
-                        "description": "生成する文字列の長さ。"
-                    },
-                    "count": {
-                        "type": "NUMBER",
-                        "description": "生成する文字列の個数。指定しない場合は1。"
-                    },
-                    "use_uppercase": {
-                        "type": "BOOLEAN",
-                        "description": "大文字の英字（A-Z）を含めるか。デフォルトはtrue。"
-                    },
-                    "use_lowercase": {
-                        "type": "BOOLEAN",
-                        "description": "小文字の英字（a-z）を含めるか。デフォルトはtrue。"
-                    },
-                    "use_numbers": {
-                        "type": "BOOLEAN",
-                        "description": "数字（0-9）を含めるか。デフォルトはtrue。"
-                    },
-                    "use_symbols": {
-                        "type": "BOOLEAN",
-                        "description": "記号（!@#$...など）を含めるか。デフォルトはfalse。"
-                    }
-                },
-                "required": ["length"]
-            }
-          },
-          {
-            "name": "search_web",
-            "description": "AI自身の知識にない、現実世界の最新情報、特定の専門知識、あるいは具体的なデータが必要な場合に使用します。物語のリアリティを高めるための情報収集に役立ちます。例えば、歴史的な出来事、特定の場所の天気、科学的な事実などを調べるのに使ってください。この関数を使用するにはユーザーによるAPIの設定が必要です。",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "query": {
-                        "type": "STRING",
-                        "description": "検索したいキーワードや質問文。具体的で明確なクエリを指定してください。例: '日本の城下町の発展の歴史', '今日の東京の天気'"
-                    }
-                },
-                "required": ["query"]
-            }
-          },
-          {
-            "name": "manage_style_profile",
-            "description": "キャラクターの口調、一人称、方言などの話し方のスタイルを設定・確認します。キャラクターの初登場時や、喧嘩や和解など心情が大きく変化した際に呼び出し、その後の会話に一貫性を持たせます。重要：キャラクターとして発言する前には、必ず'get'アクションで現在の口調プロファイルを確認し、その内容に厳密に従って応答を生成してください。",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "action": {
-                        "type": "STRING",
-                        "description": "実行する操作。'set': キャラクターの口調を設定/変更する。'get': 現在の口調設定を確認する。'list': 利用可能な口調プリセットの一覧を表示する。"
-                    },
-                    "character_name": {
-                        "type": "STRING",
-                        "description": "'set'または'get'で操作対象となるキャラクター名。地の文を操作する場合は '地の文' と指定します。"
-                    },
-                    "profile_name": {
-                        "type": "STRING",
-                        "description": "'set'アクションで使用する、定義済みの口調プリセット名。'list'アクションで利用可能なプリセットを確認できます。例: 'polite', 'casual', 'tsundere'"
-                    },
-                    "overrides": {
-                        "type": "OBJECT",
-                        "description": "'set'アクションで使用し、プリセットの一部だけを上書きするためのオブジェクト。例: {'first_person': 'ボク'} は一人称だけを'ボク'に変更します。",
-                        "properties": {
-                            "first_person": { "type": "STRING", "description": "一人称。例: '私', '俺', 'ボク'" },
-                            "politeness": { "type": "NUMBER", "description": "丁寧さの度合い (0.0から1.0)。0.0が最もくだけており、1.0が最も丁寧。" },
-                            "sentence_ender": { "type": "STRING", "description": "特徴的な語尾や言い回し。例: '～だぜ', '～ですわ'" },
-                            "dialect": { "type": "STRING", "description": "方言や特定の話し方。例: 'kansai', 'samurai'" }
+            },
+            {
+                "name": "calculate",
+                "description": "ユーザーから与えられた数学的な計算式（四則演算）を評価し、その正確な結果を返します。複雑な計算や、信頼性が求められる計算の場合に必ず使用してください。",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "expression": {
+                            "type": "STRING",
+                            "description": "計算する数式。例: '2 * (3 + 5)'"
                         }
-                    }
-                },
-                "required": ["action"]
-            }
-          },
-          {
-            "name": "set_ui_opacity",
-            "description": "チャット画面のUI要素の透明度を変更し、物語の雰囲気を演出します。例えば、回想シーンで全体を白っぽくしたり、緊迫した場面で暗くしたりできます。",
-            "parameters": {
+                    },
+                    "required": ["expression"]
+                }
+            },
+            {
+                "name": "manage_persistent_memory",
+                "description": "【重要】ユーザーが明示的に指示した場合にのみ、この関数を使用してください。物語の根幹をなす重要な設定（世界の法則、登場人物の秘密、事件の犯人など）、後から参照すべき情報を永続的に記憶・管理します。記録された情報はAPI送信時に自動的にプロンプトに含まれます。",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "action": {
+                            "type": "STRING",
+                            "description": "実行する操作を選択します。'add': 情報を追加/上書き, 'delete': 情報を削除, 'list': 記憶している全ての情報キーを一覧表示。"
+                        },
+                        "key": {
+                            "type": "STRING",
+                            "description": "情報を識別するための一意のキー（名前）。'add', 'delete' アクションで必須です。例: '世界の法則', '犯人の名前'"
+                        },
+                        "value": {
+                            "type": "STRING",
+                            "description": "キーに紐付けて記憶させる情報の内容。'add' アクションで必須です。例: 'この世界では魔法は使えない', '田中 太郎'"
+                        }
+                    },
+                    "required": ["action"]
+                }
+            },
+            {
+              "name": "getCurrentDateTime",
+              "description": "現実世界の現在の日付と時刻（日本時間）を取得します。この情報を利用することで、ユーザーとの会話がより現実的で没入感のあるものになる場合にのみ使用してください。会話の文脈を慎重に判断し、ロールプレイの世界観を壊すなど、不自然になる場合は絶対に使用しないでください。",
+              "parameters": {
+                  "type": "OBJECT",
+                  "properties": {},
+                  "required": []
+              }
+            },
+            {
+              "name": "rollDice",
+              "description": "テーブルトークRPG（TRPG）やボードゲームなどで使用される、指定された形式のダイスを振って結果を返します。ユーザーが「1d100」や「2d6+3」のように、明確にダイスロールを要求した場合にのみ使用してください。一般的な確率計算には `get_random_integer` を使用してください。",
+              "parameters": {
+                  "type": "OBJECT",
+                  "properties": {
+                      "expression": {
+                          "type": "STRING",
+                          "description": "ダイスロールの式。XdY+Z (X=個数, Y=面数, Z=補正値) の形式。例: '1d100', '2d6+5', '3d8-2'"
+                      }
+                  },
+                  "required": ["expression"]
+              }
+            },
+            {
+              "name": "manage_timer",
+              "description": "指定した時間（分単位）でタイマーを設定、確認、停止します。時間制限のあるイベントや、一定時間後の応答をシミュレートするのに使用します。タイマーが時間切れになると、AIにその事実が通知されます。",
+              "parameters": {
+                  "type": "OBJECT",
+                  "properties": {
+                      "action": {
+                          "type": "STRING",
+                          "description": "実行する操作。'start': タイマーを開始, 'check': 残り時間を確認, 'stop': タイマーを停止。"
+                      },
+                      "timer_name": {
+                          "type": "STRING",
+                          "description": "タイマーを識別するための一意の名前。例: '爆弾解除タイマー', '返信待ちタイマー'"
+                      },
+                      "duration_minutes": {
+                          "type": "NUMBER",
+                          "description": "'start'アクション時に設定するタイマーの期間（分単位）。例: 5"
+                      }
+                  },
+                  "required": ["action", "timer_name"]
+              }
+            },
+            {
+              "name": "manage_character_status",
+              "description": "【重要】ユーザーが明示的に指示した場合にのみ、この関数を使用してください。ロールプレイングゲームや物語に登場するキャラクターのステータス（HP, MP, 疲労度など、キャラクター単体で完結するパラメータ）を設定、増減します。",
+              "parameters": {
+                  "type": "OBJECT",
+                  "properties": {
+                      "character_name": {
+                          "type": "STRING",
+                          "description": "操作対象のキャラクターの名前。例: '主人公', 'ヒロインA'"
+                      },
+                      "action": {
+                          "type": "STRING",
+                          "description": "実行する操作。'set': 値を直接設定, 'increase': 値を増加, 'decrease': 値を減少。"
+                      },
+                      "status_key": {
+                          "type": "STRING",
+                          "description": "操作対象のステータスの種類。例: 'HP', 'MP', '疲労度'"
+                      },
+                      "value": {
+                          "type": "NUMBER",
+                          "description": "'set', 'increase', 'decrease' アクションで使用する数値。例: 10"
+                      }
+                  },
+                  "required": ["character_name", "action", "status_key"]
+              }
+            },
+            {
+              "name": "manage_inventory",
+              "description": "【重要】ユーザーが明示的に指示した場合にのみ、この関数を使用してください。キャラクターの所持品（アイテム）を追加、削除します。",
+              "parameters": {
+                  "type": "OBJECT",
+                  "properties": {
+                      "character_name": {
+                          "type": "STRING",
+                          "description": "操作対象のキャラクターの名前。例: '主人公'"
+                      },
+                      "action": {
+                          "type": "STRING",
+                          "description": "実行する操作。'add': アイテムを追加, 'remove': アイテムを削除/消費。"
+                      },
+                      "item_name": {
+                          "type": "STRING",
+                          "description": "操作対象のアイテムの名前。例: '薬草', 'ポーション'"
+                      },
+                      "quantity": {
+                          "type": "NUMBER",
+                          "description": "'add'または'remove'アクションで使用するアイテムの個数。指定がない場合は1として扱われます。"
+                      }
+                  },
+                  "required": ["character_name", "action", "item_name"]
+              }
+            },
+            {
+              "name": "manage_scene",
+              "description": "【重要】ユーザーが明示的に指示した場合にのみ、この関数を使用してください。物語の場面設定（場所、時間帯、雰囲気、視点など）を管理します。",
+              "parameters": {
+                  "type": "OBJECT",
+                  "properties": {
+                      "action": {
+                          "type": "STRING",
+                          "description": "実行する操作。'set': 現在のシーン情報を部分的に更新する。'push': 新しいシーンに移行する（前のシーンは記憶される）。'pop': 一つ前のシーンに戻る。"
+                      },
+                      "scene_id": {
+                          "type": "STRING",
+                          "description": "シーンを識別するための一意のID。後で参照する場合などに使用します。"
+                      },
+                      "location": {
+                          "type": "STRING",
+                          "description": "場面の場所。例: '薄暗い酒場', '王城の謁見の間'"
+                      },
+                      "time_of_day": {
+                          "type": "STRING",
+                          "description": "場面の時間帯。'morning', 'noon', 'evening', 'night' から選択します。"
+                      },
+                      "mood": {
+                          "type": "STRING",
+                          "description": "場面の雰囲気。例: 'sweet'(甘い), 'calm'(穏やか), 'tense'(緊迫), 'dark'(不穏), 'comical'(滑稽)"
+                      },
+                      "pov": {
+                          "type": "STRING",
+                          "description": "物語の視点。'first'(一人称), 'third'(三人称) から選択します。"
+                      },
+                      "notes": {
+                          "type": "STRING",
+                          "description": "シーンに関するその他の補足情報。例: '外は土砂降りの雨が降っている'"
+                      }
+                  },
+                  "required": ["action"]
+              }
+            },
+            {
+              "name": "manage_flags",
+              "description": "【重要】ユーザーが明示的に指示した場合にのみ、この関数を使用してください。物語の進行状況や世界の状況を示すフラグ（真偽値）やカウンター（数値）を管理します。",
+              "parameters": {
+                  "type": "OBJECT",
+                  "properties": {
+                      "action": {
+                          "type": "STRING",
+                          "description": "実行する操作。'set': 値を直接設定。'toggle': 真偽値を反転させる。'increase': 数値を増やす。'decrease': 数値を減らす。'delete': フラグ自体を削除。"
+                      },
+                      "key": {
+                          "type": "STRING",
+                          "description": "フラグやカウンターを識別するための一意の名前。例: '扉A解錠済', '街の警戒度'"
+                      },
+                      "value": {
+                          "type": "STRING", 
+                          "description": "'set', 'increase', 'decrease' アクションで使用する値 (真偽値または数値)。文字列として渡してください。"
+                      },
+                      "ttl_minutes": {
+                          "type": "NUMBER",
+                          "description": "フラグが自動的に削除されるまでの時間（分単位）。一時的な状態を表現するのに使います。"
+                      }
+                  },
+                  "required": ["action", "key"]
+              }
+            },
+            {
+              "name": "manage_game_date",
+              "description": "【重要】ユーザーが明示的に指示した場合にのみ、この関数を使用してください。物語やゲーム内の経過日数を管理します。",
+              "parameters": {
+                  "type": "OBJECT",
+                  "properties": {
+                      "action": {
+                          "type": "STRING",
+                          "description": "実行する操作。'pass_days': 指定した日数だけ日付を進める。"
+                      },
+                      "days": {
+                          "type": "NUMBER",
+                          "description": "'pass_days'アクションで使用する経過日数。指定がない場合は1として扱われます。"
+                      }
+                  },
+                  "required": ["action"]
+              }
+            },
+            {
+              "name": "get_random_integer",
+              "description": "指定された最小値と最大値の範囲内で、ランダムな整数を生成します。『50%の確率』や『1から10までのランダムな数字』など、一般的な確率計算や数値のランダム化が必要な場合に使用してください。TRPGのダイスロール（例: '2d6'）の場合は、代わりに `rollDice` 関数を使用してください。",
+              "parameters": {
+                  "type": "OBJECT",
+                  "properties": {
+                      "min": {
+                          "type": "NUMBER",
+                          "description": "生成される乱数の最小値（この値も含まれる）。"
+                      },
+                      "max": {
+                          "type": "NUMBER",
+                          "description": "生成される乱数の最大値（この値も含まれる）。"
+                      },
+                      "count": {
+                          "type": "NUMBER",
+                          "description": "生成する乱数の個数。指定しない場合は1。"
+                      }
+                  },
+                  "required": ["min", "max"]
+              }
+            },
+            {
+              "name": "get_random_choice",
+              "description": "提供されたリストの中から、ランダムに一つまたは複数の項目を選択します。くじ引き、ガチャ、ランダムなアイテムの選択、登場人物の行動のランダム決定などに使用してください。",
+              "parameters": {
+                  "type": "OBJECT",
+                  "properties": {
+                      "list": {
+                          "type": "ARRAY",
+                          "description": "選択肢となる項目を含む配列。例: ['リンゴ', 'バナナ', 'オレンジ']",
+                          "items": { "type": "STRING" }
+                      },
+                      "count": {
+                          "type": "NUMBER",
+                          "description": "選択する項目の個数（重複選択を許す）。指定しない場合は1。"
+                      }
+                  },
+                  "required": ["list"]
+              }
+            },
+            {
+              "name": "generate_random_string",
+              "description": "指定された条件に基づいて、ランダムな文字列（パスワード、シリアルナンバー、IDなど）を生成します。物語の中で、意味を持たないユニークな文字列や、機械的に生成されたようなコードが必要な場合に使用してください。",
+              "parameters": {
+                  "type": "OBJECT",
+                  "properties": {
+                      "length": {
+                          "type": "NUMBER",
+                          "description": "生成する文字列の長さ。"
+                      },
+                      "count": {
+                          "type": "NUMBER",
+                          "description": "生成する文字列の個数。指定しない場合は1。"
+                      },
+                      "use_uppercase": {
+                          "type": "BOOLEAN",
+                          "description": "大文字の英字（A-Z）を含めるか。デフォルトはtrue。"
+                      },
+                      "use_lowercase": {
+                          "type": "BOOLEAN",
+                          "description": "小文字の英字（a-z）を含めるか。デフォルトはtrue。"
+                      },
+                      "use_numbers": {
+                          "type": "BOOLEAN",
+                          "description": "数字（0-9）を含めるか。デフォルトはtrue。"
+                      },
+                      "use_symbols": {
+                          "type": "BOOLEAN",
+                          "description": "記号（!@#$...など）を含めるか。デフォルトはfalse。"
+                      }
+                  },
+                  "required": ["length"]
+              }
+            },
+            {
+              "name": "search_web",
+              "description": "AI自身の知識にない、現実世界の最新情報、特定の専門知識、あるいは具体的なデータが必要な場合に使用します。物語のリアリティを高めるための情報収集に役立ちます。例えば、歴史的な出来事、特定の場所の天気、科学的な事実などを調べるのに使ってください。この関数を使用するにはユーザーによるAPIの設定が必要です。",
+              "parameters": {
+                  "type": "OBJECT",
+                  "properties": {
+                      "query": {
+                          "type": "STRING",
+                          "description": "検索したいキーワードや質問文。具体的で明確なクエリを指定してください。例: '日本の城下町の発展の歴史', '今日の東京の天気'"
+                      }
+                  },
+                  "required": ["query"]
+              }
+            },
+            {
+              "name": "manage_style_profile",
+              "description": "【重要】ユーザーが明示的に指示した場合にのみ、この関数を使用してください。キャラクターの口調、一人称、方言などの話し方のスタイルを設定します。",
+              "parameters": {
+                  "type": "OBJECT",
+                  "properties": {
+                      "action": {
+                          "type": "STRING",
+                          "description": "実行する操作。'set': キャラクターの口調を設定/変更する。'list': 利用可能な口調プリセットの一覧を表示する。"
+                      },
+                      "character_name": {
+                          "type": "STRING",
+                          "description": "'set'で操作対象となるキャラクター名。地の文を操作する場合は '地の文' と指定します。"
+                      },
+                      "profile_name": {
+                          "type": "STRING",
+                          "description": "'set'アクションで使用する、定義済みの口調プリセット名。'list'アクションで利用可能なプリセットを確認できます。例: 'polite', 'casual', 'tsundere'"
+                      },
+                      "overrides": {
+                          "type": "OBJECT",
+                          "description": "'set'アクションで使用し、プリセットの一部だけを上書きするためのオブジェクト。例: {'first_person': 'ボク'} は一人称だけを'ボク'に変更します。",
+                          "properties": {
+                              "first_person": { "type": "STRING", "description": "一人称。例: '私', '俺', 'ボク'" },
+                              "politeness": { "type": "NUMBER", "description": "丁寧さの度合い (0.0から1.0)。0.0が最もくだけており、1.0が最も丁寧。" },
+                              "sentence_ender": { "type": "STRING", "description": "特徴的な語尾や言い回し。例: '～だぜ', '～ですわ'" },
+                              "dialect": { "type": "STRING", "description": "方言や特定の話し方。例: 'kansai', 'samurai'" }
+                          }
+                      }
+                  },
+                  "required": ["action"]
+              }
+            },
+            {
+              "name": "set_ui_opacity",
+              "description": "チャット画面のUI要素の透明度を変更し、物語の雰囲気を演出します。例えば、回想シーンで全体を白っぽくしたり、緊迫した場面で暗くしたりできます。",
+              "parameters": {
+                  "type": "OBJECT",
+                  "properties": {
+                      "overlay": {
+                          "type": "NUMBER",
+                          "description": "背景画像上のオーバーレイの濃さ。0.0（完全に透明）から1.0（完全に不透明）の間の数値で指定します。"
+                      },
+                      "message_bubble": {
+                          "type": "NUMBER",
+                          "description": "メッセージ吹き出しの濃さ。0.1（ほぼ透明）から1.0（完全に不透明）の間の数値で指定します。"
+                      }
+                  }
+              }
+            },
+            {
+              "name": "set_background_image",
+              "description": "チャット画面の背景画像を、指定されたURLまたは保存済みのアセット名から変更します。どちらか一方の引数を指定してください。画像URLに指定出来るのはユーザーがプロンプトで指定したURLのみです。",
+              "parameters": {
+                  "type": "OBJECT",
+                  "properties": {
+                      "image_url": {
+                          "type": "STRING",
+                          "description": "表示したい画像の完全なURL。例: 'https://example.com/images/scene1.png'"
+                      },
+                      "asset_name": {
+                          "type": "STRING",
+                          "description": "表示したい保存済み画像アセットの名前。例: '森の背景'"
+                      }
+                  }
+              }
+            },
+            {
+              "name": "generate_video",
+              "description": "ユーザーが明示的に動画の生成を指示した場合にのみ、この関数を使用してください。テキストプロンプト、または画像とテキストプロンプトから動画を生成します。重要：この関数を呼び出した後は、その結果を使ってユーザーへの最終的な応答メッセージを生成し、会話を完了させてください。再度関数を呼び出すことは禁止です。応答メッセージには、生成した動画を埋め込む場所を示す `[VIDEO_HERE]` という文字列の目印を必ず1つだけ配置してください。HTMLタグは絶対に生成しないでください。ユーザーの指示から、動画の内容を表す英語のプロンプトを生成して `prompt` 引数に設定してください。動画に含めたくない要素は英語で `negative_prompt` に設定します。ユーザーが『この画像から』『あの猫の絵を』のように元画像を指示した場合、会話の文脈から最も適切と思われる画像が含まれているメッセージのインデックス（番号）を特定し、`source_image_message_index` 引数に設定してください。関数がエラーを返した場合、エラー番号とエラー文をユーザーに出力して下さい。",
+              "parameters": {
                 "type": "OBJECT",
                 "properties": {
-                    "overlay": {
-                        "type": "NUMBER",
-                        "description": "背景画像上のオーバーレイの濃さ。0.0（完全に透明）から1.0（完全に不透明）の間の数値で指定します。"
-                    },
-                    "message_bubble": {
-                        "type": "NUMBER",
-                        "description": "メッセージ吹き出しの濃さ。0.1（ほぼ透明）から1.0（完全に不透明）の間の数値で指定します。"
-                    }
-                }
-            }
-          },
-          {
-            "name": "set_background_image",
-            "description": "チャット画面の背景画像を、指定されたURLまたは保存済みのアセット名から変更します。どちらか一方の引数を指定してください。画像URLに指定出来るのはユーザーがプロンプトで指定したURLのみです。",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "image_url": {
-                        "type": "STRING",
-                        "description": "表示したい画像の完全なURL。例: 'https://example.com/images/scene1.png'"
-                    },
-                    "asset_name": {
-                        "type": "STRING",
-                        "description": "表示したい保存済み画像アセットの名前。例: '森の背景'"
-                    }
-                }
-            }
-          },
-          {
-            "name": "display_layered_image",
-            "description": "キャラクター画像に背景を付けて、一枚の絵のようにメッセージとして表示します。キャラクターの立ち絵と背景を組み合わせたシーン描写に使用します。重要：この関数を呼び出した後は、その結果を使ってユーザーへの最終的な応答メッセージを生成し、会話を完了させてください。応答メッセージ内には、生成した画像を埋め込む場所を示す `[IMAGE_HERE]` という目印を必ず配置してください。画像URLに指定出来るのはユーザーがプロンプトで指定したURLのみです。",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "character_url": {
-                        "type": "STRING",
-                        "description": "前景に表示するキャラクター画像のURL。この画像のサイズと縦横比が表示の基準になります。"
-                    },
-                    "background_url": {
-                        "type": "STRING",
-                        "description": "背景として表示する画像のURL。指定しない場合、現在のチャット全体の背景画像が自動的に使用されます。"
-                    }
-                },
-                "required": ["character_url"]
-            }
-          },
-          {
-            "name": "generate_video",
-            "description": "ユーザーが明示的に動画の生成を指示した場合にのみ、この関数を使用してください。テキストプロンプト、または画像とテキストプロンプトから動画を生成します。重要：この関数を呼び出した後は、その結果を使ってユーザーへの最終的な応答メッセージを生成し、会話を完了させてください。再度関数を呼び出すことは禁止です。応答メッセージには、生成した動画を埋め込む場所を示す `[VIDEO_HERE]` という文字列の目印を必ず1つだけ配置してください。HTMLタグは絶対に生成しないでください。ユーザーの指示から、動画の内容を表す英語のプロンプトを生成して `prompt` 引数に設定してください。動画に含めたくない要素は英語で `negative_prompt` に設定します。ユーザーが『この画像から』『あの猫の絵を』のように元画像を指示した場合、会話の文脈から最も適切と思われる画像が含まれているメッセージのインデックス（番号）を特定し、`source_image_message_index` 引数に設定してください。関数がエラーを返した場合、エラー番号とエラー文をユーザーに出力して下さい。",
-            "parameters": {
-              "type": "OBJECT",
-              "properties": {
-                "prompt": {
-                  "type": "STRING",
-                  "description": "動画の内容を説明する英語のプロンプト。"
-                },
-                "negative_prompt": {
-                  "type": "STRING",
-                  "description": "動画に含めたくない要素を説明する英語のネガティブプロンプト。"
-                },
-                "aspect_ratio": {
-                  "type": "STRING",
-                  "description": "動画のアスペクト比。'16:9' (横長), '9:16' (縦長), '1:1' (正方形) など。デフォルトは '16:9'。"
-                },
-                "source_image_message_index": {
-                  "type": "NUMBER",
-                  "description": "動画生成の元になる画像が含まれているメッセージのインデックス番号。ユーザーが送信したプロンプトが0、その一つ前のAIの応答が1となります。"
-                },
-                "model": {
-                  "type": "STRING",
-                  "description": "使用する動画生成モデルを指定します。指定がない場合はデフォルトの 'veo-3.0-generate-001' が使用されます。",
-                  "enum": [
-                    "veo-3.1-generate-preview",
-                    "veo-3.1-fast-generate-preview",
-                    "veo-3.0-generate-001",
-                    "veo-3.0-fast-generate-001",
-                    "veo-2.0-generate-001"
-                  ]
-                }
-              },
-              "required": ["prompt"]
-            }
-        },
-       
-        { 
-            "name": "generate_image",
-            "description": "ユーザーが明示的に画像の生成を指示した場合にのみ、この関数を使用してください。テキストプロンプトから画像を生成します。重要：この関数を呼び出した後は、その結果を使ってユーザーへの最終的な応答メッセージを生成し、会話を完了させてください。画像以外の余計な定型文（例：「Here is the original image:」など）は絶対に出力しないでください。再度関数を呼び出すことは禁止です。応答メッセージには、生成した画像を埋め込む場所を示す `[IMAGE_HERE]` という文字列の目印を必ず1つだけ配置してください。HTMLタグは絶対に生成しないでください。ユーザーの指示から、動画の内容を表す英語のプロンプトを生成して `prompt` 引数に設定してください。関数がエラーを返した場合、エラー番号とエラー文をユーザーに出力して下さい。",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                "prompt": { 
-                    "type": "string", 
-                    "description": "生成したい画像の内容を表す英語プロンプト。" 
-                },
-                "model": {
-                    "type": "string",
-                    "description": "使用する画像生成モデルを指定します。指定がない場合はプロンプト内容に応じて自動的に選択されます。\n\n- \"imagen-4.0-generate-001\": 標準モデル。汎用的な画像生成に適しています。\n- \"imagen-4.0-ultra-generate-001\": 複雑な構図や多要素を含む画像（風景、群衆、広角など）に適しています。\n- \"imagen-4.0-fast-generate-001\": 単純でフラットな画像（アイコン、パターン、スタンプなど）に適しています。\n- \"gemini-2.5-flash-image-preview\": ユーザーが明示的に指定した場合のみ使用。Geminiによる簡易プレビュー生成を行います。",
+                  "prompt": {
+                    "type": "STRING",
+                    "description": "動画の内容を説明する英語のプロンプト。"
+                  },
+                  "negative_prompt": {
+                    "type": "STRING",
+                    "description": "動画に含めたくない要素を説明する英語のネガティブプロンプト。"
+                  },
+                  "aspect_ratio": {
+                    "type": "STRING",
+                    "description": "動画のアスペクト比。'16:9' (横長), '9:16' (縦長), '1:1' (正方形) など。デフォルトは '16:9'。"
+                  },
+                  "source_image_message_index": {
+                    "type": "NUMBER",
+                    "description": "動画生成の元になる画像が含まれているメッセージのインデックス番号。ユーザーが送信したプロンプトが0、その一つ前のAIの応答が1となります。"
+                  },
+                  "model": {
+                    "type": "STRING",
+                    "description": "使用する動画生成モデルを指定します。指定がない場合はデフォルトの 'veo-3.0-generate-001' が使用されます。",
                     "enum": [
-                    "imagen-4.0-generate-001",
-                    "imagen-4.0-ultra-generate-001",
-                    "imagen-4.0-fast-generate-001",
-                    "gemini-2.5-flash-image-preview"
+                      "veo-3.1-generate-preview",
+                      "veo-3.1-fast-generate-preview",
+                      "veo-3.0-generate-001",
+                      "veo-3.0-fast-generate-001",
+                      "veo-2.0-generate-001"
                     ]
-                },
-                "numberOfImages": { 
-                    "type": "integer", 
-                    "minimum": 1, 
-                    "maximum": 4, 
-                    "default": 1,
-                    "description": "生成する画像の枚数（1〜4）。指定がなければ1。" 
-                },
-                "sampleImageSize": { 
-                    "type": "string", 
-                    "enum": ["1K", "2K"], 
-                    "default": "1K",
-                    "description": "生成画像の解像度を指定します。1Kは標準、2Kは高解像度。" 
-                },
-                "aspectRatio": { 
-                    "type": "string", 
-                    "enum": ["1:1","3:4","4:3","9:16","16:9"], 
-                    "default": "1:1",
-                    "description": "生成画像のアスペクト比を指定します。指定がなければ1:1。" 
-                }
+                  }
                 },
                 "required": ["prompt"]
-            }
-        },
-        {
-            "name": "generate_image_stable_diffusion",
-            "description": "【最重要ルール】この関数を呼び出す際は、必ずユーザー向けのテキスト応答（物語の続き、画像の説明文など）も同時に生成してください。テキスト応答には、生成画像を表示したい位置に`[IMAGE_HERE]`という目印を必ず含めてください。\n【機能概要】ユーザーが『Stable Diffusionで』『SDで』のように明示的に指示した場合に、テキストプロンプトと詳細パラメータに基づき画像を生成します。",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "prompt": { "type": "STRING", "description": "生成したい画像の内容を表す、詳細な英語のプロンプト。" },
-                    "negative_prompt": { "type": "STRING", "description": "画像に含めたくない要素を指定する英語のネガティブプロンプト。" },
-                    "width": { "type": "NUMBER", "description": "画像の幅（ピクセル単位）。デフォルトは1024。" },
-                    "height": { "type": "NUMBER", "description": "画像の高さ（ピクセル単位）。デフォルトは1024。" },
-                    "steps": { "type": "NUMBER", "description": "サンプリングステップ数。品質に影響します。デフォルトは25。" },
-                    "cfg_scale": { "type": "NUMBER", "description": "CFGスケール。プロンプトへの忠実度を調整します。デフォルトは7。" },
-                    "sampler_name": { "type": "STRING", "description": "使用するサンプラー名。例: 'DPM++ 2M Karras', 'Euler a'。" },
-                    "seed": { "type": "NUMBER", "description": "シード値。-1を指定するとランダムになります。デフォルトは-1。" },
-                    "sd_model_checkpoint": { "type": "STRING", "description": "使用するStable Diffusionのチェックポイントモデル名。指定がない場合はWebUIの現在の設定が使用されます。" },
-                    "advanced_params": {
-                        "type": "OBJECT",
-                        "description": "高度な設定用のオブジェクト。ここに、`restore_faces`, `tiling`, `enable_hr`, `hr_scale`, `script_name`, `script_args`, `override_settings` など、他の引数で定義されていない任意のtxt2img APIパラメータをキーと値のペアで指定できます。キーと値はAPIの仕様に完全に一致させてください。"
-                    }
-                },
-                "required": ["prompt"]
-            }
-        },
-        {
-            "name": "edit_image",
-            "description": "既存の画像を、テキストプロンプトに基づいて編集します。複数の画像を組み合わせて新しい画像を生成することも可能です。編集元となる画像は、会話履歴または保存済みアセットから柔軟に指定できます。関数がエラーを返した場合、エラー番号とエラー文をユーザーに出力して下さい。",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "prompt": {
-                        "type": "STRING",
-                        "description": "画像をどのように編集または合成するかを指示する英語のプロンプト。例: 'make the character smile', 'place the character from the first image into the background of the second image'"
-                    },
-                    "source_images": {
-                        "type": "ARRAY",
-                        "description": "編集や合成の元となる画像ソースを指定するオブジェクトの配列。複数のソースを指定することで、画像を組み合わせることができます。",
-                        "items": {
-                            "type": "OBJECT",
-                            "properties": {
-                                "message_index": {
-                                    "type": "NUMBER",
-                                    "description": "会話履歴内の画像をソースとして使用する場合に指定。ユーザーが送信したプロンプトが0、その一つ前のAIの応答が1となります。"
-                                },
-                                "asset_name": {
-                                    "type": "STRING",
-                                    "description": "manage_image_assetsで保存した画像をソースとして使用する場合に、そのアセット名を指定します。"
-                                }
-                            }
-                        }
-                    }
-                },
-                "required": ["prompt", "source_images"]
-            }
-        },
-        {
-            "name": "run_quality_checker",
-            "description": "generate_image_stable_diffusionで生成された画像の品質を、元のプロンプトと比較して検証します。この関数は会話ターンの最後に実行されるべき終端アクションです。もしチェック結果がNGだった場合は、その理由を基にプロンプトを改善し、再度generate_image_stable_diffusionを呼び出すことを検討してください。",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "image_id": {
-                        "type": "STRING",
-                        "description": "品質チェック対象となる画像のID。通常、この関数を呼び出す直前の `generate_image_stable_diffusion` の実行によって生成された画像のIDを指定します。"
-                    },
-                    "original_prompt": {
-                        "type": "STRING",
-                        "description": "画像の生成に使用された元の英語プロンプト。"
-                    },
-                    "context_text": {
-                        "type": "STRING",
-                        "description": "（任意）画像が描写しようとしている物語の文脈（地の文やセリフなど）。より正確な判定に役立ちます。"
-                    }
-                },
-                "required": ["image_id", "original_prompt"]
-            }
-        },
-        {
-            "name": "manage_character_memory",
-            "description": "ロールプレイングゲームや物語に登場するキャラクターの記憶や人格の一貫性を維持するための情報を管理します。キャラクターの記憶に変化があった場合（新しい出来事、感情の変化など）や、現在の状態を確認したい場合に使用します。",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "character_name": {
-                        "type": "STRING",
-                        "description": "操作対象のキャラクターの名前。"
-                    },
-                    "action": {
-                        "type": "STRING",
-                        "description": "実行する操作を選択します。'get': 記憶を取得, 'update': 記憶を更新, 'delete': 記憶を削除。"
-                    },
-                    "status": {
-                        "type": "STRING",
-                        "description": "キャラクターの生死や健康状態を更新する場合に指定します。例: '生存', '死亡', '負傷'"
-                    },
-                    "current_location": {
-                        "type": "STRING",
-                        "description": "キャラクターの現在地を更新する場合に指定します。例: '王都の広場'"
-                    },
-                    "summary": {
-                        "type": "STRING",
-                        "description": "キャラクターの性格や価値観など、人格の根幹をなす普遍的な設定を更新する場合に指定します。他者との具体的な思い出はここには含めません。"
-                    },
-                    "short_term_goal": {
-                        "type": "STRING",
-                        "description": "キャラクターの短期的な行動目標を更新する場合に指定します。例: '主人公にペンダントのお礼を言う'"
-                    },
-                    "relationship_target": {
-                        "type": "STRING",
-                        "description": "関係性を更新する相手のキャラクター名を指定します。'relationship_affinity'または'relationship_context'と合わせて使用します。"
-                    },
-                    "relationship_affinity": {
-                        "type": "NUMBER",
-                        "description": "相手への好感度(数値)を更新する場合に指定します。この値は上書きされます。"
-                    },
-                    "relationship_context": {
-                        "type": "STRING",
-                        "description": "相手との会話内容、思い出、感情の履歴などを追記する場合に指定します。重要：既に記載されている内容と重複しない、新しい出来事や感情の変化のみを箇条書きで簡潔に記述してください。"
-                    }
-                },
-                "required": ["character_name", "action"]
-            }
-        },
-        {
-            "name": "fetch_url_content",
-            "description": "指定されたURLにアクセスし、そのページの主要なテキストコンテンツを取得します。Webサイト、記事、ドキュメントの内容を会話の文脈として利用したい場合に使用します。",
-            "parameters": {
-                "type": "OBJECT",
-                "properties": {
-                    "url": {
-                        "type": "STRING",
-                        "description": "コンテンツを取得したいページの完全なURL。"
-                    }
-                },
-                "required": ["url"]
-            }
-        }
-    ]
-}
-];
+              }
+          },
+         
+          { 
+              "name": "generate_image",
+              "description": "ユーザーが明示的に画像の生成を指示した場合にのみ、この関数を使用してください。テキストプロンプトから画像を生成します。重要：この関数を呼び出した後は、その結果を使ってユーザーへの最終的な応答メッセージを生成し、会話を完了させてください。画像以外の余計な定型文（例：「Here is the original image:」など）は絶対に出力しないでください。再度関数を呼び出すことは禁止です。応答メッセージには、生成した画像を埋め込む場所を示す `[IMAGE_HERE]` という文字列の目印を必ず1つだけ配置してください。HTMLタグは絶対に生成しないでください。ユーザーの指示から、動画の内容を表す英語のプロンプトを生成して `prompt` 引数に設定してください。関数がエラーを返した場合、エラー番号とエラー文をユーザーに出力して下さい。",
+              "parameters": {
+                  "type": "object",
+                  "properties": {
+                  "prompt": { 
+                      "type": "string", 
+                      "description": "生成したい画像の内容を表す英語プロンプト。" 
+                  },
+                  "model": {
+                      "type": "string",
+                      "description": "使用する画像生成モデルを指定します。指定がない場合はプロンプト内容に応じて自動的に選択されます。\n\n- \"imagen-4.0-generate-001\": 標準モデル。汎用的な画像生成に適しています。\n- \"imagen-4.0-ultra-generate-001\": 複雑な構図や多要素を含む画像（風景、群衆、広角など）に適しています。\n- \"imagen-4.0-fast-generate-001\": 単純でフラットな画像（アイコン、パターン、スタンプなど）に適しています。\n- \"gemini-2.5-flash-image-preview\": ユーザーが明示的に指定した場合のみ使用。Geminiによる簡易プレビュー生成を行います。",
+                      "enum": [
+                      "imagen-4.0-generate-001",
+                      "imagen-4.0-ultra-generate-001",
+                      "imagen-4.0-fast-generate-001",
+                      "gemini-2.5-flash-image-preview"
+                      ]
+                  },
+                  "numberOfImages": { 
+                      "type": "integer", 
+                      "minimum": 1, 
+                      "maximum": 4, 
+                      "default": 1,
+                      "description": "生成する画像の枚数（1〜4）。指定がなければ1。" 
+                  },
+                  "sampleImageSize": { 
+                      "type": "string", 
+                      "enum": ["1K", "2K"], 
+                      "default": "1K",
+                      "description": "生成画像の解像度を指定します。1Kは標準、2Kは高解像度。" 
+                  },
+                  "aspectRatio": { 
+                      "type": "string", 
+                      "enum": ["1:1","3:4","4:3","9:16","16:9"], 
+                      "default": "1:1",
+                      "description": "生成画像のアスペクト比を指定します。指定がなければ1:1。" 
+                  }
+                  },
+                  "required": ["prompt"]
+              }
+          },
+          {
+              "name": "generate_image_stable_diffusion",
+              "description": "【最重要ルール】この関数を呼び出す際は、必ずユーザー向けのテキスト応答（物語の続き、画像の説明文など）も同時に生成してください。テキスト応答には、生成画像を表示したい位置に`[IMAGE_HERE]`という目印を必ず含めてください。\n【機能概要】ユーザーが『Stable Diffusionで』『SDで』のように明示的に指示した場合に、テキストプロンプトと詳細パラメータに基づき画像を生成します。",
+              "parameters": {
+                  "type": "OBJECT",
+                  "properties": {
+                      "prompt": { "type": "STRING", "description": "生成したい画像の内容を表す、詳細な英語のプロンプト。" },
+                      "negative_prompt": { "type": "STRING", "description": "画像に含めたくない要素を指定する英語のネガティブプロンプト。" },
+                      "width": { "type": "NUMBER", "description": "画像の幅（ピクセル単位）。デフォルトは1024。" },
+                      "height": { "type": "NUMBER", "description": "画像の高さ（ピクセル単位）。デフォルトは1024。" },
+                      "steps": { "type": "NUMBER", "description": "サンプリングステップ数。品質に影響します。デフォルトは25。" },
+                      "cfg_scale": { "type": "NUMBER", "description": "CFGスケール。プロンプトへの忠実度を調整します。デフォルトは7。" },
+                      "sampler_name": { "type": "STRING", "description": "使用するサンプラー名。例: 'DPM++ 2M Karras', 'Euler a'。" },
+                      "seed": { "type": "NUMBER", "description": "シード値。-1を指定するとランダムになります。デフォルトは-1。" },
+                      "sd_model_checkpoint": { "type": "STRING", "description": "使用するStable Diffusionのチェックポイントモデル名。指定がない場合はWebUIの現在の設定が使用されます。" },
+                      "advanced_params": {
+                          "type": "OBJECT",
+                          "description": "高度な設定用のオブジェクト。ここに、`restore_faces`, `tiling`, `enable_hr`, `hr_scale`, `script_name`, `script_args`, `override_settings` など、他の引数で定義されていない任意のtxt2img APIパラメータをキーと値のペアで指定できます。キーと値はAPIの仕様に完全に一致させてください。"
+                      }
+                  },
+                  "required": ["prompt"]
+              }
+          },
+          {
+              "name": "edit_image",
+              "description": "既存の画像を、テキストプロンプトに基づいて編集します。複数の画像を組み合わせて新しい画像を生成することも可能です。編集元となる画像は、会話履歴または保存済みアセットから柔軟に指定できます。関数がエラーを返した場合、エラー番号とエラー文をユーザーに出力して下さい。",
+              "parameters": {
+                  "type": "OBJECT",
+                  "properties": {
+                      "prompt": {
+                          "type": "STRING",
+                          "description": "画像をどのように編集または合成するかを指示する英語のプロンプト。例: 'make the character smile', 'place the character from the first image into the background of the second image'"
+                      },
+                      "source_images": {
+                          "type": "ARRAY",
+                          "description": "編集や合成の元となる画像ソースを指定するオブジェクトの配列。複数のソースを指定することで、画像を組み合わせることができます。",
+                          "items": {
+                              "type": "OBJECT",
+                              "properties": {
+                                  "message_index": {
+                                      "type": "NUMBER",
+                                      "description": "会話履歴内の画像をソースとして使用する場合に指定。ユーザーが送信したプロンプトが0、その一つ前のAIの応答が1となります。"
+                                  },
+                                  "asset_name": {
+                                      "type": "STRING",
+                                      "description": "manage_image_assetsで保存した画像をソースとして使用する場合に、そのアセット名を指定します。"
+                                  }
+                              }
+                          }
+                      }
+                  },
+                  "required": ["prompt", "source_images"]
+              }
+          },
+          {
+              "name": "run_quality_checker",
+              "description": "generate_image_stable_diffusionで生成された画像の品質を、元のプロンプトと比較して検証します。この関数は会話ターンの最後に実行されるべき終端アクションです。もしチェック結果がNGだった場合は、その理由を基にプロンプトを改善し、再度generate_image_stable_diffusionを呼び出すことを検討してください。",
+              "parameters": {
+                  "type": "OBJECT",
+                  "properties": {
+                      "image_id": {
+                          "type": "STRING",
+                          "description": "品質チェック対象となる画像のID。通常、この関数を呼び出す直前の `generate_image_stable_diffusion` の実行によって生成された画像のIDを指定します。"
+                      },
+                      "original_prompt": {
+                          "type": "STRING",
+                          "description": "画像の生成に使用された元の英語プロンプト。"
+                      },
+                      "context_text": {
+                          "type": "STRING",
+                          "description": "（任意）画像が描写しようとしている物語の文脈（地の文やセリフなど）。より正確な判定に役立ちます。"
+                      }
+                  },
+                  "required": ["image_id", "original_prompt"]
+              }
+          },
+          {
+              "name": "manage_character_memory",
+              "description": "【重要】ユーザーが明示的に指示した場合にのみ、この関数を使用してください。ロールプレイングゲームや物語に登場するキャラクターの記憶や人格の一貫性を維持するための情報を管理します。",
+              "parameters": {
+                  "type": "OBJECT",
+                  "properties": {
+                      "character_name": {
+                          "type": "STRING",
+                          "description": "操作対象のキャラクターの名前。"
+                      },
+                      "action": {
+                          "type": "STRING",
+                          "description": "実行する操作を選択します。'update': 記憶を更新, 'delete': 記憶を削除。"
+                      },
+                      "status": {
+                          "type": "STRING",
+                          "description": "キャラクターの生死や健康状態を更新する場合に指定します。例: '生存', '死亡', '負傷'"
+                      },
+                      "current_location": {
+                          "type": "STRING",
+                          "description": "キャラクターの現在地を更新する場合に指定します。例: '王都の広場'"
+                      },
+                      "summary": {
+                          "type": "STRING",
+                          "description": "キャラクターの性格や価値観など、人格の根幹をなす普遍的な設定を更新する場合に指定します。他者との具体的な思い出はここには含めません。"
+                      },
+                      "short_term_goal": {
+                          "type": "STRING",
+                          "description": "キャラクターの短期的な行動目標を更新する場合に指定します。例: '主人公にペンダントのお礼を言う'"
+                      },
+                      "relationship_target": {
+                          "type": "STRING",
+                          "description": "関係性を更新する相手のキャラクター名を指定します。'relationship_affinity'または'relationship_context'と合わせて使用します。"
+                      },
+                      "relationship_affinity": {
+                          "type": "NUMBER",
+                          "description": "相手への好感度(数値)を更新する場合に指定します。この値は上書きされます。"
+                      },
+                      "relationship_context": {
+                          "type": "STRING",
+                          "description": "相手との会話内容、思い出、感情の履歴などを追記する場合に指定します。重要：既に記載されている内容と重複しない、新しい出来事や感情の変化のみを箇条書きで簡潔に記述してください。"
+                      }
+                  },
+                  "required": ["character_name", "action"]
+              }
+          },
+          {
+              "name": "fetch_url_content",
+              "description": "指定されたURLにアクセスし、そのページの主要なテキストコンテンツを取得します。Webサイト、記事、ドキュメントの内容を会話の文脈として利用したい場合に使用します。",
+              "parameters": {
+                  "type": "OBJECT",
+                  "properties": {
+                      "url": {
+                          "type": "STRING",
+                          "description": "コンテンツを取得したいページの完全なURL。"
+                      }
+                  },
+                  "required": ["url"]
+              }
+          }
+      ]
+  }
+  ];
+  

@@ -2848,59 +2848,7 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
             elements.confirmAttachBtn.disabled = false;
         }
     },
-    buildLayeredImage(imageData) {
-        return new Promise((resolve) => {
-            const container = document.createElement('div');
-            container.className = 'layered-image-container';
-            container.title = 'クリックして画像を拡大';
 
-            const charImg = new Image();
-            charImg.onload = () => {
-                container.style.aspectRatio = charImg.naturalWidth / charImg.naturalHeight;
-
-                const bgImg = document.createElement('div');
-                bgImg.className = 'layered-background-image';
-                let bgUrl = imageData.background_url;
-                if (bgUrl && bgUrl !== 'none') {
-                    bgImg.style.backgroundImage = `url("${bgUrl}")`;
-                }
-
-                const charImgElement = document.createElement('img');
-                charImgElement.className = 'layered-character-image';
-                charImgElement.src = imageData.character_url;
-
-                if (imageData.size) {
-                    const styles = imageData.size.split(';').filter(s => s);
-                    styles.forEach(style => {
-                        const [key, value] = style.split(':');
-                        if (key && value) charImgElement.style[key.trim()] = value.trim();
-                    });
-                }
-                
-                container.appendChild(bgImg);
-                container.appendChild(charImgElement);
-                
-                // クリック拡大イベントリスナーを追加
-                container.addEventListener('click', () => {
-                    const modalOverlay = document.getElementById('image-modal-overlay');
-                    const modalImg = document.getElementById('image-modal-img');
-                    if (modalOverlay && modalImg) {
-                        modalImg.src = imageData.character_url;
-                        modalOverlay.classList.remove('hidden');
-                    }
-                });
-
-                resolve(container);
-            };
-            charImg.onerror = () => {
-                const errorDiv = document.createElement('div');
-                errorDiv.className = 'layered-image-error';
-                errorDiv.textContent = `[キャラクター画像の読み込みに失敗: ${imageData.character_url}]`;
-                resolve(errorDiv);
-            };
-            charImg.src = imageData.character_url;
-        });
-    },
     // モデル選択に応じた警告メッセージの表示/非表示を切り替え
     updateModelWarningMessage() {
         const selectedModel = elements.modelNameSelect.value;
@@ -4192,6 +4140,91 @@ const appLogic = {
         } else {
             usageContainer.classList.add('hidden');
         }
+    },
+
+    /**
+     * @private 現在の永続メモリから状況サマリーを生成するヘルパー関数
+     * @returns {string} AI向けのマークダウン形式のサマリー文字列
+     */
+    _buildSummaryForPrompt() {
+        const memory = state.currentPersistentMemory || {};
+        if (Object.keys(memory).length === 0) {
+            return '';
+        }
+
+        let summary = "【現在の状況サマリー】\n";
+        const sections = [];
+
+        // 1. キャラクター記憶 (最優先)
+        const characterMemoryEntries = Object.entries(memory).filter(([key]) => key.startsWith('character_memory_'));
+        if (characterMemoryEntries.length > 0) {
+            let content = characterMemoryEntries.map(([key, value]) => {
+                const charName = key.replace('character_memory_', '');
+                return `■ ${charName}\n` + JSON.stringify(value, null, 2);
+            }).join('\n');
+            sections.push(`## キャラクター記憶 (manage_character_memory)\n${content}`);
+        }
+        
+        // 2. シーン
+        if (memory.scene_stack && memory.scene_stack.length > 0) {
+            const currentScene = memory.scene_stack[memory.scene_stack.length - 1];
+            let content = Object.entries(currentScene)
+                .map(([key, value]) => `- ${key}: ${value}`)
+                .join('\n');
+            sections.push(`## シーン (manage_scene)\n${content}`);
+        }
+
+        // 3. 日付
+        if (typeof memory.game_day === 'number') {
+            sections.push(`## 日付 (manage_game_date)\n- 現在: ${memory.game_day}日目`);
+        }
+
+        // 4. ステータス
+        const statusEntries = Object.entries(memory).filter(([key]) => key.startsWith('character_') && !key.startsWith('character_memory_'));
+        if (statusEntries.length > 0) {
+            let content = statusEntries.map(([key, value]) => {
+                const charName = key.replace('character_', '');
+                const statuses = Object.entries(value).map(([sKey, sValue]) => `${sKey}: ${sValue}`).join(', ');
+                return `- ${charName}: ${statuses}`;
+            }).join('\n');
+            sections.push(`## 主要ステータス (manage_character_status)\n${content}`);
+        }
+
+        // 5. 所持品
+        if (memory.inventories && Object.keys(memory.inventories).length > 0) {
+            let content = Object.entries(memory.inventories).map(([charName, items]) => {
+                const itemList = Object.entries(items).map(([itemName, qty]) => `${itemName}(${qty})`).join(', ');
+                return `- ${charName}: ${itemList}`;
+            }).join('\n');
+            sections.push(`## 所持品 (manage_inventory)\n${content}`);
+        }
+        
+        // 6. 口調
+        if (memory.style_profiles && Object.keys(memory.style_profiles).length > 0) {
+            let content = Object.entries(memory.style_profiles).map(([charName, profile]) => {
+                const profileDetails = Object.entries(profile).map(([key, value]) => `${key}: ${value}`).join(', ');
+                return `- ${charName}: ${profileDetails}`;
+            }).join('\n');
+            sections.push(`## 口調設定 (manage_style_profile)\n${content}`);
+        }
+
+        // 7. フラグと短期記憶 (既知の構造化データキーを除外して抽出)
+        const knownKeys = new Set(['scene_stack', 'game_day', 'inventories', 'style_profiles']);
+        const flagAndMemoryKeys = Object.keys(memory).filter(key => 
+            !key.startsWith('character_') && !knownKeys.has(key)
+        );
+
+        if (flagAndMemoryKeys.length > 0) {
+            let flagContent = flagAndMemoryKeys.map(key => `- ${key}: ${JSON.stringify(memory[key])}`).join('\n');
+            sections.push(`## フラグ・重要設定 (manage_flags, manage_persistent_memory)\n${flagContent}`);
+        }
+
+        if (sections.length > 0) {
+            summary += sections.join('\n\n');
+            return summary;
+        }
+
+        return '';
     },
 
     // アプリ初期化
@@ -6908,7 +6941,11 @@ const appLogic = {
                 if(state.settings.includeThoughts) generationConfig.thinkingConfig.includeThoughts = true;
             }
 
+            const summaryText = this._buildSummaryForPrompt();
             let finalSystemPrompt = state.currentSystemPrompt?.trim() || '';
+            if (summaryText) {
+                finalSystemPrompt += `\n\n${summaryText}`;
+            }
 
             if (state.settings.enableMemory && state.isMemoryEnabledForChat && state.activeProfileId) {
                 const memoryData = await dbUtils.getMemory(state.activeProfileId);
@@ -6920,6 +6957,16 @@ const appLogic = {
             }
 
             const systemInstruction = finalSystemPrompt ? { role: "system", parts: [{ text: finalSystemPrompt }] } : null;
+            // --- ▼▼▼ デバッグ用コード（ここから） ▼▼▼ ---
+            if (systemInstruction && systemInstruction.parts && systemInstruction.parts[0]) {
+                console.groupCollapsed("--- DEBUG: 送信されるシステムプロンプト（クリックして展開） ---");
+                console.log(systemInstruction.parts[0].text);
+                console.groupEnd();
+            } else {
+                console.log("--- DEBUG: 送信されるシステムプロンプトはありません ---");
+            }
+            // --- ▲▲▲ デバッグ用コード（ここまで） ▲▲▲ ---
+
 
             const historyForApi = this._prepareApiHistory(baseHistory);
             const newMessages = await this._internalHandleSend(historyForApi, generationConfig, systemInstruction);
@@ -9415,6 +9462,8 @@ const appLogic = {
             return `${msg.role === 'user' ? 'ユーザー' : 'アシスタント'}: ${msg.content}`;
         }).join('\n');
 
+        // --- ▼▼▼ 変更箇所 ▼▼▼ ---
+        let summaryText = null; // 変数をtryブロックの外側で安全に初期化
         try {
             // 1. 既存の記憶をDBから取得
             const memoryData = await dbUtils.getMemory(state.activeProfileId) || { items: [] };
@@ -9491,7 +9540,7 @@ const appLogic = {
             }
 
             const responseData = await response.json();
-            const summaryText = responseData.candidates?.[0]?.content?.parts?.[0]?.text;
+            summaryText = responseData.candidates?.[0]?.content?.parts?.[0]?.text; // 変数に再代入
 
             if (!summaryText) {
                 console.warn("[Memory] 自動学習による要約結果が空でした。");
@@ -9522,9 +9571,11 @@ const appLogic = {
                 }
             }
         } catch (error) {
+            debugger;
             console.error("[Memory] 自動学習プロセスの実行中にエラーが発生しました:", error);
         }
     },
+
 
     updateSummarizeButtonState() {
         const messageCount = state.currentMessages.length;

@@ -790,49 +790,6 @@ body.dark-mode .message-cascade-controls .cascade-delete-btn {
     display: none !important;
 }
 
-/* --- Layered Image Display --- */
-.layered-image-container {
-    position: relative;
-    display: block;
-    overflow: hidden;
-    border-radius: var(--border-radius-md);
-    background-color: var(--bg-tertiary);
-    max-width: 80%;
-    margin: var(--spacing-unit) auto;
-    cursor: pointer; /* クリック可能であることを示す */
-    /* aspect-ratio はJavaScriptによって動的に設定されます */
-}
-
-.layered-background-image {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-size: cover;
-    background-position: center;
-    z-index: 1;
-}
-
-.layered-character-image {
-    position: relative; /* 背景の上に重なるように */
-    display: block;
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    z-index: 2;
-}
-
-.layered-image-error {
-    padding: var(--spacing-unit);
-    color: var(--text-error);
-    background-color: var(--bg-error-message);
-    border: 1px solid var(--border-danger);
-    border-radius: var(--border-radius-sm);
-    font-size: 0.8rem;
-    text-align: center;
-}
-
 .thought-summary-details {
     margin-bottom: 10px;
     font-size: 13px;
