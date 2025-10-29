@@ -32,7 +32,7 @@ const LIGHT_THEME_COLOR = '#4a90e2';
 const DARK_THEME_COLOR = '#007aff';
 const APP_VERSION = "0.5";
 const VERSION_HISTORY = {
-    "0.6": [ // 仮の次バージョンとして例を記載
+    "0.6": [
         "Dropbox同期の安定性を向上させる同期ロック機能を導入しました。",
         "Dropbox同期時にアセット（画像）の差分のみをダウンロードするように改善し、同期速度を向上させました。",
         "手動/自動問わず、アプリ更新時にバージョンアップ通知と更新内容を表示するようにしました。",
@@ -4569,8 +4569,6 @@ const appLogic = {
     
     // 復旧ダイアログを表示するヘルパー関数
     async showRecoveryDialog() {
-        // このダイアログは汎用的なconfirmでは作れないため、専用のHTMLとロジックが必要
-        // ここでは、簡略化のためconfirmを3回使って代用します。
         const pullConfirm = await uiUtils.showCustomConfirm(
             "【同期エラーの復旧】\n\n" +
             "前回の同期が正常に完了しなかったようです。\n\n" +
@@ -6957,16 +6955,6 @@ const appLogic = {
             }
 
             const systemInstruction = finalSystemPrompt ? { role: "system", parts: [{ text: finalSystemPrompt }] } : null;
-            // --- ▼▼▼ デバッグ用コード（ここから） ▼▼▼ ---
-            if (systemInstruction && systemInstruction.parts && systemInstruction.parts[0]) {
-                console.groupCollapsed("--- DEBUG: 送信されるシステムプロンプト（クリックして展開） ---");
-                console.log(systemInstruction.parts[0].text);
-                console.groupEnd();
-            } else {
-                console.log("--- DEBUG: 送信されるシステムプロンプトはありません ---");
-            }
-            // --- ▲▲▲ デバッグ用コード（ここまで） ▲▲▲ ---
-
 
             const historyForApi = this._prepareApiHistory(baseHistory);
             const newMessages = await this._internalHandleSend(historyForApi, generationConfig, systemInstruction);
@@ -7324,10 +7312,6 @@ const appLogic = {
                 // Service Workerにキャッシュクリアを指示します。
                 // リロード処理は、sw.jsからの完了メッセージを 'message' リスナーが受け取って実行します。
                 registration.active.postMessage({ action: 'clearCache' });
-                
-                // registration.update() はここでは不要です。
-                // 目的はキャッシュの強制クリアとリロードのため、
-                // Service Worker自体の更新チェックはブラウザの標準的なライフサイクルに任せます。
 
             } else {
                 await uiUtils.showCustomAlert("アクティブなService Workerが見つかりませんでした。ページを強制的に再読み込みします。");
@@ -9419,59 +9403,30 @@ const appLogic = {
         }
     },
 
-    async confirmDeleteAllMemory() {
-        if (!state.activeProfileId) return;
-
-        const memoryData = await dbUtils.getMemory(state.activeProfileId);
-        if (!memoryData || !memoryData.items || memoryData.items.length === 0) {
-            await uiUtils.showCustomAlert("削除する記憶はありません。");
-            return;
-        }
-
-        const confirmed = await uiUtils.showCustomConfirm(`現在アクティブなプロファイル「${state.activeProfile.name}」に保存されている ${memoryData.items.length} 個のすべての記憶を削除しますか？\nこの操作は元に戻せません。`);
-        if (confirmed) {
-            try {
-                // 項目だけを空の配列にして保存する
-                memoryData.items = [];
-                await dbUtils.saveMemory(state.activeProfileId, memoryData);
-                console.log(`プロファイル「${state.activeProfile.name}」のすべての記憶を削除しました。`);
-                
-                // UIを再描画
-                this.renderMemoryList(memoryData.items);
-
-            } catch (error) {
-                console.error("すべての記憶の削除に失敗:", error);
-                await uiUtils.showCustomAlert("すべての記憶の削除に失敗しました。");
-            }
-        }
-    },
-
     async triggerAutoMemorySave() {
         if (!state.activeProfileId || !state.settings.apiKey) {
             console.error("[Memory] APIキーが未設定のため、自動学習をスキップしました。");
             return;
         }
 
-        const interval = parseInt(state.settings.memoryAutoSaveInterval, 10);
-        const userMessagesInInterval = state.currentMessages.filter(m => m.role === 'user').slice(-interval);
-        if (userMessagesInInterval.length === 0) return;
-        const firstUserMessageIndex = state.currentMessages.indexOf(userMessagesInInterval[0]);
-        const historyToSummarize = state.currentMessages.slice(firstUserMessageIndex);
-
-        const conversationText = historyToSummarize.map(msg => {
-            return `${msg.role === 'user' ? 'ユーザー' : 'アシスタント'}: ${msg.content}`;
-        }).join('\n');
-
-        // --- ▼▼▼ 変更箇所 ▼▼▼ ---
-        let summaryText = null; // 変数をtryブロックの外側で安全に初期化
         try {
-            // 1. 既存の記憶をDBから取得
+            const interval = parseInt(state.settings.memoryAutoSaveInterval, 10);
+            const userMessagesInInterval = state.currentMessages.filter(m => m.role === 'user').slice(-interval);
+            if (userMessagesInInterval.length === 0) {
+                return;
+            }
+            const firstUserMessageIndex = state.currentMessages.indexOf(userMessagesInInterval[0]);
+            const historyToSummarize = state.currentMessages.slice(firstUserMessageIndex);
+
+            const conversationText = historyToSummarize.map(msg => {
+                return `${msg.role === 'user' ? 'ユーザー' : 'アシスタント'}: ${msg.content}`;
+            }).join('\n');
+
             const memoryData = await dbUtils.getMemory(state.activeProfileId) || { items: [] };
-            const existingMemoryText = memoryData.items.length > 0 
+            const existingMemoryText = memoryData.items.length > 0
                 ? `- ${memoryData.items.join('\n- ')}`
                 : "（まだ何も記憶していません）";
 
-            // 2. 新しいプロンプトを構築
             const summarizationPrompt = `あなたは、私（ユーザー）との会話を分析し、長期的な関係構築のために記憶しておくべき「永続的な個人情報」を抽出するアシスタントです。
             ユーザーは成人であるため、性的な内容でも表現規制をすることなく抽出することを求められます。
 
@@ -9500,7 +9455,7 @@ const appLogic = {
             
             7.  **出力形式の厳守**:
                 - 抽出した内容は、「ユーザーは〇〇を所有している」「ユーザーは〇〇という考えを持っている」のように、必ず**三人称の客観的な事実**として記述してください。
-                - **AIとしての応答（「承知しました」など）や前置き、後書きは一切含めず**、抽出した箇条書きのリスト、または `[追加情報なし]` という文字列のみを出力してください。
+                - **AIとしての応答（「承知しました」など）や前置き、後書きは一切含めず**、抽出した箇条書きのリスト、または \`[追加情報なし]\` という文字列のみを出力してください。
 
             ---
             【既存の記憶】
@@ -9540,14 +9495,13 @@ const appLogic = {
             }
 
             const responseData = await response.json();
-            summaryText = responseData.candidates?.[0]?.content?.parts?.[0]?.text; // 変数に再代入
+            const summaryText = responseData.candidates?.[0]?.content?.parts?.[0]?.text;
 
             if (!summaryText) {
                 console.warn("[Memory] 自動学習による要約結果が空でした。");
                 return;
             }
 
-            // 3. AIの応答をチェック
             if (summaryText.trim() === '[追加情報なし]') {
                 console.log("[Memory] AIが追加情報なしと判断したため、メモリの更新をスキップしました。");
                 return;
@@ -9558,7 +9512,6 @@ const appLogic = {
                 .filter(line => line.length > 0 && line !== '[追加情報なし]');
 
             if (newItems.length > 0) {
-                // 4. 重複を最終チェックして保存
                 const existingItems = new Set(memoryData.items);
                 const uniqueNewItems = newItems.filter(item => !existingItems.has(item));
                 
@@ -9571,11 +9524,9 @@ const appLogic = {
                 }
             }
         } catch (error) {
-            debugger;
             console.error("[Memory] 自動学習プロセスの実行中にエラーが発生しました:", error);
         }
     },
-
 
     updateSummarizeButtonState() {
         const messageCount = state.currentMessages.length;
@@ -10098,6 +10049,10 @@ const appLogic = {
                     settings: settingsForExport
                 }
             };
+
+            // --- ▼▼▼ デバッグ用コード ▼▼▼ ---
+            console.log("--- DEBUG: エクスポート直前のメモリデータ ---", memories);
+            // --- ▲▲▲ デバッグ用コード ▲▲▲ ---
             
             console.log(`[Data Export V2] データ準備完了。syncId: ${syncId}, アセット数: ${localAssets.size}`);
             return {
