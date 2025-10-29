@@ -903,6 +903,17 @@ const dbUtils = {
 
     async saveChat(optionalTitle = null, chatObjectToSave = null) {
         await this.openDB();
+
+        // ★デバッグログここから追加
+        const dataBeingSaved = chatObjectToSave ? chatObjectToSave : {
+            messages: state.currentMessages,
+            systemPrompt: state.currentSystemPrompt,
+            persistentMemory: state.currentPersistentMemory,
+            summarizedContext: state.currentSummarizedContext,
+            isMemoryEnabledForChat: state.isMemoryEnabledForChat,
+        };
+        console.log("[DEBUG SAVECHAT] Saving chat data to DB. Title:", optionalTitle, "Data:", JSON.stringify(dataBeingSaved, null, 2));
+        // ★ここまで追加
     
         let messagesForStats = [];
         let chatDataToSave;
