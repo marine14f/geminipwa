@@ -1398,6 +1398,7 @@ const dbUtils = {
      */
      async clearAndImportData(data, localAssetsBeforeClear, downloadedAssets, requiredAssetIds) {
         console.log("[DB Import V2] 安全なデータインポート処理を開始します。");
+        console.log("[DEBUG PULL] Data to be imported into DB:", data); // ★追加
         uiUtils.showProgressDialog('データベースを準備中...');
 
         const { profiles, chats, memories, assets, settings } = data;
@@ -9865,21 +9866,6 @@ const appLogic = {
      * @returns {Promise<{metadataJson: string, localAssets: Map<string, {blob: Blob, hash: string}>}>}
      */
      async _prepareExportData() {
-        // ★★★ ここからデバッグコード ★★★
-        const logToLocalStorage = (key, data) => {
-            try {
-                localStorage.setItem(`debug_${key}_${Date.now()}`, JSON.stringify(data, null, 2));
-                console.log(`%c[DEBUG_LS] localStorageにログ '${key}' を保存しました。`, 'color: purple; font-weight: bold;');
-            } catch (e) {
-                console.error(`[DEBUG_LS] localStorageへのログ保存に失敗: ${key}`, e);
-            }
-        };
-        logToLocalStorage('prepare_start', { message: '_prepareExportDataが呼び出されました。' });
-        // ★★★ ここまでデバッグコード ★★★
-
-        console.log("[Data Export V2] 分離形式でのデータエクスポートを開始します。");
-        console.log(`%c[DEBUG_SYNC] _prepareExportData CALLED at ${new Date().toISOString()}`, 'color: blue; font-weight: bold;');
-
         try {
             // ディープコピーの対象を、Blobを含まないメタデータのみに限定する
             const [profiles, chats, memories, allSettings] = await Promise.all([
@@ -9942,10 +9928,6 @@ const appLogic = {
 
             // DBから直接読み込んだデータを操作し、stateを汚染しないようにする
             const allDbChats = await dbUtils.getAllChats();
-
-            // ★★★ デバッグコード ★★★
-            logToLocalStorage('before_processing_chats', allDbChats.find(c => c.id === 93)); // 該当チャットIDに置き換えてください
-
             for (const chat of allDbChats) {
                 if (chat.messages) {
                     for (const message of chat.messages) {
@@ -10021,12 +10003,6 @@ const appLogic = {
                         }
                     });
                     delete chatForDb._needsUpdate;
-
-                     // ★★★ デバッグコード ★★★
-                     if (chatForDb.id === 104) { // 該当チャットIDに置き換えてください
-                        logToLocalStorage('before_db_put', { message: 'この直後にDBに書き込みます', data: chatForDb });
-                    }
-
                     store.put(chatForDb);
 
                     // メモリ上のstate.currentMessagesは、base64Dataが削除されていない元のchatオブジェクトで更新する
@@ -10075,11 +10051,13 @@ const appLogic = {
                 }
             };
 
-            // --- ▼▼▼ デバッグ用コード ▼▼▼ ---
-            console.log("--- DEBUG: エクスポート直前のメモリデータ ---", memories);
-            // --- ▲▲▲ デバッグ用コード ▲▲▲ ---
             
             console.log(`[Data Export V2] データ準備完了。syncId: ${syncId}, アセット数: ${localAssets.size}`);
+
+            // ★デバッグログ
+            const metadataJsonString = JSON.stringify(metadata);
+            console.log("[DEBUG PUSH] Uploading metadata:", metadataJsonString); 
+
             return {
                 metadataJson: JSON.stringify(metadata),
                 localAssets: localAssets
@@ -10097,6 +10075,7 @@ const appLogic = {
 
     async importDataFromString(jsonString) {
         console.log("[Data Import V2] 文字列からのデータインポートを開始します。");
+        console.log("[DEBUG PULL] Downloaded metadata string:", jsonString); // ★追加
         uiUtils.showProgressDialog('インポートデータを準備中...');
     
         try {
