@@ -6056,6 +6056,7 @@ const appLogic = {
         try {
             const dbGetStartTime = performance.now();
             const chat = await dbUtils.getChat(id);
+            console.log("[DEBUG LOADCHAT] Loaded chat data from DB:", JSON.stringify(chat, null, 2)); // ★追加
             const dbGetEndTime = performance.now();
             
             if (chat) {
