@@ -2304,7 +2304,7 @@ window.functionDeclarations = [
           },
           {
               "name": "fetch_url_content",
-              "description": "指定されたURLにアクセスし、そのページの主要なテキストコンテンツを取得します。Webサイト、記事、ドキュメントの内容を会話の文脈として利用したい場合に使用します。",
+              "description": "【重要】ユーザーがURLを送信した場合使用して下さい。指定されたURLにアクセスし、そのページの主要なテキストコンテンツを取得します。Webサイト、記事、ドキュメントの内容を会話の文脈として利用したい場合に使用します。",
               "parameters": {
                   "type": "OBJECT",
                   "properties": {

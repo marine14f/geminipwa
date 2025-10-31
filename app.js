@@ -3597,6 +3597,9 @@ const appLogic = {
 
             uiUtils.applySettingsToUI(); 
             uiUtils.updateProfileCardUI();
+
+            // 4. プロファイル適用後にデバッグロガーを初期化/再設定する
+            DebugLogger.init();
         } else {
             console.error(`[Profile] 適用すべきアクティブなプロファイル (ID: ${state.activeProfileId}) が見つかりません。`);
         }
@@ -3642,6 +3645,7 @@ const appLogic = {
             await dbUtils.saveSetting('activeProfileId', newId); // activeProfileIdを更新
             state.activeProfileId = newId;
             
+            this.markAsDirtyAndSchedulePush(true);
             this.applyActiveProfile();
             uiUtils.updateProfileSwitcherUI();
             await uiUtils.showCustomAlert(`プロファイル「${newProfile.name}」を保存しました。`);
@@ -3692,6 +3696,7 @@ const appLogic = {
         try {
             const idToDelete = state.activeProfileId;
             await dbUtils.deleteProfile(idToDelete);
+            this.markAsDirtyAndSchedulePush(true);
             
             // stateからも削除
             state.profiles = state.profiles.filter(p => p.id !== idToDelete);
@@ -4461,9 +4466,6 @@ const appLogic = {
             await this.loadGlobalSettings();
             if (isSyncReload) uiUtils.updateProgressMessage('プロファイル情報を読み込み中...');
             await this.loadProfiles();
-
-            // DebugLoggerを初期化。設定が読み込まれた後、UIが適用される前に実行する。
-            DebugLogger.init();
 
             await this._checkAndResetApiUsage();
             this.updateApiUsageUI();
@@ -6290,6 +6292,7 @@ const appLogic = {
                 const newlyAddedProfile = await dbUtils.getProfile(newId);
                 state.profiles.push(newlyAddedProfile);
                 
+                this.markAsDirtyAndSchedulePush(true);
                 uiUtils.updateProfileSwitcherUI();
                 await uiUtils.showCustomAlert(`プロファイル「${finalName}」をインポートしました。`);
 
@@ -6666,7 +6669,7 @@ const appLogic = {
      * @param {object} systemInstruction - システムプロンプト。
      * @returns {Promise<Array>} 生成された新しいメッセージオブジェクトの配列。
     */
-    async _internalHandleSend(messagesForApi, generationConfig, systemInstruction) {
+     async _internalHandleSend(messagesForApi, generationConfig, systemInstruction) {
         let loopCount = 0;
         const MAX_LOOPS = 5;
         const finalTurnResults = [];
@@ -6817,7 +6820,7 @@ const appLogic = {
             }
 
             if (state.settings.enableProofreading) {
-                const lastTextResponse = finalModelMessages.filter(m => m.content && !m.tool_calls).pop();
+                const lastTextResponse = finalModelMessages.filter(m => m.content).pop();
                 if (lastTextResponse) {
                     try {
                         uiUtils.setLoadingIndicatorText('校正中...');
@@ -6844,6 +6847,7 @@ const appLogic = {
         
         return finalTurnResults;
     },
+
 
 
 
@@ -9370,6 +9374,7 @@ const appLogic = {
             const memoryData = await dbUtils.getMemory(state.activeProfileId) || { items: [] };
             memoryData.items.push(newItem);
             await dbUtils.saveMemory(state.activeProfileId, memoryData);
+            this.markAsDirtyAndSchedulePush(true);
             this.renderMemoryList(memoryData.items);
             elements.newMemoryInput.value = '';
         } catch (error) {
@@ -9389,6 +9394,7 @@ const appLogic = {
             if (newItem && newItem.trim() !== currentItem) {
                 memoryData.items[index] = newItem.trim();
                 await dbUtils.saveMemory(state.activeProfileId, memoryData);
+                this.markAsDirtyAndSchedulePush(true);
                 this.renderMemoryList(memoryData.items);
             }
         } catch (error) {
@@ -9408,6 +9414,7 @@ const appLogic = {
             if (confirmed) {
                 memoryData.items.splice(index, 1);
                 await dbUtils.saveMemory(state.activeProfileId, memoryData);
+                this.markAsDirtyAndSchedulePush(true);
                 this.renderMemoryList(memoryData.items);
             }
         } catch (error) {
@@ -9415,6 +9422,27 @@ const appLogic = {
             await uiUtils.showCustomAlert("記憶の削除に失敗しました。");
         }
     },
+
+    async confirmDeleteAllMemory() {
+        const memoryData = await dbUtils.getMemory(state.activeProfileId) || { items: [] };
+        if (memoryData.items.length === 0) {
+            await uiUtils.showCustomAlert("削除する記憶はありません。");
+            return;
+        }
+
+        const confirmed = await uiUtils.showCustomConfirm(`現在プロファイルに保存されている ${memoryData.items.length} 件の記憶をすべて削除しますか？\nこの操作は元に戻せません。`);
+        if (confirmed) {
+            try {
+                await dbUtils.saveMemory(state.activeProfileId, { items: [] });
+                this.markAsDirtyAndSchedulePush(true);
+                this.renderMemoryList([]);
+            } catch (error) {
+                console.error("全記憶の削除に失敗:", error);
+                await uiUtils.showCustomAlert("全記憶の削除に失敗しました。");
+            }
+        }
+    },
+
 
     async triggerAutoMemorySave() {
         if (!state.activeProfileId || !state.settings.apiKey) {
@@ -10007,6 +10035,13 @@ const appLogic = {
                 const tx = state.db.transaction(CHATS_STORE, 'readwrite');
                 const store = tx.objectStore(CHATS_STORE);
                 for (const chat of chatsToUpdate) {
+                    // ★ここから追加
+                    console.log(`[DEBUG EXPORT] ChatID ${chat.id} の永続化処理を開始します。`);
+                    if (chat.id === state.currentChatId) {
+                        console.log("[DEBUG EXPORT] 現在のチャットの state.currentMessages (更新前):", JSON.stringify(state.currentMessages));
+                    }
+                    // ★ここまで追加
+
                     // DBに保存する前にディープコピーを作成し、コピーからbase64Dataを削除する
                     const chatForDb = JSON.parse(JSON.stringify(chat));
                     chatForDb.messages.forEach(msg => {
@@ -10020,6 +10055,8 @@ const appLogic = {
                     // メモリ上のstate.currentMessagesは、base64Dataが削除されていない元のchatオブジェクトで更新する
                     if (chat.id === state.currentChatId) {
                         state.currentMessages = chat.messages;
+                        // ★追加
+                        console.log("[DEBUG EXPORT] 現在のチャットの state.currentMessages (更新後):", JSON.stringify(state.currentMessages));
                     }
                 }
             }
