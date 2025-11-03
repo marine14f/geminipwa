@@ -2144,120 +2144,130 @@ window.functionDeclarations = [
               }
           },
           {
-              "name": "generate_image_stable_diffusion",
-              "description": "【最重要ルール】この関数を呼び出す際は、必ずユーザー向けのテキスト応答（物語の続き、画像の説明文など）も同時に生成してください。テキスト応答には、生成画像を表示したい位置に`[IMAGE_HERE]`という目印を必ず含めてください。\n【機能概要】ユーザーが『Stable Diffusionで』『SDで』のように明示的に指示した場合に、テキストプロンプトと詳細パラメータに基づき画像を生成します。",
-              "parameters": {
-                  "type": "OBJECT",
-                  "properties": {
-                      "prompt": { "type": "STRING", "description": "生成したい画像の内容を表す、詳細な英語のプロンプト。" },
-                      "negative_prompt": { "type": "STRING", "description": "画像に含めたくない要素を指定する英語のネガティブプロンプト。" },
-                      "width": { "type": "NUMBER", "description": "画像の幅（ピクセル単位）。デフォルトは1024。" },
-                      "height": { "type": "NUMBER", "description": "画像の高さ（ピクセル単位）。デフォルトは1024。" },
-                      "steps": { "type": "NUMBER", "description": "サンプリングステップ数。品質に影響します。デフォルトは25。" },
-                      "cfg_scale": { "type": "NUMBER", "description": "CFGスケール。プロンプトへの忠実度を調整します。デフォルトは7。" },
-                      "sampler_name": { "type": "STRING", "description": "使用するサンプラー名。例: 'DPM++ 2M Karras', 'Euler a'。" },
-                      "seed": { "type": "NUMBER", "description": "シード値。-1を指定するとランダムになります。デフォルトは-1。" },
-                      "sd_model_checkpoint": { "type": "STRING", "description": "使用するStable Diffusionのチェックポイントモデル名。指定がない場合はWebUIの現在の設定が使用されます。" },
-                      "advanced_params": {
-                          "type": "OBJECT",
-                          "description": "高度な設定用のオブジェクト。ここに、`restore_faces`, `tiling`, `enable_hr`, `hr_scale`, `script_name`, `script_args`, `override_settings` など、他の引数で定義されていない任意のtxt2img APIパラメータをキーと値のペアで指定できます。キーと値はAPIの仕様に完全に一致させてください。"
-                      }
-                  },
-                  "required": ["prompt"]
-              }
-          },
-          {
-              "name": "edit_image",
-              "description": "既存の画像を、テキストプロンプトに基づいて編集します。複数の画像を組み合わせて新しい画像を生成することも可能です。編集元となる画像は、会話履歴または保存済みアセットから柔軟に指定できます。関数がエラーを返した場合、エラー番号とエラー文をユーザーに出力して下さい。",
-              "parameters": {
-                  "type": "OBJECT",
-                  "properties": {
-                      "prompt": {
-                          "type": "STRING",
-                          "description": "画像をどのように編集または合成するかを指示する英語のプロンプト。例: 'make the character smile', 'place the character from the first image into the background of the second image'"
-                      },
-                      "source_images": {
-                          "type": "ARRAY",
-                          "description": "編集や合成の元となる画像ソースを指定するオブジェクトの配列。複数のソースを指定することで、画像を組み合わせることができます。",
-                          "items": {
-                              "type": "OBJECT",
-                              "properties": {
-                                  "message_index": {
-                                      "type": "NUMBER",
-                                      "description": "会話履歴内の画像をソースとして使用する場合に指定。ユーザーが送信したプロンプトが0、その一つ前のAIの応答が1となります。"
-                                  },
-                                  "asset_name": {
-                                      "type": "STRING",
-                                      "description": "manage_image_assetsで保存した画像をソースとして使用する場合に、そのアセット名を指定します。"
-                                  }
-                              }
-                          }
-                      }
-                  },
-                  "required": ["prompt", "source_images"]
-              }
-          },
-          {
-              "name": "manage_character_memory",
-              "description": "【重要】ユーザーが明示的に指示した場合にのみ、この関数を使用してください。ロールプレイングゲームや物語に登場するキャラクターの記憶や人格の一貫性を維持するための情報を管理します。",
-              "parameters": {
-                  "type": "OBJECT",
-                  "properties": {
-                      "character_name": {
-                          "type": "STRING",
-                          "description": "操作対象のキャラクターの名前。"
-                      },
-                      "action": {
-                          "type": "STRING",
-                          "description": "実行する操作を選択します。'update': 記憶を更新, 'delete': 記憶を削除。"
-                      },
-                      "status": {
-                          "type": "STRING",
-                          "description": "キャラクターの生死や健康状態を更新する場合に指定します。例: '生存', '死亡', '負傷'"
-                      },
-                      "current_location": {
-                          "type": "STRING",
-                          "description": "キャラクターの現在地を更新する場合に指定します。例: '王都の広場'"
-                      },
-                      "summary": {
-                          "type": "STRING",
-                          "description": "キャラクターの性格や価値観など、人格の根幹をなす普遍的な設定を更新する場合に指定します。他者との具体的な思い出はここには含めません。"
-                      },
-                      "short_term_goal": {
-                          "type": "STRING",
-                          "description": "キャラクターの短期的な行動目標を更新する場合に指定します。例: '主人公にペンダントのお礼を言う'"
-                      },
-                      "relationship_target": {
-                          "type": "STRING",
-                          "description": "関係性を更新する相手のキャラクター名を指定します。'relationship_affinity'または'relationship_context'と合わせて使用します。"
-                      },
-                      "relationship_affinity": {
-                          "type": "NUMBER",
-                          "description": "相手への好感度(数値)を更新する場合に指定します。この値は上書きされます。"
-                      },
-                      "relationship_context": {
-                          "type": "STRING",
-                          "description": "相手との会話内容、思い出、感情の履歴などを追記する場合に指定します。重要：既に記載されている内容と重複しない、新しい出来事や感情の変化のみを箇条書きで簡潔に記述してください。"
-                      }
-                  },
-                  "required": ["character_name", "action"]
-              }
-          },
-          {
-              "name": "fetch_url_content",
-              "description": "【重要】ユーザーがURLを送信した場合使用して下さい。指定されたURLにアクセスし、そのページの主要なテキストコンテンツを取得します。Webサイト、記事、ドキュメントの内容を会話の文脈として利用したい場合に使用します。",
-              "parameters": {
-                  "type": "OBJECT",
-                  "properties": {
-                      "url": {
-                          "type": "STRING",
-                          "description": "コンテンツを取得したいページの完全なURL。"
-                      }
-                  },
-                  "required": ["url"]
-              }
-          }
-      ]
-  }
-  ];
+            "name": "generate_image_stable_diffusion",
+            "description": "【最重要ルール】この関数を呼び出す際は、必ずユーザー向けのテキスト応答（物語の続き、画像の説明文など）も同時に生成してください。テキスト応答には、生成画像を表示したい位置に`[IMAGE_HERE]`という目印を必ず含めてください。\n【機能概要】ユーザーが『Stable Diffusionで』『SDで』のように明示的に指示した場合に、テキストプロンプトと詳細パラメータに基づき画像を生成します。",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "prompt": { "type": "STRING", "description": "生成したい画像の内容を表す、詳細な英語のプロンプト。" },
+                    "negative_prompt": { "type": "STRING", "description": "画像に含めたくない要素を指定する英語のネガティブプロンプト。" },
+                    "width": { "type": "NUMBER", "description": "画像の幅（ピクセル単位）。デフォルトは1024。" },
+                    "height": { "type": "NUMBER", "description": "画像の高さ（ピクセル単位）。デフォルトは1024。" },
+                    "steps": { "type": "NUMBER", "description": "サンプリングステップ数。品質に影響します。デフォルトは25。" },
+                    "cfg_scale": { "type": "NUMBER", "description": "CFGスケール。プロンプトへの忠実度を調整します。デフォルトは7。" },
+                    "sampler_name": { "type": "STRING", "description": "使用するサンプラー名。WebUIで利用可能なサンプラー名を正確に指定してください。" },
+                    "seed": { "type": "NUMBER", "description": "シード値。-1を指定するとランダムになります。デフォルトは-1。" },
+                    "sd_model_checkpoint": { "type": "STRING", "description": "使用するStable Diffusionのチェックポイントモデル名。指定がない場合はWebUIの現在の設定が使用されます。" },
+                    "advanced_params": {
+                        "type": "OBJECT",
+                        "description": "Hires. fixなどの高度な設定用のオブジェクト。キーと値はWebUIのAPI仕様に完全に一致させてください。",
+                        "properties": {
+                            "enable_hr": { "type": "BOOLEAN", "description": "Hires. fixを有効にするか。デフォルトはfalse。" },
+                            "hr_scale": { "type": "NUMBER", "description": "Hires. fixの拡大率。例: 1.5, 2.0。" },
+                            "hr_upscaler": { "type": "STRING", "description": "Hires. fixで使用するアップスケーラー名。" },
+                            "denoising_strength": { "type": "NUMBER", "description": "Denoising strength。Hires. fix使用時に特に重要。0.0から1.0の間の数値。" },
+                            "restore_faces": { "type": "BOOLEAN", "description": "顔の修正を有効にするか。デフォルトはfalse。" },
+                            "tiling": { "type": "BOOLEAN", "description": "タイリングを有効にするか。デフォルトはfalse。" },
+                            "override_settings": { "type": "OBJECT", "description": "一時的にWebUIの設定を上書きするためのオブジェクト。" }
+                        }
+                    }
+                },
+                "required": ["prompt"]
+            }
+        },
+
+        {
+            "name": "edit_image",
+            "description": "既存の画像を、テキストプロンプトに基づいて編集します。複数の画像を組み合わせて新しい画像を生成することも可能です。編集元となる画像は、会話履歴または保存済みアセットから柔軟に指定できます。関数がエラーを返した場合、エラー番号とエラー文をユーザーに出力して下さい。",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "prompt": {
+                        "type": "STRING",
+                        "description": "画像をどのように編集または合成するかを指示する英語のプロンプト。例: 'make the character smile', 'place the character from the first image into the background of the second image'"
+                    },
+                    "source_images": {
+                        "type": "ARRAY",
+                        "description": "編集や合成の元となる画像ソースを指定するオブジェクトの配列。複数のソースを指定することで、画像を組み合わせることができます。",
+                        "items": {
+                            "type": "OBJECT",
+                            "properties": {
+                                "message_index": {
+                                    "type": "NUMBER",
+                                    "description": "会話履歴内の画像をソースとして使用する場合に指定。ユーザーが送信したプロンプトが0、その一つ前のAIの応答が1となります。"
+                                },
+                                "asset_name": {
+                                    "type": "STRING",
+                                    "description": "manage_image_assetsで保存した画像をソースとして使用する場合に、そのアセット名を指定します。"
+                                }
+                            }
+                        }
+                    }
+                },
+                "required": ["prompt", "source_images"]
+            }
+        },
+        {
+            "name": "manage_character_memory",
+            "description": "【重要】ユーザーが明示的に指示した場合にのみ、この関数を使用してください。ロールプレイングゲームや物語に登場するキャラクターの記憶や人格の一貫性を維持するための情報を管理します。",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "character_name": {
+                        "type": "STRING",
+                        "description": "操作対象のキャラクターの名前。"
+                    },
+                    "action": {
+                        "type": "STRING",
+                        "description": "実行する操作を選択します。'update': 記憶を更新, 'delete': 記憶を削除。"
+                    },
+                    "status": {
+                        "type": "STRING",
+                        "description": "キャラクターの生死や健康状態を更新する場合に指定します。例: '生存', '死亡', '負傷'"
+                    },
+                    "current_location": {
+                        "type": "STRING",
+                        "description": "キャラクターの現在地を更新する場合に指定します。例: '王都の広場'"
+                    },
+                    "summary": {
+                        "type": "STRING",
+                        "description": "キャラクターの性格や価値観など、人格の根幹をなす普遍的な設定を更新する場合に指定します。他者との具体的な思い出はここには含めません。"
+                    },
+                    "short_term_goal": {
+                        "type": "STRING",
+                        "description": "キャラクターの短期的な行動目標を更新する場合に指定します。例: '主人公にペンダントのお礼を言う'"
+                    },
+                    "relationship_target": {
+                        "type": "STRING",
+                        "description": "関係性を更新する相手のキャラクター名を指定します。'relationship_affinity'または'relationship_context'と合わせて使用します。"
+                    },
+                    "relationship_affinity": {
+                        "type": "NUMBER",
+                        "description": "相手への好感度(数値)を更新する場合に指定します。この値は上書きされます。"
+                    },
+                    "relationship_context": {
+                        "type": "STRING",
+                        "description": "相手との会話内容、思い出、感情の履歴などを追記する場合に指定します。重要：既に記載されている内容と重複しない、新しい出来事や感情の変化のみを箇条書きで簡潔に記述してください。"
+                    }
+                },
+                "required": ["character_name", "action"]
+            }
+        },
+        {
+            "name": "fetch_url_content",
+            "description": "【重要】ユーザーがURLを送信した場合使用して下さい。指定されたURLにアクセスし、そのページの主要なテキストコンテンツを取得します。Webサイト、記事、ドキュメントの内容を会話の文脈として利用したい場合に使用します。",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "url": {
+                        "type": "STRING",
+                        "description": "コンテンツを取得したいページの完全なURL。"
+                    }
+                },
+                "required": ["url"]
+            }
+        }
+    ]
+}
+];
   
