@@ -202,7 +202,6 @@
                     <div id="memory-options-container" class="hidden">
                         <label for="memory-auto-save-interval">自動学習の間隔:</label>
                         <select id="memory-auto-save-interval">
-                            <option value="1">1メッセージごと (デバッグ用)</option>
                             <option value="10">10メッセージごと</option>
                             <option value="20">20メッセージごと</option>
                             <option value="30">30メッセージごと</option>
@@ -276,7 +275,6 @@
                     <details style="margin-top: 15px;">
                         <summary style="cursor: pointer; font-weight: normal; font-size: 14px; color: var(--text-link); margin-bottom: 10px;">その他パラメータ</summary>
                         <div class="param-grid">
-                            <!-- Presence PenaltyとFrequency Penaltyの入力欄を削除 -->
                         </div>
                         <p style="height:16px;"></p>
                         <div class="param-grid">
@@ -488,7 +486,7 @@
                 <div class="settings-group" id="stable-diffusion-settings">
                     <h3>画像生成 (Stable Diffusion)</h3>
                     <p class="sd-description">
-                        ローカルネットワーク上のStable Diffusion WebUI (Forge/Reforge)と連携して画像を生成します。<br>
+                        ローカルネットワーク上のStable Diffusion WebUI (Forge/Reforge)と連携して画像を生成します。（上級者向け）<br>
                         Forge/Reforgeを起動する際に <code>--listen</code> オプションを指定してください。
                     </p>
                     
@@ -506,9 +504,7 @@
                             
                         </div>
                     </div>
-                    <p class="sd-description" style="margin-top: 8px; margin-bottom: 8px;">
-                        ※このURLと認証情報は、各デバイス固有の設定として保存され、Dropboxでは同期されません。
-                    </p>
+
                     <button id="sd-test-connection-btn" class="settings-action-button">接続テスト</button>
 
                     <div class="settings-group-subsection">

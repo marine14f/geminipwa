@@ -33,8 +33,10 @@ self.addEventListener('fetch', (event) => {
 
   // APIリクエスト (Google API, Stable Diffusion API) はService Workerの処理から完全に除外する
   const isGoogleApiPost = requestUrl.hostname === 'generativelanguage.googleapis.com' && event.request.method === 'POST';
-  // ポート番号(ローカル接続)またはホスト名(ngrok経由)でSD APIへのリクエストかを判定
-  const isStableDiffusionApi = (requestUrl.port === '7860' || requestUrl.hostname.includes('ngrok-free.dev')) && event.request.method === 'POST';
+  // ポート番号(ローカル接続)またはトンネルサービス経由のホスト名でSD APIへのリクエストかを判定
+  const tunnelDomains = ['ngrok-free.dev', 'trycloudflare.com'];
+  const isTunnelService = tunnelDomains.some(domain => requestUrl.hostname.endsWith(domain));
+  const isStableDiffusionApi = (requestUrl.port === '7860' || isTunnelService) && event.request.method === 'POST';
 
   if (isGoogleApiPost || isStableDiffusionApi) {
     // console.log('[SW] Ignoring API request:', event.request.url);
