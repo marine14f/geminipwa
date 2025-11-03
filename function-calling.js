@@ -1658,43 +1658,6 @@ window.functionCallingTools = {
       },
 
     edit_image: edit_image,
-    /**
-   * 生成された画像の品質をGemini Visionでチェックする関数
-   * @param {object} args - AIによって提供される引数オブジェクト
-   * @param {string} args.image_id - チェック対象の画像のID (generate_image_stable_diffusionの返り値)
-   * @param {string} args.original_prompt - 元の生成プロンプト
-   * @param {string} [args.context_text] - 画像が描写しようとしている文脈（地の文やセリフなど）
-   * @returns {Promise<object>} チェック結果 (OK/NGと理由)
-   */
-  run_quality_checker: async function({ image_id, original_prompt, context_text }) {
-    console.log(`[Function Calling] run_quality_checkerが呼び出されました。`, { image_id, original_prompt, context_text });
-    if (!state.settings.sdEnableQualityChecker) {
-        return { result: "SKIPPED", reason: "クオリティチェッカー機能がユーザー設定で無効になっています。" };
-    }
-    if (!image_id || !original_prompt) {
-        return { error: "引数 'image_id' と 'original_prompt' は必須です。" };
-    }
-
-    try {
-        const imageData = await window.appLogic.getImageBlobById(image_id);
-        if (!imageData || !imageData.blob) {
-            return { error: `指定されたIDの画像が見つかりません: ${image_id}` };
-        }
-
-        uiUtils.setLoadingIndicatorText('品質チェック中...');
-        const qualityCheckResult = await window.appLogic.runQualityChecker(imageData.blob, original_prompt, context_text || '');
-
-        // 本体ロジック側でログが出力されるが、念のためこちらでも判定結果をログに残す
-        console.log(`[Function Calling] run_quality_checker 実行完了。結果: ${qualityCheckResult.result}`);
-
-        // この関数は常に終端アクションとするため、結果をそのまま返す
-        return qualityCheckResult;
-
-    } catch (error) {
-        console.error("[Quality Checker] 品質チェックプロセスでエラー:", error);
-        return { error: `品質チェック中にエラーが発生しました: ${error.message}` };
-    }
-  },
     manage_character_memory: manage_character_memory,
     fetch_url_content: fetch_url_content
 };
@@ -2232,28 +2195,6 @@ window.functionDeclarations = [
                       }
                   },
                   "required": ["prompt", "source_images"]
-              }
-          },
-          {
-              "name": "run_quality_checker",
-              "description": "generate_image_stable_diffusionで生成された画像の品質を、元のプロンプトと比較して検証します。この関数は会話ターンの最後に実行されるべき終端アクションです。もしチェック結果がNGだった場合は、その理由を基にプロンプトを改善し、再度generate_image_stable_diffusionを呼び出すことを検討してください。",
-              "parameters": {
-                  "type": "OBJECT",
-                  "properties": {
-                      "image_id": {
-                          "type": "STRING",
-                          "description": "品質チェック対象となる画像のID。通常、この関数を呼び出す直前の `generate_image_stable_diffusion` の実行によって生成された画像のIDを指定します。"
-                      },
-                      "original_prompt": {
-                          "type": "STRING",
-                          "description": "画像の生成に使用された元の英語プロンプト。"
-                      },
-                      "context_text": {
-                          "type": "STRING",
-                          "description": "（任意）画像が描写しようとしている物語の文脈（地の文やセリフなど）。より正確な判定に役立ちます。"
-                      }
-                  },
-                  "required": ["image_id", "original_prompt"]
               }
           },
           {

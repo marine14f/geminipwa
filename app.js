@@ -3100,7 +3100,7 @@ const apiUtils = {
         const apiKey = state.settings.apiKey;
 
         if (model === 'gemini-2.5-pro') {
-            appLogic._updateApiUsageCount(state.activeProfileId); 
+            await appLogic._updateApiUsageCount(state.activeProfileId); 
         }
 
         const isImageGenModel = model === 'gemini-2.5-flash-image-preview';
