@@ -901,7 +901,7 @@ const dbUtils = {
         });
     },
 
-    async saveChat(optionalTitle = null, chatObjectToSave = null) {
+    async saveChat(optionalTitle = null, chatObjectToSave = null, options = {}) {
         await this.openDB();
 
         // ★デバッグログここから追加
@@ -912,7 +912,7 @@ const dbUtils = {
             summarizedContext: state.currentSummarizedContext,
             isMemoryEnabledForChat: state.isMemoryEnabledForChat,
         };
-        console.log("[DEBUG SAVECHAT] Saving chat data to DB. Title:", optionalTitle, "Data:", JSON.stringify(dataBeingSaved, null, 2));
+        console.log("[DEBUG SAVECHAT] Saving chat data to DB. Title:", optionalTitle, "Options:", options, "Data:", JSON.stringify(dataBeingSaved, null, 2));
         // ★ここまで追加
     
         let messagesForStats = [];
@@ -1012,7 +1012,9 @@ const dbUtils = {
                         if ((state.currentChatId || savedId) === (chatIdForOperation || savedId)) {
                             uiUtils.updateChatTitle(finalChatData.title);
                         }
-                        appLogic.markAsDirtyAndSchedulePush();
+                        if (!options.skipPush) {
+                            appLogic.markAsDirtyAndSchedulePush();
+                        }
                     };
                     putRequest.onerror = (event) => {
                         console.error("チャット保存(put)エラー:", event.target.error);
@@ -6942,7 +6944,7 @@ const appLogic = {
             this.scrollToBottom();
         }
         
-        await dbUtils.saveChat();
+        await dbUtils.saveChat(null, null, { skipPush: true });
         
         try {
             const generationConfig = {};
@@ -6982,7 +6984,7 @@ const appLogic = {
             uiUtils.renderChatMessages();
 
             // モデルの応答をDBに保存し、同期処理をトリガー
-            await dbUtils.saveChat();
+            await dbUtils.saveChat(null, null, { skipPush: true });
 
             this.updateCharacterProfileButtonVisibility();
 
@@ -7004,8 +7006,7 @@ const appLogic = {
             uiUtils.renderChatMessages(() => uiUtils.scrollToBottom());
             
             // エラー発生時もDBに保存し、同期処理をトリガー
-            await dbUtils.saveChat();
-            this.markAsDirtyAndSchedulePush(); // <-- エラー発生後にも呼び出しを追加
+            await dbUtils.saveChat(null, null, { skipPush: true });
         } finally {
             uiUtils.setSendingState(false);
             state.abortController = null;
