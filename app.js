@@ -1054,6 +1054,156 @@ const dbUtils = {
             }
         });
     },
+    async saveChat(optionalTitle = null, chatObjectToSave = null, options = {}) {
+        await this.openDB();
+
+        // ★デバッグログここから追加
+        const dataBeingSaved = chatObjectToSave ? chatObjectToSave : {
+            messages: state.currentMessages,
+            systemPrompt: state.currentSystemPrompt,
+            persistentMemory: state.currentPersistentMemory,
+            summarizedContext: state.currentSummarizedContext,
+            isMemoryEnabledForChat: state.isMemoryEnabledForChat,
+        };
+        console.log("[DEBUG SAVECHAT] Saving chat data to DB. Title:", optionalTitle, "Options:", options, "Data:", JSON.stringify(dataBeingSaved, null, 2));
+        // ★ここまで追加
+    
+        let messagesForStats = [];
+        let chatDataToSave;
+    
+        if (!chatObjectToSave) {
+            if ((!state.currentMessages || state.currentMessages.length === 0) && !state.currentSystemPrompt) {
+                if(state.currentChatId) console.log(`saveChat: 既存チャット ${state.currentChatId} にメッセージもシステムプロンプトもないため保存せず`);
+                else console.log("saveChat: 新規チャットに保存するメッセージもシステムプロンプトもなし");
+                return state.currentChatId;
+            }
+
+            const messagesToSave = state.currentMessages.map(msg => ({
+                role: msg.role,
+                content: msg.content,
+                timestamp: msg.timestamp,
+                thoughtSummary: msg.thoughtSummary || null,
+                tool_calls: msg.tool_calls || null,
+                imageIds: msg.imageIds,
+                finishReason: msg.finishReason,
+                safetyRatings: msg.safetyRatings,
+                error: msg.error,
+                isCascaded: msg.isCascaded,
+                isSelected: msg.isSelected,
+                siblingGroupId: msg.siblingGroupId,
+                groundingMetadata: msg.groundingMetadata,
+                // attachments を安全にコピーし、file オブジェクトのみ除外する
+                attachments: msg.attachments ? msg.attachments.map(att => ({
+                    name: att.name,
+                    mimeType: att.mimeType,
+                    base64Data: att.base64Data,
+                    assetId: att.assetId
+                })) : undefined,
+                usageMetadata: msg.usageMetadata,
+                executedFunctions: msg.executedFunctions,
+                generated_images: msg.generated_images,
+                generated_videos: msg.generated_videos ? msg.generated_videos.map(video => ({
+                        base64Data: video.base64Data,
+                        prompt: video.prompt
+                    })) : undefined,
+                isHidden: msg.isHidden,
+                isAutoTrigger: msg.isAutoTrigger
+            }));
+
+            messagesForStats = messagesToSave;
+    
+            chatDataToSave = {
+                messages: messagesToSave,
+                systemPrompt: state.currentSystemPrompt,
+                persistentMemory: state.currentPersistentMemory || {},
+                summarizedContext: state.currentSummarizedContext || null,
+                isMemoryEnabledForChat: state.isMemoryEnabledForChat,
+            };
+        } else {
+            messagesForStats = chatObjectToSave.messages || [];
+            chatDataToSave = chatObjectToSave;
+        }
+    
+        const stats = await this._calculateChatStats(messagesForStats);
+    
+        return new Promise((resolve, reject) => {
+            try {
+                const transaction = state.db.transaction([CHATS_STORE], 'readwrite');
+                const store = transaction.objectStore(CHATS_STORE);
+                const now = Date.now();
+    
+                const processSave = (existingChatData = null) => {
+                    let title;
+                    if (optionalTitle !== null) {
+                        title = optionalTitle;
+                    } else if (existingChatData && existingChatData.title) {
+                        title = existingChatData.title;
+                    } else {
+                        const firstUserMessage = (chatDataToSave.messages || []).find(m => m.role === 'user' && !m.isHidden);
+                        title = firstUserMessage ? firstUserMessage.content.substring(0, 50) : "無題のチャット";
+                    }
+    
+                    const chatIdForOperation = existingChatData ? existingChatData.id : state.currentChatId;
+                    const finalChatData = {
+                        ...chatDataToSave,
+                        updatedAt: chatObjectToSave && chatObjectToSave.updatedAt ? chatObjectToSave.updatedAt : now,
+                        createdAt: existingChatData ? existingChatData.createdAt : now,
+                        title: title,
+                        stats: stats
+                    };
+                    if (chatIdForOperation) {
+                        finalChatData.id = chatIdForOperation;
+                    }
+    
+                    const putRequest = store.put(finalChatData);
+                    putRequest.onsuccess = (event) => {
+                        const savedId = event.target.result;
+                        if (!state.currentChatId && savedId) {
+                            state.currentChatId = savedId;
+                        }
+                        console.log(`チャット ${state.currentChatId ? '更新' : '保存'} 完了 ID:`, state.currentChatId || savedId);
+                        if ((state.currentChatId || savedId) === (chatIdForOperation || savedId)) {
+                            uiUtils.updateChatTitle(finalChatData.title);
+                        }
+                    };
+                    putRequest.onerror = (event) => {
+                        console.error("チャット保存(put)エラー:", event.target.error);
+                    };
+                };
+    
+                if (state.currentChatId && !chatObjectToSave) {
+                    const getRequest = store.get(state.currentChatId);
+                    getRequest.onsuccess = (event) => {
+                        const existingChat = event.target.result;
+                        if (!existingChat) {
+                            console.warn(`ID ${state.currentChatId} のチャットが見つかりません(保存時)。新規として保存します。`);
+                            state.currentChatId = null;
+                        }
+                        processSave(existingChat);
+                    };
+                    getRequest.onerror = (event) => {
+                        console.error("既存チャットの取得エラー(更新用):", event.target.error);
+                        state.currentChatId = null;
+                        processSave(null);
+                    };
+                } else {
+                    processSave(chatObjectToSave);
+                }
+    
+                transaction.oncomplete = () => {
+                    resolve(state.currentChatId);
+                };
+                transaction.onerror = (event) => {
+                    console.error("チャット保存トランザクション失敗:", event.target.error);
+                    reject(new Error(`チャット保存トランザクション失敗: ${event.target.error.message}`));
+                };
+    
+            } catch (error) {
+                console.error("チャット保存処理の開始に失敗:", error);
+                reject(error);
+            }
+        });
+    },
 
     async _calculateChatStats(messages) {
         if (!messages) return null;
@@ -4628,9 +4778,9 @@ const appLogic = {
      * ローカルデータに変更があったことを記録し、設定に応じてPush処理をスケジュールする
      * @param {boolean} [forcePush=false] - trueの場合、同期頻度の設定を無視して即時Pushを実行する
      */
-     markAsDirtyAndSchedulePush(forcePush = false) {
+    markAsDirtyAndSchedulePush(type = 'message') {
         const timestamp = new Date().toLocaleTimeString();
-        console.log(`[SYNC_DEBUG ${timestamp}] markAsDirtyAndSchedulePush called. forcePush=${forcePush}, isSending=${state.isSending}, isSyncing=${state.sync.isSyncing}, isDirty=${state.sync.isDirty}`);
+        console.log(`[SYNC_DEBUG ${timestamp}] markAsDirtyAndSchedulePush called. type=${type}, isSending=${state.isSending}, isSyncing=${state.sync.isSyncing}, isDirty=${state.sync.isDirty}`);
 
         const tokenData = dbUtils.getSetting('dropboxTokens');
         if (!tokenData) {
@@ -4656,54 +4806,63 @@ const appLogic = {
             return;
         }
 
-        // 強制Pushフラグがある場合は、設定を無視して即時同期
-        if (forcePush) {
-            console.log(`[SYNC_DEBUG ${timestamp}] -> EXECUTING: forcePush=true. Calling handlePush now.`);
+        const frequency = state.settings.dropboxSyncFrequency;
+
+        // 手動同期モードの場合の特別処理
+        if (frequency === 'manual') {
+            // トリガーがメッセージの場合のみ自動Pushをスキップ
+            if (type === 'message') {
+                console.log(`[SYNC_DEBUG ${timestamp}] -> SKIPPED: Manual sync mode for message update.`);
+                return;
+            }
+            // 構造的な変更の場合は、手動モードでも即時同期する
+            console.log(`[SYNC_DEBUG ${timestamp}] -> EXECUTING: Structural change detected in manual sync mode. Forcing push.`);
             this.handlePush();
             return;
         }
 
-        // メッセージ送受信時の処理
-        state.syncMessageCounter++;
-        console.log(`[SYNC_DEBUG ${timestamp}] Message counter incremented to: ${state.syncMessageCounter}`);
-
-        const frequency = state.settings.dropboxSyncFrequency;
-
-        if (frequency === 'manual') {
-            console.log(`[SYNC_DEBUG ${timestamp}] -> SKIPPED: Manual sync mode.`);
-            return;
+        // メッセージ送受信時のカウンター処理
+        if (type === 'message') {
+            state.syncMessageCounter++;
+            console.log(`[SYNC_DEBUG ${timestamp}] Message counter incremented to: ${state.syncMessageCounter}`);
         }
 
-        if (frequency === 'instant') {
-            if (state.sync.pushTimeoutId) {
-                clearTimeout(state.sync.pushTimeoutId);
-                console.log(`[SYNC_DEBUG ${timestamp}] Cleared existing timeout for instant sync.`);
-            }
-            console.log(`[SYNC_DEBUG ${timestamp}] -> SCHEDULING: Instant sync mode. Setting 3-second timeout.`);
+        if (state.sync.pushTimeoutId) {
+            clearTimeout(state.sync.pushTimeoutId);
+        }
+
+        const schedulePush = (isCounterReset = false) => {
             state.sync.pushTimeoutId = setTimeout(() => {
                 const scheduledTimestamp = new Date().toLocaleTimeString();
-                console.log(`[SYNC_DEBUG ${scheduledTimestamp}] -> EXECUTING: Timeout finished for instant sync. Calling handlePush.`);
+                console.log(`[SYNC_DEBUG ${scheduledTimestamp}] -> EXECUTING: Timeout finished. Calling handlePush.`);
                 this.handlePush();
+                if (isCounterReset) {
+                    state.syncMessageCounter = 0;
+                    console.log(`[SYNC_DEBUG ${scheduledTimestamp}] Message counter reset to 0.`);
+                }
             }, 3000); // 3秒のデバウンス
+        };
+
+        if (frequency === 'instant') {
+            console.log(`[SYNC_DEBUG ${timestamp}] -> SCHEDULING: Instant sync mode. Setting 3-second timeout.`);
+            schedulePush();
             return;
         }
 
         const threshold = parseInt(frequency, 10);
-        if (!isNaN(threshold) && state.syncMessageCounter >= threshold) {
-            if (state.sync.pushTimeoutId) {
-                clearTimeout(state.sync.pushTimeoutId);
-                console.log(`[SYNC_DEBUG ${timestamp}] Cleared existing timeout for threshold sync.`);
+        if (!isNaN(threshold)) {
+            // 構造的な変更の場合はカウンターに関係なく即時実行をスケジュール
+            if (type === 'structural') {
+                console.log(`[SYNC_DEBUG ${timestamp}] -> SCHEDULING: Structural change detected. Setting 3-second timeout.`);
+                schedulePush();
             }
-            console.log(`[SYNC_DEBUG ${timestamp}] -> SCHEDULING: Threshold (${threshold}) reached. Setting 3-second timeout.`);
-            state.sync.pushTimeoutId = setTimeout(() => {
-                const scheduledTimestamp = new Date().toLocaleTimeString();
-                console.log(`[SYNC_DEBUG ${scheduledTimestamp}] -> EXECUTING: Timeout finished for threshold sync. Calling handlePush.`);
-                this.handlePush();
-                state.syncMessageCounter = 0; // Push後にカウンターをリセット
-                console.log(`[SYNC_DEBUG ${scheduledTimestamp}] Message counter reset to 0.`);
-            }, 3000);
-        } else {
-            console.log(`[SYNC_DEBUG ${timestamp}] -> SKIPPED: Threshold (${frequency}) not reached.`);
+            // メッセージの場合はカウンターで判断
+            else if (state.syncMessageCounter >= threshold) {
+                console.log(`[SYNC_DEBUG ${timestamp}] -> SCHEDULING: Threshold (${threshold}) reached. Setting 3-second timeout.`);
+                schedulePush(true);
+            } else {
+                console.log(`[SYNC_DEBUG ${timestamp}] -> SKIPPED: Threshold (${frequency}) not reached.`);
+            }
         }
     },
 
@@ -5118,6 +5277,7 @@ const appLogic = {
                         delete profile.apiUsage;
                         try {
                             await dbUtils.updateProfile(profile);
+                            this.markAsDirtyAndSchedulePush('structural');
                             console.log(`[API Count] カウンターが手動でリセットされました (Profile ID: ${profile.id})`);
                             this.updateApiUsageUI();
                             uiUtils.updateProfileSwitcherUI();
@@ -5169,8 +5329,7 @@ const appLogic = {
                     state.activeProfile.settings[key] = value;
                     
                     await dbUtils.updateProfile(state.activeProfile);
-                    // 強制Pushフラグ(true)を削除
-                    appLogic.markAsDirtyAndSchedulePush();
+                    appLogic.markAsDirtyAndSchedulePush('structural');
                     
                     if (onUpdate) {
                         onUpdate(value);
@@ -5781,7 +5940,7 @@ const appLogic = {
                 }
 
                 const confirmed = await uiUtils.showCustomConfirm(
-                    `${chatsToDelete.length}件の古いチャット（7日以上更新なし）を削除します。よろしいですか？\nこの操作は元に戻せません。`
+                    `${chatsToDelete.length}件の古いチャット（7日以上更新なし）を削除しますか？\nこの操作は元に戻せません。`
                 );
 
                 if (confirmed) {
@@ -5793,6 +5952,7 @@ const appLogic = {
                                 await dbUtils.deleteChat(chat.id);
                             }
                         }
+                        this.markAsDirtyAndSchedulePush('structural');
                         await uiUtils.showCustomAlert(`${chatsToDelete.length}件の古いチャットを削除しました。`);
                         await uiUtils.renderHistoryList(); // リストを再描画
                     } catch (error) {
@@ -5846,6 +6006,7 @@ const appLogic = {
         elements.copyLogsBtn.addEventListener('click', () => this.copyLogsToClipboard());
             
     },
+
 
     // popstateイベントハンドラ (戻るボタン/ジェスチャー)
     handlePopState(event) {
@@ -6911,7 +7072,6 @@ const appLogic = {
 
     
     async handleSend() {
-
         state.pendingCascadeResponses = null; // 保留中のカスケードデータをクリア
         if (state.isSending) { return; }
         if (state.editingMessageIndex !== null) { await uiUtils.showCustomAlert("他のメッセージを編集中です。"); return; }
@@ -6944,7 +7104,7 @@ const appLogic = {
             this.scrollToBottom();
         }
         
-        await dbUtils.saveChat(null, null, { skipPush: true });
+        await dbUtils.saveChat();
         
         try {
             const generationConfig = {};
@@ -6983,8 +7143,8 @@ const appLogic = {
 
             uiUtils.renderChatMessages();
 
-            // モデルの応答をDBに保存し、同期処理をトリガー
-            await dbUtils.saveChat(null, null, { skipPush: true });
+            // モデルの応答をDBに保存
+            await dbUtils.saveChat();
 
             this.updateCharacterProfileButtonVisibility();
 
@@ -7005,14 +7165,14 @@ const appLogic = {
             state.currentMessages[modelMessageIndex] = { role: 'error', content: errorMessage, timestamp: Date.now() };
             uiUtils.renderChatMessages(() => uiUtils.scrollToBottom());
             
-            // エラー発生時もDBに保存し、同期処理をトリガー
-            await dbUtils.saveChat(null, null, { skipPush: true });
+            // エラー発生時もDBに保存
+            await dbUtils.saveChat();
         } finally {
             uiUtils.setSendingState(false);
             state.abortController = null;
             
             // 処理が完了したこのタイミングで、安全に同期処理をトリガーする
-            this.markAsDirtyAndSchedulePush();
+            this.markAsDirtyAndSchedulePush('message');
 
             if (state.settings.autoScroll) {
                 requestAnimationFrame(() => {
@@ -7021,6 +7181,7 @@ const appLogic = {
             }
         }
     },
+
 
     
     // APIリクエストを中断
