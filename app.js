@@ -1054,156 +1054,6 @@ const dbUtils = {
             }
         });
     },
-    async saveChat(optionalTitle = null, chatObjectToSave = null, options = {}) {
-        await this.openDB();
-
-        // ★デバッグログここから追加
-        const dataBeingSaved = chatObjectToSave ? chatObjectToSave : {
-            messages: state.currentMessages,
-            systemPrompt: state.currentSystemPrompt,
-            persistentMemory: state.currentPersistentMemory,
-            summarizedContext: state.currentSummarizedContext,
-            isMemoryEnabledForChat: state.isMemoryEnabledForChat,
-        };
-        console.log("[DEBUG SAVECHAT] Saving chat data to DB. Title:", optionalTitle, "Options:", options, "Data:", JSON.stringify(dataBeingSaved, null, 2));
-        // ★ここまで追加
-    
-        let messagesForStats = [];
-        let chatDataToSave;
-    
-        if (!chatObjectToSave) {
-            if ((!state.currentMessages || state.currentMessages.length === 0) && !state.currentSystemPrompt) {
-                if(state.currentChatId) console.log(`saveChat: 既存チャット ${state.currentChatId} にメッセージもシステムプロンプトもないため保存せず`);
-                else console.log("saveChat: 新規チャットに保存するメッセージもシステムプロンプトもなし");
-                return state.currentChatId;
-            }
-
-            const messagesToSave = state.currentMessages.map(msg => ({
-                role: msg.role,
-                content: msg.content,
-                timestamp: msg.timestamp,
-                thoughtSummary: msg.thoughtSummary || null,
-                tool_calls: msg.tool_calls || null,
-                imageIds: msg.imageIds,
-                finishReason: msg.finishReason,
-                safetyRatings: msg.safetyRatings,
-                error: msg.error,
-                isCascaded: msg.isCascaded,
-                isSelected: msg.isSelected,
-                siblingGroupId: msg.siblingGroupId,
-                groundingMetadata: msg.groundingMetadata,
-                // attachments を安全にコピーし、file オブジェクトのみ除外する
-                attachments: msg.attachments ? msg.attachments.map(att => ({
-                    name: att.name,
-                    mimeType: att.mimeType,
-                    base64Data: att.base64Data,
-                    assetId: att.assetId
-                })) : undefined,
-                usageMetadata: msg.usageMetadata,
-                executedFunctions: msg.executedFunctions,
-                generated_images: msg.generated_images,
-                generated_videos: msg.generated_videos ? msg.generated_videos.map(video => ({
-                        base64Data: video.base64Data,
-                        prompt: video.prompt
-                    })) : undefined,
-                isHidden: msg.isHidden,
-                isAutoTrigger: msg.isAutoTrigger
-            }));
-
-            messagesForStats = messagesToSave;
-    
-            chatDataToSave = {
-                messages: messagesToSave,
-                systemPrompt: state.currentSystemPrompt,
-                persistentMemory: state.currentPersistentMemory || {},
-                summarizedContext: state.currentSummarizedContext || null,
-                isMemoryEnabledForChat: state.isMemoryEnabledForChat,
-            };
-        } else {
-            messagesForStats = chatObjectToSave.messages || [];
-            chatDataToSave = chatObjectToSave;
-        }
-    
-        const stats = await this._calculateChatStats(messagesForStats);
-    
-        return new Promise((resolve, reject) => {
-            try {
-                const transaction = state.db.transaction([CHATS_STORE], 'readwrite');
-                const store = transaction.objectStore(CHATS_STORE);
-                const now = Date.now();
-    
-                const processSave = (existingChatData = null) => {
-                    let title;
-                    if (optionalTitle !== null) {
-                        title = optionalTitle;
-                    } else if (existingChatData && existingChatData.title) {
-                        title = existingChatData.title;
-                    } else {
-                        const firstUserMessage = (chatDataToSave.messages || []).find(m => m.role === 'user' && !m.isHidden);
-                        title = firstUserMessage ? firstUserMessage.content.substring(0, 50) : "無題のチャット";
-                    }
-    
-                    const chatIdForOperation = existingChatData ? existingChatData.id : state.currentChatId;
-                    const finalChatData = {
-                        ...chatDataToSave,
-                        updatedAt: chatObjectToSave && chatObjectToSave.updatedAt ? chatObjectToSave.updatedAt : now,
-                        createdAt: existingChatData ? existingChatData.createdAt : now,
-                        title: title,
-                        stats: stats
-                    };
-                    if (chatIdForOperation) {
-                        finalChatData.id = chatIdForOperation;
-                    }
-    
-                    const putRequest = store.put(finalChatData);
-                    putRequest.onsuccess = (event) => {
-                        const savedId = event.target.result;
-                        if (!state.currentChatId && savedId) {
-                            state.currentChatId = savedId;
-                        }
-                        console.log(`チャット ${state.currentChatId ? '更新' : '保存'} 完了 ID:`, state.currentChatId || savedId);
-                        if ((state.currentChatId || savedId) === (chatIdForOperation || savedId)) {
-                            uiUtils.updateChatTitle(finalChatData.title);
-                        }
-                    };
-                    putRequest.onerror = (event) => {
-                        console.error("チャット保存(put)エラー:", event.target.error);
-                    };
-                };
-    
-                if (state.currentChatId && !chatObjectToSave) {
-                    const getRequest = store.get(state.currentChatId);
-                    getRequest.onsuccess = (event) => {
-                        const existingChat = event.target.result;
-                        if (!existingChat) {
-                            console.warn(`ID ${state.currentChatId} のチャットが見つかりません(保存時)。新規として保存します。`);
-                            state.currentChatId = null;
-                        }
-                        processSave(existingChat);
-                    };
-                    getRequest.onerror = (event) => {
-                        console.error("既存チャットの取得エラー(更新用):", event.target.error);
-                        state.currentChatId = null;
-                        processSave(null);
-                    };
-                } else {
-                    processSave(chatObjectToSave);
-                }
-    
-                transaction.oncomplete = () => {
-                    resolve(state.currentChatId);
-                };
-                transaction.onerror = (event) => {
-                    console.error("チャット保存トランザクション失敗:", event.target.error);
-                    reject(new Error(`チャット保存トランザクション失敗: ${event.target.error.message}`));
-                };
-    
-            } catch (error) {
-                console.error("チャット保存処理の開始に失敗:", error);
-                reject(error);
-            }
-        });
-    },
 
     async _calculateChatStats(messages) {
         if (!messages) return null;
@@ -3341,7 +3191,7 @@ const apiUtils = {
 
             const response = await fetch(endpoint, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
                 body: JSON.stringify(requestBody),
                 signal
             });
@@ -3405,7 +3255,7 @@ const apiUtils = {
             return textToTranslate;
         }
 
-        const endpoint = `${GEMINI_API_BASE_URL}${modelToUse}:generateContent?key=${apiKey}`;
+        const endpoint = `${GEMINI_API_BASE_URL}${modelToUse}:generateContent`;
         
         const systemInstruction = {
             parts: [{ text: "You are a professional translator. Translate the given English text into natural Japanese. Do not add any extra comments or explanations. Just output the translated Japanese text." }]
@@ -6712,7 +6562,7 @@ const appLogic = {
             throw new Error("校正用モデルが設定されていません。");
         }
 
-        const endpoint = `${GEMINI_API_BASE_URL}${proofreadingModelName}:generateContent?key=${apiKey}`;
+        const endpoint = `${GEMINI_API_BASE_URL}${proofreadingModelName}:generateContent`;
         const systemInstruction = proofreadingSystemInstruction?.trim() ? { parts: [{ text: proofreadingSystemInstruction.trim() }] } : null;
         const generationConfig = {};
         if (temperature !== null) generationConfig.temperature = temperature;
@@ -6776,7 +6626,7 @@ const appLogic = {
 
                 const response = await fetch(endpoint, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
                     body: JSON.stringify(requestBody),
                     signal: state.abortController?.signal
                 });
@@ -9402,6 +9252,33 @@ const appLogic = {
                     request.onerror = () => reject(request.error);
                 });
                 console.log("すべてのアセットを削除しました。");
+                // 併せて image_store の孤児Blobをクリーンアップ
+                try {
+                    const activeChats = await dbUtils.getAllChats();
+                    const activeImageIds = new Set();
+                    (activeChats || []).forEach(chat => {
+                        (chat.messages || []).forEach(msg => {
+                            (msg.imageIds || []).forEach(id => activeImageIds.add(id));
+                        });
+                    });
+
+                    await new Promise((resolve, reject) => {
+                        const tx = state.db.transaction(IMAGE_STORE, 'readwrite');
+                        const store = tx.objectStore(IMAGE_STORE);
+                        const getAllKeysReq = store.getAllKeys();
+                        getAllKeysReq.onsuccess = () => {
+                            const keys = getAllKeysReq.result || [];
+                            const orphanIds = keys.filter(id => !activeImageIds.has(id));
+                            orphanIds.forEach(id => store.delete(id));
+                            tx.oncomplete = resolve;
+                            tx.onerror = () => reject(tx.error);
+                        };
+                        getAllKeysReq.onerror = () => reject(getAllKeysReq.error);
+                    });
+                    console.log("image_store の孤児Blobをクリーンアップしました。");
+                } catch (cleanupErr) {
+                    console.warn("image_store クリーンアップ中にエラー:", cleanupErr);
+                }
                 
                 // UIを再描画
                 this.openAssetManagementDialog();
@@ -9671,7 +9548,7 @@ const appLogic = {
             [抽出結果]`;
 
             const modelForMemory = "gemini-2.5-flash";
-            const endpoint = `${GEMINI_API_BASE_URL}${modelForMemory}:generateContent?key=${state.settings.apiKey}`;
+            const endpoint = `${GEMINI_API_BASE_URL}${modelForMemory}:generateContent`;
             const requestBody = {
                 contents: [{
                     role: 'user',
@@ -9687,7 +9564,7 @@ const appLogic = {
 
             const response = await fetch(endpoint, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.settings.apiKey },
                 body: JSON.stringify(requestBody),
             });
 
@@ -9834,7 +9711,7 @@ const appLogic = {
             console.log("使用モデル:", state.settings.modelName);
             console.log("リクエストボディ:", JSON.stringify(requestBody, null, 2));
 
-            const endpoint = `${GEMINI_API_BASE_URL}${state.settings.modelName}:generateContent?key=${state.settings.apiKey}`;
+            const endpoint = `${GEMINI_API_BASE_URL}${state.settings.modelName}:generateContent`;
             const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -10655,10 +10532,10 @@ const appLogic = {
             generationConfig: { temperature: 0.5 }
         };
 
-        const endpoint = `${GEMINI_API_BASE_URL}${model}:generateContent?key=${state.settings.apiKey}`;
+        const endpoint = `${GEMINI_API_BASE_URL}${model}:generateContent`;
         const response = await fetch(endpoint, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.settings.apiKey },
             body: JSON.stringify(requestBody)
         });
 
@@ -10691,10 +10568,10 @@ const appLogic = {
             generationConfig: { temperature: 0.1 }
         };
 
-        const endpoint = `${GEMINI_API_BASE_URL}${qcModel}:generateContent?key=${state.settings.apiKey}`;
+        const endpoint = `${GEMINI_API_BASE_URL}${qcModel}:generateContent`;
         const response = await fetch(endpoint, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.settings.apiKey },
             body: JSON.stringify(requestBody)
         });
 
@@ -10811,10 +10688,10 @@ const appLogic = {
             generationConfig: { temperature: 0.1 }
         };
 
-        const endpoint = `${GEMINI_API_BASE_URL}${qcModel}:generateContent?key=${state.settings.apiKey}`;
+        const endpoint = `${GEMINI_API_BASE_URL}${qcModel}:generateContent`;
         const response = await fetch(endpoint, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.settings.apiKey },
             body: JSON.stringify(requestBody)
         });
 
