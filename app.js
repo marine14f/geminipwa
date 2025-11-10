@@ -7215,6 +7215,8 @@ const appLogic = {
         const finalTurnResults = [];
         let currentTurnHistory = [...messagesForApi];
         let aggregatedSearchResults = [];
+        let consecutiveCharacterMemoryCalls = 0;
+        const CHARACTER_MEMORY_LOOP_THRESHOLD = 4;
 
         uiUtils.setLoadingIndicatorText('応答生成中...');
 
@@ -7253,6 +7255,7 @@ const appLogic = {
             
             const toolResults = [];
             let containsTerminalAction = false;
+            const isAllCharacterMemory = result.toolCalls.every(tc => tc.functionCall?.name === 'manage_character_memory');
             
             for (const toolCall of result.toolCalls) {
                 console.debug('[FC_DEBUG] incoming toolCall:', JSON.stringify(toolCall, null, 2));
@@ -7320,6 +7323,13 @@ const appLogic = {
             
             finalTurnResults.push(...toolResults);
             
+            if (isAllCharacterMemory) {
+                consecutiveCharacterMemoryCalls += result.toolCalls.length;
+                console.debug(`[FC_DEBUG] consecutive manage_character_memory calls: ${consecutiveCharacterMemoryCalls}`);
+            } else {
+                consecutiveCharacterMemoryCalls = 0;
+            }
+            
             if (containsTerminalAction) {
                 console.log("終端アクションが検出されたため、Function Callingループを終了します。");
                 if (!result.content) {
@@ -7358,6 +7368,52 @@ const appLogic = {
                     });
                     
                     modelMessage.content = textResult.content || '';
+                }
+                break;
+            }
+
+            if (isAllCharacterMemory && consecutiveCharacterMemoryCalls >= CHARACTER_MEMORY_LOOP_THRESHOLD) {
+                console.log("[_internalHandleSend] manage_character_memory が連続しているため、テキスト応答取得を強制します。");
+                const modelMessageForApi = { 
+                    role: 'model', 
+                    parts: result.toolCalls.map(tc => {
+                        const functionCall = { ...tc.functionCall };
+                        if (tc.tool_call_id && !functionCall.id) {
+                            functionCall.id = tc.tool_call_id;
+                        } else if (tc.id && !functionCall.id) {
+                            functionCall.id = tc.id;
+                        }
+                        return { functionCall };
+                    }) 
+                };
+                const toolResultsForApi = toolResults.map(tr => ({ 
+                    role: 'tool', 
+                    parts: [{ 
+                        functionResponse: { 
+                            name: tr.name, 
+                            response: tr.response,
+                            id: tr.tool_call_id || tr.name,
+                            tool_call_id: tr.tool_call_id || tr.name 
+                        } 
+                    }] 
+                }));
+                currentTurnHistory.push(modelMessageForApi, ...toolResultsForApi);
+
+                const textResult = await this.callApiWithRetry({ 
+                    messagesForApi: currentTurnHistory,
+                    generationConfig,
+                    systemInstruction,
+                    tools: null,
+                    isFirstCall: false
+                });
+
+                if (textResult.toolCalls && textResult.toolCalls.length > 0) {
+                    console.warn("[_internalHandleSend] 強制テキスト呼び出しにも関わらずツール呼び出しが返されました。処理を中断します。");
+                } else {
+                    modelMessage.content = (modelMessage.content || '') + (textResult.content || '');
+                    modelMessage.thoughtSummary = modelMessage.thoughtSummary || textResult.thoughtSummary;
+                    modelMessage.finishReason = textResult.finishReason || modelMessage.finishReason;
+                    modelMessage.usageMetadata = textResult.usageMetadata || modelMessage.usageMetadata;
                 }
                 break;
             }
