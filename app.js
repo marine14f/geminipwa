@@ -26,11 +26,32 @@ const DEFAULT_FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "Segoe UI", Robo
 const CHAT_TITLE_LENGTH = 15;
 const TEXTAREA_MAX_HEIGHT = 120;
 const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models/';
+const ZAI_API_BASE_URL = 'https://api.z.ai/api/paas/v4/chat/completions';
 const DUPLICATE_SUFFIX = ' (コピー)';
 const IMPORT_PREFIX = '(取込) ';
 const LIGHT_THEME_COLOR = '#4a90e2';
 const DARK_THEME_COLOR = '#007aff';
 const APP_VERSION = "0.5";
+const DEFAULT_ZAI_MODEL = 'glm-4.6';
+
+// プロバイダーごとのモデルリスト
+const GEMINI_MODELS = [
+    { value: 'gemini-2.5-pro', label: 'gemini-2.5-pro' },
+    { value: 'gemini-2.5-flash', label: 'gemini-2.5-flash' },
+    { value: 'gemini-2.5-flash-lite', label: 'gemini-2.5-flash-lite' },
+    { value: 'gemini-2.0-flash', label: 'gemini-2.0-flash' },
+    { value: 'gemini-2.0-flash-lite', label: 'gemini-2.0-flash-lite' },
+    { value: 'gemini-2.5-flash-preview-09-2025', label: 'gemini-2.5-flash-preview-09-2025', group: 'プレビュー版' },
+    { value: 'gemini-2.5-flash-lite-preview-09-2025', label: 'gemini-2.5-flash-lite-preview-09-2025', group: 'プレビュー版' },
+    { value: 'gemini-2.5-flash-image-preview', label: 'gemini-2.5-flash-image-preview (Nano Banana)', group: 'プレビュー版' }
+];
+
+const ZAI_MODELS = [
+    { value: 'glm-4.6', label: 'GLM-4.6' },
+    { value: 'glm-4', label: 'GLM-4' },
+    { value: 'glm-4-flash', label: 'GLM-4 Flash' }
+];
+
 const VERSION_HISTORY = {
     "0.6": [
         "Dropbox同期の安定性を向上させる同期ロック機能を導入しました。",
@@ -218,7 +239,11 @@ try {
         systemPromptEditor: document.getElementById('system-prompt-editor'),
         saveSystemPromptBtn: document.getElementById('save-system-prompt-btn'),
         cancelSystemPromptBtn: document.getElementById('cancel-system-prompt-btn'),
+        apiProviderSelect: document.getElementById('api-provider'),
         apiKeyInput: document.getElementById('api-key'),
+        zaiApiKeyInput: document.getElementById('zai-api-key'),
+        geminiApiKeyContainer: document.getElementById('gemini-api-key-container'),
+        zaiApiKeyContainer: document.getElementById('zai-api-key-container'),
         modelNameSelect: document.getElementById('model-name'),
         userDefinedModelsGroup: document.getElementById('user-defined-models-group'),
         systemPromptDefaultTextarea: document.getElementById('system-prompt-default'),
@@ -437,7 +462,9 @@ const state = {
     videoUrlCache: new Map(),
     imageUrlCache: new Map(),
     settings: {
+        apiProvider: 'gemini', // 'gemini' | 'zai'
         apiKey: '',
+        zaiApiKey: '',
         modelName: DEFAULT_MODEL,
         systemPrompt: '',
         temperature: null,
@@ -781,7 +808,7 @@ const dbUtils = {
                             });
 
                             const profileSettingKeys = [
-                                'apiKey', 'modelName', 'systemPrompt', 'temperature', 'maxTokens', 'topK', 'topP',
+                                'apiProvider', 'apiKey', 'zaiApiKey', 'modelName', 'systemPrompt', 'temperature', 'maxTokens', 'topK', 'topP',
                                 'presencePenalty', 'frequencyPenalty', 'thinkingBudget', 'includeThoughts',
                                 'enableThoughtTranslation', 'thoughtTranslationModel', 'dummyUser',
                                 'applyDummyToProofread', 'applyDummyToTranslate', 'dummyModel', 'concatDummyModel',
@@ -1419,28 +1446,33 @@ const dbUtils = {
         const allAvailableAssets = new Map([...localAssetsBeforeClear, ...downloadedAssets]);
         console.log(`[DB Import V2] 利用可能なアセットの完全なマップを作成しました: ${allAvailableAssets.size}件`);
 
-        // 除去されたIDの情報を記録するオブジェクト
-        const removedAssetInfo = {}; 
+        // 欠落しているアセットIDを記録するオブジェクト（チャット単位）
+        const missingAssetInfo = {};
 
         (chats || []).forEach(chat => {
-            let removedIdsForThisChat = [];
+            const missingIdsForThisChat = new Set();
             (chat.messages || []).forEach(message => {
-                if (message.imageIds && message.imageIds.length > 0) {
-                    const originalIds = [...message.imageIds]; // コピーを作成
-                    message.imageIds = originalIds.filter(id => allAvailableAssets.has(id));
-                    
-                    if (originalIds.length !== message.imageIds.length) {
-                        const removedIds = originalIds.filter(id => !allAvailableAssets.has(id));
-                        removedIdsForThisChat.push(...removedIds);
-                    }
+                if (Array.isArray(message.imageIds) && message.imageIds.length > 0) {
+                    message.imageIds.forEach(id => {
+                        if (id && !allAvailableAssets.has(id)) {
+                            missingIdsForThisChat.add(id);
+                        }
+                    });
                 }
             });
-            if (removedIdsForThisChat.length > 0) {
-                // Setを使って重複を除去してから記録
-                removedAssetInfo[chat.title || `ID:${chat.id}`] = [...new Set(removedIdsForThisChat)];
-                console.warn(`[DB Import V2] チャット「${chat.title || `ID:${chat.id}`}」から、実体が見つからない画像IDを ${removedAssetInfo[chat.title || `ID:${chat.id}`].length}件除去します。`);
+            if (missingIdsForThisChat.size > 0) {
+                const key = chat.title || `ID:${chat.id}`;
+                missingAssetInfo[key] = [...missingIdsForThisChat];
             }
         });
+
+        if (Object.keys(missingAssetInfo).length > 0) {
+            console.error("[DB Import V2] 必要な画像アセットの一部が見つからないため、インポートを中止します。", missingAssetInfo);
+            const error = new Error("必要な画像アセットのダウンロードに失敗したため、データのインポートを中止しました。再度同期をお試しください。");
+            error.code = 'MISSING_ASSETS';
+            error.missingAssetInfo = missingAssetInfo;
+            throw error;
+        }
 
         const profilesWithBlobs = (profiles || []).map(p => {
             if (p.iconAssetId && allAvailableAssets.has(p.iconAssetId)) {
@@ -1550,7 +1582,7 @@ const dbUtils = {
             console.log("[DB Import V2] メインデータベースの更新が正常に完了しました。");
 
             // 処理結果を返す
-            return { removedAssetInfo };
+            return { removedAssetInfo: missingAssetInfo };
 
         } catch (error) {
             console.error("[DB Import V2] 安全なインポート処理中にエラーが発生しました:", error);
@@ -2415,7 +2447,14 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
 
     // 設定をUIに適用
     applySettingsToUI() {
+        // プロバイダーとAPIキーの設定（要素が存在する場合のみ）
+        if (elements.apiProviderSelect) {
+            elements.apiProviderSelect.value = state.settings.apiProvider || 'gemini';
+        }
         elements.apiKeyInput.value = state.settings.apiKey || '';
+        if (elements.zaiApiKeyInput) {
+            elements.zaiApiKeyInput.value = state.settings.zaiApiKey || '';
+        }
         elements.modelNameSelect.value = state.settings.modelName || DEFAULT_MODEL;
         elements.systemPromptDefaultTextarea.value = state.settings.systemPrompt || '';
         elements.temperatureInput.value = state.settings.temperature === null ? '' : state.settings.temperature;
@@ -2492,6 +2531,13 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
         this.updateModelWarningMessage();
         this.applyBackgroundImage();
         appLogic.applyWideMode();
+        
+        // プロバイダーに応じたUIの初期化
+        if (elements.apiProviderSelect) {
+            const provider = state.settings.apiProvider || 'gemini';
+            appLogic.updateProviderUI(provider);
+            appLogic.updateModelOptions(provider);
+        }
 
         appLogic.toggleDebugLogButtonVisibility(state.settings.debugMode);
 
@@ -3083,6 +3129,216 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
 
 // --- APIユーティリティ (apiUtils) ---
 const apiUtils = {
+    // Gemini形式からOpenAI形式への変換
+    convertGeminiToOpenAIFormat(messagesForApi) {
+        const openAIMessages = [];
+        
+        for (const geminiMsg of messagesForApi) {
+            const role = geminiMsg.role === 'model' ? 'assistant' : (geminiMsg.role === 'tool' ? 'tool' : 'user');
+            const parts = geminiMsg.parts || [];
+            
+            if (role === 'tool') {
+                // ツールレスポンスの処理
+                for (const part of parts) {
+                    if (part.functionResponse) {
+                        openAIMessages.push({
+                            role: 'tool',
+                            tool_call_id: part.functionResponse.name, // 簡易的なIDマッピング
+                            content: typeof part.functionResponse.response === 'string' 
+                                ? part.functionResponse.response 
+                                : JSON.stringify(part.functionResponse.response)
+                        });
+                    }
+                }
+            } else {
+                const contentParts = [];
+                const toolCalls = [];
+                
+                for (const part of parts) {
+                    if (part.text) {
+                        contentParts.push({ type: 'text', text: part.text });
+                    } else if (part.inlineData) {
+                        // 画像データの変換
+                        const imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                        contentParts.push({
+                            type: 'image_url',
+                            image_url: { url: imageUrl }
+                        });
+                    } else if (part.functionCall) {
+                        // Function Callingの変換
+                        toolCalls.push({
+                            id: `call_${Date.now()}_${Math.random()}`,
+                            type: 'function',
+                            function: {
+                                name: part.functionCall.name,
+                                arguments: typeof part.functionCall.args === 'string' 
+                                    ? part.functionCall.args 
+                                    : JSON.stringify(part.functionCall.args || {})
+                            }
+                        });
+                    }
+                }
+                
+                const message = { role };
+                
+                if (toolCalls.length > 0) {
+                    // Function Callingがある場合
+                    message.tool_calls = toolCalls;
+                    message.content = null;
+                } else if (contentParts.length > 0) {
+                    // コンテンツがある場合
+                    if (contentParts.length === 1 && contentParts[0].type === 'text') {
+                        message.content = contentParts[0].text;
+                    } else {
+                        message.content = contentParts.map(part => {
+                            if (part.type === 'text') {
+                                return { type: 'text', text: part.text };
+                            } else if (part.type === 'image_url') {
+                                return part;
+                            }
+                            return part;
+                        });
+                    }
+                }
+                
+                if (message.content !== undefined || message.tool_calls) {
+                    openAIMessages.push(message);
+                }
+            }
+        }
+        
+        return openAIMessages;
+    },
+
+    // OpenAI形式からGemini形式への変換（レスポンス用）
+    convertOpenAIToGeminiFormat(openAIResponse) {
+        // OpenAI形式のレスポンスをGemini形式に変換
+        const candidates = [];
+        
+        if (openAIResponse.choices && openAIResponse.choices.length > 0) {
+            for (const choice of openAIResponse.choices) {
+                const parts = [];
+                const message = choice.message;
+                
+                if (message.content) {
+                    if (typeof message.content === 'string') {
+                        parts.push({ text: message.content });
+                    } else if (Array.isArray(message.content)) {
+                        for (const contentItem of message.content) {
+                            if (contentItem.type === 'text') {
+                                parts.push({ text: contentItem.text });
+                            } else if (contentItem.type === 'image_url') {
+                                // 画像URLからbase64データを抽出（必要に応じて）
+                                // 現時点ではテキストのみ対応
+                            }
+                        }
+                    }
+                }
+                
+                if (message.tool_calls && message.tool_calls.length > 0) {
+                    for (const toolCall of message.tool_calls) {
+                        const callArgs = toolCall?.function?.arguments;
+                        const parsedArgs = this._parseToolArguments(callArgs);
+                        parts.push({
+                            functionCall: {
+                                name: toolCall.function.name,
+                                args: parsedArgs
+                            }
+                        });
+                    }
+                }
+                
+                if (parts.length > 0) {
+                    candidates.push({
+                        content: { parts },
+                        finishReason: this.mapFinishReason(choice.finish_reason),
+                        index: choice.index
+                    });
+                }
+            }
+        }
+        
+        // usageMetadataの変換
+        const usageMetadata = openAIResponse.usage ? {
+            promptTokenCount: openAIResponse.usage.prompt_tokens,
+            candidatesTokenCount: openAIResponse.usage.completion_tokens,
+            totalTokenCount: openAIResponse.usage.total_tokens
+        } : undefined;
+        
+        return {
+            candidates,
+            usageMetadata
+        };
+    },
+
+    // OpenAIのfinish_reasonをGeminiのfinishReasonにマッピング
+    mapFinishReason(openAIFinishReason) {
+        const mapping = {
+            'stop': 'STOP',
+            'length': 'MAX_TOKENS',
+            'tool_calls': 'STOP',
+            'content_filter': 'SAFETY',
+            'function_call': 'STOP'
+        };
+        return mapping[openAIFinishReason] || 'STOP';
+    },
+
+    /**
+     * OpenAI形式のtool argumentsを安全にオブジェクトへ変換する
+     * - 文字列(JSON)形式
+     * - 文字列だが各値がクォートされていない簡易オブジェクト形式
+     * - 既にオブジェクト
+     * に対応する。
+     * 解析に失敗した場合は { raw: ... } を返す。
+     */
+    _parseToolArguments(callArgs) {
+        if (!callArgs) {
+            return {};
+        }
+
+        if (typeof callArgs === 'object') {
+            return callArgs;
+        }
+
+        if (typeof callArgs !== 'string') {
+            return {};
+        }
+
+        const trimmed = callArgs.trim();
+        if (!trimmed) {
+            return {};
+        }
+
+        // 1st attempt: JSON.parse as-is
+        try {
+            return JSON.parse(trimmed);
+        } catch (firstError) {
+            // 2nd attempt: 正規化してからJSON.parse
+            try {
+                const normalized = trimmed
+                    // 値がクォートされていないケースを検出してクォートを付与
+                    .replace(/:\s*([^"{\[\],}]+)(?=\s*[},])/g, (_match, value) => {
+                        const v = value.trim();
+                        if (!v) return ': ""';
+                        const lower = v.toLowerCase();
+                        if (lower === 'true' || lower === 'false' || lower === 'null') {
+                            return `: ${lower}`;
+                        }
+                        if (/^-?\d+(\.\d+)?$/.test(v)) {
+                            return `: ${v}`;
+                        }
+                        const escaped = v.replace(/"/g, '\\"');
+                        return `: "${escaped}"`;
+                    });
+
+                return JSON.parse(normalized);
+            } catch (secondError) {
+                console.warn('convertOpenAIToGeminiFormat: argumentsの解析に失敗しました。生文字列を保持します。', secondError);
+                return { raw: trimmed };
+            }
+        }
+    },
+
     // Gemini APIを呼び出す
     async callGeminiApi(messagesForApi, generationConfig, systemInstruction, tools = null, forceCalling = false) {
         console.log(`[Debug] callGeminiApi: 現在の設定値を確認します。`, {
@@ -3091,15 +3347,15 @@ const apiUtils = {
             isForcedNow: forceCalling
         });
 
-        if (!state.settings.apiKey) {
-            throw new Error("APIキーが設定されていません。");
+        const apiKey = state.settings.apiKey;
+        if (!apiKey) {
+            throw new Error("Gemini APIキーが設定されていません。");
         }
         
         state.abortController = new AbortController();
         const { signal } = state.abortController;
 
         const model = state.settings.modelName || DEFAULT_MODEL;
-        const apiKey = state.settings.apiKey;
 
         if (model === 'gemini-2.5-pro') {
             await appLogic._updateApiUsageCount(state.activeProfileId); 
@@ -3365,6 +3621,165 @@ const apiUtils = {
 
         console.error("思考プロセスの翻訳中にエラーが発生しました。原文を返します。", lastError);
         return textToTranslate;
+    },
+
+    // Z.ai APIを呼び出す
+    async callZaiApi(messagesForApi, generationConfig, systemInstruction, tools = null, forceCalling = false) {
+        console.log(`[Debug] callZaiApi: Z.ai APIを呼び出します。`);
+
+        const apiKey = state.settings.zaiApiKey || state.settings.apiKey;
+        if (!apiKey) {
+            throw new Error("Z.ai APIキーが設定されていません。");
+        }
+
+        state.abortController = new AbortController();
+        const { signal } = state.abortController;
+
+        const model = state.settings.modelName || DEFAULT_ZAI_MODEL;
+
+        // Gemini形式のメッセージをOpenAI形式に変換
+        const openAIMessages = this.convertGeminiToOpenAIFormat(messagesForApi);
+
+        // システムプロンプトの処理
+        if (systemInstruction && systemInstruction.parts && systemInstruction.parts.length > 0) {
+            const systemText = systemInstruction.parts[0].text;
+            if (systemText) {
+                // システムメッセージを先頭に追加
+                openAIMessages.unshift({
+                    role: 'system',
+                    content: systemText
+                });
+            }
+        }
+
+        // リクエストボディの構築
+        const requestBody = {
+            model: model,
+            messages: openAIMessages
+        };
+
+        // 生成パラメータの変換
+        if (generationConfig) {
+            if (generationConfig.temperature !== undefined) {
+                requestBody.temperature = generationConfig.temperature;
+            }
+            if (generationConfig.maxOutputTokens !== undefined) {
+                requestBody.max_tokens = generationConfig.maxOutputTokens;
+            }
+            if (generationConfig.topP !== undefined) {
+                requestBody.top_p = generationConfig.topP;
+            }
+            // Z.ai APIではtop_kはサポートされていない可能性があるため、変換しない
+        }
+
+        // Function Callingの処理
+        if (state.settings.geminiEnableFunctionCalling && window.functionDeclarations) {
+            // Gemini形式のfunction declarationsをOpenAI形式に変換
+            const openAITools = [];
+            
+            for (const geminiTool of window.functionDeclarations) {
+                if (geminiTool.function_declarations && Array.isArray(geminiTool.function_declarations)) {
+                    // Gemini形式: { function_declarations: [{ name, description, parameters }] }
+                    for (const funcDecl of geminiTool.function_declarations) {
+                        openAITools.push({
+                            type: 'function',
+                            function: {
+                                name: funcDecl.name,
+                                description: funcDecl.description || '',
+                                parameters: funcDecl.parameters || {}
+                            }
+                        });
+                    }
+                } else if (geminiTool.google_search) {
+                    // Google SearchはZ.aiではサポートされていない可能性があるためスキップ
+                    console.warn("Z.ai APIではGoogle Searchはサポートされていません。スキップします。");
+                }
+            }
+
+            if (openAITools.length > 0) {
+                requestBody.tools = openAITools;
+                if (forceCalling) {
+                    requestBody.tool_choice = 'required';
+                } else {
+                    requestBody.tool_choice = 'auto';
+                }
+                console.log(`Z.ai APIに ${openAITools.length} 個のFunction Callingツールを設定しました。`);
+            }
+        }
+
+        console.log("Z.aiへの送信データ:", JSON.stringify(requestBody, (key, value) => {
+            if (key === 'data' && typeof value === 'string' && value.length > 100) {
+                return value.substring(0, 50) + '...[省略]...' + value.substring(value.length - 20);
+            }
+            return value;
+        }, 2));
+        console.log("ターゲットエンドポイント:", ZAI_API_BASE_URL);
+
+        try {
+            const timestamp = new Date().toLocaleTimeString();
+            console.log(`[API_DEBUG ${timestamp}] Sending fetch request to Z.ai API...`);
+
+            const response = await fetch(ZAI_API_BASE_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify(requestBody),
+                signal
+            });
+
+            const receivedTimestamp = new Date().toLocaleTimeString();
+            console.log(`[API_DEBUG ${receivedTimestamp}] Received response from Z.ai API. Status: ${response.status}`);
+
+            if (!response.ok) {
+                let errorMsg = `APIエラー (${response.status}): ${response.statusText}`;
+                let errorData = null;
+                try {
+                    errorData = await response.json();
+                    console.error("APIエラーレスポンスボディ:", errorData);
+                    if (errorData.error && errorData.error.message) {
+                        errorMsg = `APIエラー (${response.status}): ${errorData.error.message}`;
+                    } else if (errorData.message) {
+                        errorMsg = `APIエラー (${response.status}): ${errorData.message}`;
+                    }
+                } catch (e) {
+                    console.error("APIエラーレスポンスボディのパース失敗:", e);
+                }
+                const error = new Error(errorMsg);
+                error.status = response.status;
+                error.data = errorData;
+                throw error;
+            }
+
+            // レスポンスを取得してGemini形式に変換
+            const openAIResponse = await response.json();
+            const geminiFormatResponse = this.convertOpenAIToGeminiFormat(openAIResponse);
+
+            // Responseオブジェクトのように扱えるようにラップ
+            return {
+                ok: true,
+                status: response.status,
+                json: async () => geminiFormatResponse
+            };
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                throw new Error("リクエストがキャンセルされました。");
+            } else {
+                throw error;
+            }
+        }
+    },
+
+    // プロバイダーに応じて適切なAPIを呼び出すラッパー関数
+    async callApi(messagesForApi, generationConfig, systemInstruction, tools = null, forceCalling = false) {
+        const provider = state.settings.apiProvider || 'gemini';
+        
+        if (provider === 'zai') {
+            return await this.callZaiApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling);
+        } else {
+            return await this.callGeminiApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling);
+        }
     }
 };
 
@@ -3768,7 +4183,7 @@ const appLogic = {
 
     getCurrentUiSettings() {
         const settings = {};
-        const stringKeys = ['apiKey', 'modelName', 'dummyUser', 'dummyModel', 'additionalModels', 'historySortOrder', 'fontFamily', 'proofreadingModelName', 'proofreadingSystemInstruction', 'googleSearchApiKey', 'googleSearchEngineId', 'headerColor', 'thoughtTranslationModel', 'summarySystemPrompt'];
+        const stringKeys = ['apiProvider', 'apiKey', 'zaiApiKey', 'modelName', 'dummyUser', 'dummyModel', 'additionalModels', 'historySortOrder', 'fontFamily', 'proofreadingModelName', 'proofreadingSystemInstruction', 'googleSearchApiKey', 'googleSearchEngineId', 'headerColor', 'thoughtTranslationModel', 'summarySystemPrompt'];
         const numberKeys = ['temperature', 'maxTokens', 'topK', 'topP', 'thinkingBudget', 'maxRetries', 'maxBackoffDelaySeconds', 'overlayOpacity', 'messageOpacity'];
         const booleanKeys = ['enterToSend', 'darkMode', 'geminiEnableGrounding', 'geminiEnableFunctionCalling', 'enableSwipeNavigation', 'enableProofreading', 'enableAutoRetry', 'useFixedRetryDelay', 'concatDummyModel', 'includeThoughts', 'enableThoughtTranslation', 'applyDummyToProofread', 'applyDummyToTranslate', 'forceFunctionCalling', 'autoScroll', 'enableWideMode', 'enableSummaryButton'];
         
@@ -4153,12 +4568,96 @@ const appLogic = {
     
         const usage = profile.apiUsage || { count: 0 };
     
-        if (state.settings.modelName === 'gemini-2.5-pro') {
+        if (state.settings.modelName === 'gemini-2.5-pro' && state.settings.apiProvider === 'gemini') {
             usageText.textContent = `gemini-2.5-pro 本日の使用回数: ${usage.count} 回 (日本時間16/17時リセット)`;
             usageContainer.classList.remove('hidden');
         } else {
             usageContainer.classList.add('hidden');
         }
+    },
+
+    // プロバイダー変更時のUI更新
+    updateProviderUI(provider) {
+        const isGemini = provider === 'gemini';
+        const isZai = provider === 'zai';
+        
+        // APIキー入力欄の表示/非表示
+        if (elements.geminiApiKeyContainer) {
+            elements.geminiApiKeyContainer.classList.toggle('hidden', !isGemini);
+        }
+        if (elements.zaiApiKeyContainer) {
+            elements.zaiApiKeyContainer.classList.toggle('hidden', !isZai);
+        }
+        
+        // プロバイダー固有の設定項目の表示/非表示
+        // Gemini専用機能（グラウンディング、Function Callingなど）の表示制御は後で実装
+    },
+
+    // プロバイダーに応じたモデルリストの更新
+    updateModelOptions(provider) {
+        const modelSelect = elements.modelNameSelect;
+        if (!modelSelect) return;
+        
+        // 既存のオプションをクリア（ユーザー指定モデルグループを除く）
+        const userDefinedGroup = elements.userDefinedModelsGroup;
+        const currentValue = modelSelect.value;
+        
+        // すべてのoptgroupとoptionを削除（ユーザー指定グループを除く）
+        const optgroups = Array.from(modelSelect.querySelectorAll('optgroup'));
+        optgroups.forEach(group => {
+            if (group.id !== 'user-defined-models-group') {
+                group.remove();
+            }
+        });
+        
+        const options = Array.from(modelSelect.querySelectorAll('option:not([data-user-defined])'));
+        options.forEach(option => option.remove());
+        
+        // プロバイダーに応じたモデルリストを追加
+        const models = provider === 'zai' ? ZAI_MODELS : GEMINI_MODELS;
+        const groups = {};
+        
+        models.forEach(model => {
+            if (model.group) {
+                // グループ化されたモデル
+                if (!groups[model.group]) {
+                    const optgroup = document.createElement('optgroup');
+                    optgroup.label = model.group;
+                    modelSelect.appendChild(optgroup);
+                    groups[model.group] = optgroup;
+                }
+                const option = document.createElement('option');
+                option.value = model.value;
+                option.textContent = model.label;
+                groups[model.group].appendChild(option);
+            } else {
+                // 通常のモデル
+                const option = document.createElement('option');
+                option.value = model.value;
+                option.textContent = model.label;
+                modelSelect.appendChild(option);
+            }
+        });
+        
+        // ユーザー指定モデルグループを最後に追加
+        if (userDefinedGroup && userDefinedGroup.parentNode !== modelSelect) {
+            modelSelect.appendChild(userDefinedGroup);
+        }
+        
+        // 現在の値が新しいリストに含まれているか確認
+        const availableValues = models.map(m => m.value);
+        if (availableValues.includes(currentValue)) {
+            modelSelect.value = currentValue;
+        } else {
+            // デフォルトモデルを設定
+            const defaultModel = provider === 'zai' ? DEFAULT_ZAI_MODEL : DEFAULT_MODEL;
+            modelSelect.value = defaultModel;
+            state.settings.modelName = defaultModel;
+        }
+        
+        // モデル警告メッセージを更新
+        uiUtils.updateModelWarningMessage();
+        this.updateApiUsageUI();
     },
 
     /**
@@ -5193,7 +5692,16 @@ const appLogic = {
 
         
         const settingsMap = {
+            apiProvider: { 
+                element: elements.apiProviderSelect, 
+                event: 'change',
+                onUpdate: (value) => {
+                    this.updateProviderUI(value);
+                    this.updateModelOptions(value);
+                }
+            },
             apiKey: { element: elements.apiKeyInput, event: 'input' },
+            zaiApiKey: { element: elements.zaiApiKeyInput, event: 'input' },
             modelName: { 
                 element: elements.modelNameSelect, 
                 event: 'change', 
@@ -8337,7 +8845,7 @@ const appLogic = {
                     uiUtils.setLoadingIndicatorText(`${attempt}回目の再試行中...`);
                 }
 
-                const response = await apiUtils.callGeminiApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling);
+                const response = await apiUtils.callApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling);
 
                 const getFinishReasonError = (candidate) => {
                     const reason = candidate?.finishReason;
@@ -10235,6 +10743,21 @@ const appLogic = {
         } catch (error) {
             console.error("[Data Import V2] インポート処理中にエラーが発生しました:", error);
             uiUtils.hideProgressDialog();
+            if (error && error.missingAssetInfo) {
+                const detailLines = Object.entries(error.missingAssetInfo)
+                    .map(([chatTitle, ids]) => `・${chatTitle}: ${ids.length}件の画像が不足`)
+                    .join('\n');
+                const message = [
+                    "必要な画像アセットが不足しているため同期を中止しました。",
+                    "ネットワーク状況またはDropbox上のアセット状態を確認し、再度同期をお試しください。",
+                    "不足している画像一覧:",
+                    detailLines
+                ].join('\n');
+                const wrappedError = new Error(message);
+                wrappedError.missingAssetInfo = error.missingAssetInfo;
+                wrappedError.code = error.code || 'MISSING_ASSETS';
+                throw wrappedError;
+            }
             throw new Error(`データのインポートに失敗しました: ${error.message}`);
         }
     },

@@ -218,8 +218,21 @@
 
                 <div class="settings-group">
                     <h3>基本設定</h3>
-                    <label for="api-key">Gemini APIキー:</label>
-                    <input type="password" autocomplete="new-password" id="api-key" placeholder="APIキーを入力" aria-label="Gemini APIキー">
+                    <label for="api-provider">APIプロバイダー:</label>
+                    <select id="api-provider" aria-label="APIプロバイダー">
+                        <option value="gemini">Gemini</option>
+                        <option value="zai">Z.ai (GLM4.6等)</option>
+                    </select>
+
+                    <div id="gemini-api-key-container">
+                        <label for="api-key">Gemini APIキー:</label>
+                        <input type="password" autocomplete="new-password" id="api-key" placeholder="APIキーを入力" aria-label="Gemini APIキー">
+                    </div>
+
+                    <div id="zai-api-key-container" class="hidden">
+                        <label for="zai-api-key">Z.ai APIキー:</label>
+                        <input type="password" autocomplete="new-password" id="zai-api-key" placeholder="Z.ai APIキーを入力" aria-label="Z.ai APIキー">
+                    </div>
 
                     <label for="model-name">モデル名:</label>
                     <select id="model-name" aria-label="モデル名">
