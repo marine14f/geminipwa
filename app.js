@@ -3692,11 +3692,13 @@ const apiUtils = {
         }
 
         // Function Callingの処理
-        if (state.settings.geminiEnableFunctionCalling && window.functionDeclarations) {
+        const effectiveTools = tools !== undefined ? tools : (state.settings.geminiEnableFunctionCalling ? window.functionDeclarations : null);
+        const shouldAttachTools = Array.isArray(effectiveTools) && effectiveTools.length > 0;
+        if (shouldAttachTools) {
             // Gemini形式のfunction declarationsをOpenAI形式に変換
             const openAITools = [];
             
-            for (const geminiTool of window.functionDeclarations) {
+            for (const geminiTool of effectiveTools) {
                 if (geminiTool.function_declarations && Array.isArray(geminiTool.function_declarations)) {
                     // Gemini形式: { function_declarations: [{ name, description, parameters }] }
                     for (const funcDecl of geminiTool.function_declarations) {
@@ -3724,6 +3726,8 @@ const apiUtils = {
                 }
                 console.log(`Z.ai APIに ${openAITools.length} 個のFunction Callingツールを設定しました。`);
             }
+        } else {
+            console.log("Z.ai APIにFunction Callingツールを送信しません。");
         }
 
         console.log("Z.aiへの送信データ:", JSON.stringify(requestBody, (key, value) => {
