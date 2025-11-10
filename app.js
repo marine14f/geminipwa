@@ -48,8 +48,8 @@ const GEMINI_MODELS = [
 
 const ZAI_MODELS = [
     { value: 'glm-4.6', label: 'GLM-4.6' },
-    { value: 'glm-4', label: 'GLM-4' },
-    { value: 'glm-4-flash', label: 'GLM-4 Flash' }
+    { value: 'glm-4.5-Air', label: 'GLM-4.5 Air' },
+    { value: 'glm-4.5-flash', label: 'GLM-4.5 Flash' }
 ];
 
 const VERSION_HISTORY = {
@@ -3137,16 +3137,20 @@ const apiUtils = {
             const role = geminiMsg.role === 'model' ? 'assistant' : (geminiMsg.role === 'tool' ? 'tool' : 'user');
             const parts = geminiMsg.parts || [];
             
-            if (role === 'tool') {
+        if (role === 'tool') {
                 // ツールレスポンスの処理
                 for (const part of parts) {
                     if (part.functionResponse) {
+                        const toolCallId = part.functionResponse.id 
+                            || part.functionResponse.tool_call_id 
+                            || part.functionResponse.name;
+                        const responseContent = part.functionResponse.response;
                         openAIMessages.push({
                             role: 'tool',
-                            tool_call_id: part.functionResponse.name, // 簡易的なIDマッピング
-                            content: typeof part.functionResponse.response === 'string' 
-                                ? part.functionResponse.response 
-                                : JSON.stringify(part.functionResponse.response)
+                            tool_call_id: toolCallId,
+                            content: typeof responseContent === 'string' 
+                                ? responseContent 
+                                : JSON.stringify(responseContent ?? null)
                         });
                     }
                 }
@@ -3166,8 +3170,11 @@ const apiUtils = {
                         });
                     } else if (part.functionCall) {
                         // Function Callingの変換
+                        const toolCallId = part.functionCall.id 
+                            || part.functionCall.tool_call_id 
+                            || `call_${Date.now()}_${Math.random()}`;
                         toolCalls.push({
-                            id: `call_${Date.now()}_${Math.random()}`,
+                            id: toolCallId,
                             type: 'function',
                             function: {
                                 name: part.functionCall.name,
@@ -3239,12 +3246,18 @@ const apiUtils = {
                     for (const toolCall of message.tool_calls) {
                         const callArgs = toolCall?.function?.arguments;
                         const parsedArgs = this._parseToolArguments(callArgs);
-                        parts.push({
+                        const functionCallPart = {
                             functionCall: {
                                 name: toolCall.function.name,
                                 args: parsedArgs
                             }
-                        });
+                        };
+                        if (toolCall.id) {
+                            functionCallPart.functionCall.id = toolCall.id;
+                        } else if (toolCall.tool_call_id) {
+                            functionCallPart.functionCall.id = toolCall.tool_call_id;
+                        }
+                        parts.push(functionCallPart);
                     }
                 }
                 
@@ -7238,6 +7251,7 @@ const appLogic = {
             for (const toolCall of result.toolCalls) {
                 const functionName = toolCall.functionCall.name;
                 const functionArgs = toolCall.functionCall.args;
+                const toolCallId = toolCall.id || toolCall.functionCall?.id || null;
                 
                 if (functionName === 'generate_image_stable_diffusion') {
                     uiUtils.setLoadingIndicatorText('SDで画像生成中...');
@@ -7282,6 +7296,9 @@ const appLogic = {
                     response: responseForAI, 
                     timestamp: Date.now() 
                 };
+                if (toolCallId) {
+                    toolResponseMessage.tool_call_id = toolCallId;
+                }
                 
                 if(toolResult._internal_ui_action){
                     toolResponseMessage._internal_ui_action = toolResult._internal_ui_action;
@@ -7299,8 +7316,26 @@ const appLogic = {
                     console.log("[_internalHandleSend] テキスト応答がなかったため、ツール結果を基に最終応答を生成します。");
                     uiUtils.setLoadingIndicatorText('最終応答を生成中...');
 
-                    const modelMessageForApi = { role: 'model', parts: result.toolCalls.map(tc => ({ functionCall: tc.functionCall })) };
-                    const toolResultsForApi = toolResults.map(tr => ({ role: 'tool', parts: [{ functionResponse: { name: tr.name, response: tr.response } }] }));
+                    const modelMessageForApi = { 
+                        role: 'model', 
+                        parts: result.toolCalls.map(tc => {
+                            const functionCall = { ...tc.functionCall };
+                            if (tc.id && !functionCall.id) {
+                                functionCall.id = tc.id;
+                            }
+                            return { functionCall };
+                        }) 
+                    };
+                    const toolResultsForApi = toolResults.map(tr => ({ 
+                        role: 'tool', 
+                        parts: [{ 
+                            functionResponse: { 
+                                name: tr.name, 
+                                response: tr.response,
+                                id: tr.tool_call_id || tr.name 
+                            } 
+                        }] 
+                    }));
                     currentTurnHistory.push(modelMessageForApi, ...toolResultsForApi);
 
                     const textResult = await this.callApiWithRetry({ 
@@ -7316,8 +7351,26 @@ const appLogic = {
                 break;
             }
 
-            const modelMessageForApi = { role: 'model', parts: result.toolCalls.map(tc => ({ functionCall: tc.functionCall })) };
-            const toolResultsForApi = toolResults.map(tr => ({ role: 'tool', parts: [{ functionResponse: { name: tr.name, response: tr.response } }] }));
+            const modelMessageForApi = { 
+                role: 'model', 
+                parts: result.toolCalls.map(tc => {
+                    const functionCall = { ...tc.functionCall };
+                    if (tc.id && !functionCall.id) {
+                        functionCall.id = tc.id;
+                    }
+                    return { functionCall };
+                }) 
+            };
+            const toolResultsForApi = toolResults.map(tr => ({ 
+                role: 'tool', 
+                parts: [{ 
+                    functionResponse: { 
+                        name: tr.name, 
+                        response: tr.response,
+                        id: tr.tool_call_id || tr.name 
+                    } 
+                }] 
+            }));
             currentTurnHistory.push(modelMessageForApi, ...toolResultsForApi);
             uiUtils.setLoadingIndicatorText('応答生成中...');
         }
@@ -8903,7 +8956,13 @@ const appLogic = {
                             finalContent += part.text;
                         }
                     } else if (part.functionCall) {
-                        finalToolCalls.push({ functionCall: part.functionCall });
+                        const originalCall = part.functionCall;
+                        const callId = originalCall.id || originalCall.tool_call_id || null;
+                        const functionCall = { ...originalCall };
+                        if (callId && !functionCall.id) {
+                            functionCall.id = callId;
+                        }
+                        finalToolCalls.push({ id: callId, functionCall });
                     }
                 });
 
