@@ -3218,6 +3218,7 @@ const apiUtils = {
             }
         }
         
+        console.debug('[FC_DEBUG] openAIMessages about to send:', JSON.stringify(openAIMessages, null, 2));
         return openAIMessages;
     },
 
@@ -3610,6 +3611,7 @@ const apiUtils = {
                 }
 
                 const responseData = await response.json();
+                console.debug('[FC_DEBUG] raw responseData:', JSON.stringify(responseData, null, 2));
                 if (responseData.candidates?.[0]?.content?.parts?.[0]?.text) {
                     const translatedText = responseData.candidates[0].content.parts[0].text;
                     console.log("--- 翻訳処理成功 ---");
@@ -7253,6 +7255,7 @@ const appLogic = {
             let containsTerminalAction = false;
             
             for (const toolCall of result.toolCalls) {
+                console.debug('[FC_DEBUG] incoming toolCall:', JSON.stringify(toolCall, null, 2));
                 const functionName = toolCall.functionCall.name;
                 const functionArgs = toolCall.functionCall.args;
                 const toolCallId = toolCall.tool_call_id || toolCall.id || toolCall.functionCall?.id || null;
@@ -7274,6 +7277,7 @@ const appLogic = {
                         toolCallId
                     };
                     toolResult = await window.functionCallingTools[functionName](argsWithContext, executionContext);
+                    console.debug('[FC_DEBUG] toolResult:', functionName, JSON.stringify(toolResult, null, 2));
                 } catch (toolError) {
                     console.error(`[_internalHandleSend] ${functionName}の実行中に予期せぬエラー:`, toolError);
                     toolResult = { error: { message: `ツール実行中に予期せぬエラーが発生しました: ${toolError.message}` } };
@@ -8955,6 +8959,7 @@ const appLogic = {
                 let finalThoughtSummary = '';
                 let finalToolCalls = [];
 
+                const functionCallParts = [];
                 parts.forEach(part => {
                     if (part.text) {
                         if (part.thought === true) {
@@ -8971,8 +8976,12 @@ const appLogic = {
                         }
                         const toolCallEntry = { id: callId, tool_call_id: callId, functionCall };
                         finalToolCalls.push(toolCallEntry);
+                        functionCallParts.push(functionCall);
                     }
                 });
+                if (functionCallParts.length > 0) {
+                    console.debug('[FC_DEBUG] parsed functionCall parts:', JSON.stringify(functionCallParts, null, 2));
+                }
 
                 if (candidate.thoughts?.parts) {
                     candidate.thoughts.parts.forEach(part => {
