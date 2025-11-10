@@ -3137,25 +3137,19 @@ const apiUtils = {
             const role = geminiMsg.role === 'model' ? 'assistant' : (geminiMsg.role === 'tool' ? 'tool' : 'user');
             const parts = geminiMsg.parts || [];
             
-        if (role === 'tool') {
+            if (role === 'tool') {
                 // ツールレスポンスの処理
                 for (const part of parts) {
                     if (part.functionResponse) {
-                        const toolCallId = part.functionResponse.tool_call_id 
-                            || part.functionResponse.id 
-                            || part.functionResponse.name;
-                        const responseContent = part.functionResponse.response;
-                        const toolMessage = {
+                        // OpenAI互換APIの場合、保存されたtool_call_idを使用
+                        const toolCallId = part.functionResponse._toolCallId || part.functionResponse.name;
+                        openAIMessages.push({
                             role: 'tool',
                             tool_call_id: toolCallId,
-                            content: typeof responseContent === 'string' 
-                                ? responseContent 
-                                : JSON.stringify(responseContent ?? null)
-                        };
-                        if (part.functionResponse.name) {
-                            toolMessage.name = part.functionResponse.name;
-                        }
-                        openAIMessages.push(toolMessage);
+                            content: typeof part.functionResponse.response === 'string' 
+                                ? part.functionResponse.response 
+                                : JSON.stringify(part.functionResponse.response)
+                        });
                     }
                 }
             } else {
@@ -3174,9 +3168,8 @@ const apiUtils = {
                         });
                     } else if (part.functionCall) {
                         // Function Callingの変換
-                        const toolCallId = part.functionCall.tool_call_id 
-                            || part.functionCall.id 
-                            || `call_${Date.now()}_${Math.random()}`;
+                        // OpenAI互換APIの場合、保存されたtool_call_idを使用
+                        const toolCallId = part.functionCall._toolCallId || `call_${Date.now()}_${Math.random()}`;
                         toolCalls.push({
                             id: toolCallId,
                             type: 'function',
@@ -3192,12 +3185,8 @@ const apiUtils = {
                 
                 const message = { role };
                 
-                if (toolCalls.length > 0) {
-                    // Function Callingがある場合
-                    message.tool_calls = toolCalls;
-                    message.content = null;
-                } else if (contentParts.length > 0) {
-                    // コンテンツがある場合
+                // コンテンツの設定
+                if (contentParts.length > 0) {
                     if (contentParts.length === 1 && contentParts[0].type === 'text') {
                         message.content = contentParts[0].text;
                     } else {
@@ -3210,6 +3199,14 @@ const apiUtils = {
                             return part;
                         });
                     }
+                } else if (toolCalls.length > 0) {
+                    // tool_callsのみでcontentがない場合は空文字列を設定（Z.ai API互換性のため）
+                    message.content = '';
+                }
+                
+                // tool_callsの設定（contentと独立）
+                if (toolCalls.length > 0) {
+                    message.tool_calls = toolCalls;
                 }
                 
                 if (message.content !== undefined || message.tool_calls) {
@@ -3218,7 +3215,37 @@ const apiUtils = {
             }
         }
         
-        console.debug('[FC_DEBUG] openAIMessages about to send:', JSON.stringify(openAIMessages, null, 2));
+        // デバッグ用にtoolメッセージとassistantメッセージのtool_callsを確認
+        const toolMessages = openAIMessages.filter(m => m.role === 'tool');
+        const assistantMessagesWithTools = openAIMessages.filter(m => m.role === 'assistant' && m.tool_calls);
+        if (toolMessages.length > 0 || assistantMessagesWithTools.length > 0) {
+            console.log('[Z.ai Debug] 変換後のメッセージ情報:');
+            if (assistantMessagesWithTools.length > 0) {
+                console.log(`  - assistant with tool_calls: ${assistantMessagesWithTools.length}件`);
+                const lastAssistant = assistantMessagesWithTools[assistantMessagesWithTools.length - 1];
+                if (lastAssistant && lastAssistant.tool_calls) {
+                    console.log(`  - 最後のassistantのtool_call IDs:`, JSON.stringify(lastAssistant.tool_calls.map(tc => tc.id)));
+                }
+            }
+            if (toolMessages.length > 0) {
+                console.log(`  - tool messages: ${toolMessages.length}件`);
+                const recentToolIds = toolMessages.slice(-5).map(m => m.tool_call_id);
+                console.log(`  - 最近のtool_call_ids:`, JSON.stringify(recentToolIds));
+            }
+            // IDの一致を確認
+            if (assistantMessagesWithTools.length > 0 && toolMessages.length > 0) {
+                const lastAssistant = assistantMessagesWithTools[assistantMessagesWithTools.length - 1];
+                const expectedIds = lastAssistant.tool_calls?.map(tc => tc.id) || [];
+                const actualIds = toolMessages.slice(-expectedIds.length).map(tm => tm.tool_call_id);
+                const matched = expectedIds.every((id, i) => id === actualIds[i]);
+                console.log(`  - ID一致チェック: ${matched ? '✓ 一致' : '✗ 不一致'}`);
+                if (!matched) {
+                    console.warn(`  - 期待されるIDs: ${JSON.stringify(expectedIds)}`);
+                    console.warn(`  - 実際のIDs: ${JSON.stringify(actualIds)}`);
+                }
+            }
+        }
+        
         return openAIMessages;
     },
 
@@ -3251,18 +3278,13 @@ const apiUtils = {
                     for (const toolCall of message.tool_calls) {
                         const callArgs = toolCall?.function?.arguments;
                         const parsedArgs = this._parseToolArguments(callArgs);
-                        const functionCallPart = {
+                        parts.push({
                             functionCall: {
                                 name: toolCall.function.name,
-                                args: parsedArgs
+                                args: parsedArgs,
+                                _toolCallId: toolCall.id  // OpenAI互換APIのtool_call_idを保存
                             }
-                        };
-                        if (toolCall.tool_call_id) {
-                            functionCallPart.functionCall.id = toolCall.tool_call_id;
-                        } else if (toolCall.id) {
-                            functionCallPart.functionCall.id = toolCall.id;
-                        }
-                        parts.push(functionCallPart);
+                        });
                     }
                 }
                 
@@ -3611,7 +3633,6 @@ const apiUtils = {
                 }
 
                 const responseData = await response.json();
-                console.debug('[FC_DEBUG] raw responseData:', JSON.stringify(responseData, null, 2));
                 if (responseData.candidates?.[0]?.content?.parts?.[0]?.text) {
                     const translatedText = responseData.candidates[0].content.parts[0].text;
                     console.log("--- 翻訳処理成功 ---");
@@ -3692,13 +3713,11 @@ const apiUtils = {
         }
 
         // Function Callingの処理
-        const effectiveTools = tools !== undefined ? tools : (state.settings.geminiEnableFunctionCalling ? window.functionDeclarations : null);
-        const shouldAttachTools = Array.isArray(effectiveTools) && effectiveTools.length > 0;
-        if (shouldAttachTools) {
+        if (state.settings.geminiEnableFunctionCalling && window.functionDeclarations) {
             // Gemini形式のfunction declarationsをOpenAI形式に変換
             const openAITools = [];
             
-            for (const geminiTool of effectiveTools) {
+            for (const geminiTool of window.functionDeclarations) {
                 if (geminiTool.function_declarations && Array.isArray(geminiTool.function_declarations)) {
                     // Gemini形式: { function_declarations: [{ name, description, parameters }] }
                     for (const funcDecl of geminiTool.function_declarations) {
@@ -3726,8 +3745,6 @@ const apiUtils = {
                 }
                 console.log(`Z.ai APIに ${openAITools.length} 個のFunction Callingツールを設定しました。`);
             }
-        } else {
-            console.log("Z.ai APIにFunction Callingツールを送信しません。");
         }
 
         console.log("Z.aiへの送信データ:", JSON.stringify(requestBody, (key, value) => {
@@ -3736,6 +3753,37 @@ const apiUtils = {
             }
             return value;
         }, 2));
+        
+        // メッセージ構造の詳細をログ出力（デバッグ用）
+        if (requestBody.messages && requestBody.messages.length > 0) {
+            const recentMessages = requestBody.messages.slice(-6);
+            console.log('[Z.ai Debug] 送信する最近のメッセージ構造:');
+            recentMessages.forEach((msg, idx) => {
+                const info = { role: msg.role };
+                if (msg.tool_calls) {
+                    info.tool_calls = msg.tool_calls.map(tc => ({ id: tc.id, name: tc.function?.name }));
+                }
+                if (msg.tool_call_id) {
+                    info.tool_call_id = msg.tool_call_id;
+                }
+                // contentの存在を常に表示（空文字列でも）
+                if ('content' in msg) {
+                    if (typeof msg.content === 'string') {
+                        if (msg.content === '') {
+                            info.content = '""'; // 空文字列を明示
+                        } else {
+                            info.content_preview = msg.content.substring(0, 50) + '...';
+                        }
+                    } else {
+                        info.content_type = typeof msg.content;
+                    }
+                } else {
+                    info.no_content_field = true;
+                }
+                console.log(`  [${idx}]`, JSON.stringify(info));
+            });
+        }
+        
         console.log("ターゲットエンドポイント:", ZAI_API_BASE_URL);
 
         try {
@@ -3777,6 +3825,25 @@ const apiUtils = {
 
             // レスポンスを取得してGemini形式に変換
             const openAIResponse = await response.json();
+            
+            // デバッグ用：Z.ai APIからのレスポンス構造を確認
+            if (openAIResponse.choices && openAIResponse.choices[0]) {
+                const choice = openAIResponse.choices[0];
+                console.log('[Z.ai Debug] APIレスポンス情報:');
+                console.log(`  - finish_reason: ${choice.finish_reason}`);
+                if (choice.message) {
+                    if (choice.message.tool_calls) {
+                        console.log(`  - tool_calls数: ${choice.message.tool_calls.length}`);
+                        choice.message.tool_calls.forEach((tc, idx) => {
+                            console.log(`    [${idx}] id: ${tc.id}, name: ${tc.function?.name}`);
+                        });
+                    }
+                    if (choice.message.content) {
+                        console.log(`  - content: ${choice.message.content.substring(0, 50)}...`);
+                    }
+                }
+            }
+            
             const geminiFormatResponse = this.convertOpenAIToGeminiFormat(openAIResponse);
 
             // Responseオブジェクトのように扱えるようにラップ
@@ -7215,12 +7282,12 @@ const appLogic = {
     */
      async _internalHandleSend(messagesForApi, generationConfig, systemInstruction) {
         let loopCount = 0;
-        const MAX_LOOPS = 5;
+        // Z.ai API(OpenAI互換)は1回のレスポンスで1つのtool_callしか返さないため、
+        // Gemini APIよりも多くのループが必要
+        const MAX_LOOPS = 20;
         const finalTurnResults = [];
         let currentTurnHistory = [...messagesForApi];
         let aggregatedSearchResults = [];
-        let consecutiveCharacterMemoryCalls = 0;
-        const CHARACTER_MEMORY_LOOP_THRESHOLD = 4;
 
         uiUtils.setLoadingIndicatorText('応答生成中...');
 
@@ -7259,13 +7326,10 @@ const appLogic = {
             
             const toolResults = [];
             let containsTerminalAction = false;
-            const isAllCharacterMemory = result.toolCalls.every(tc => tc.functionCall?.name === 'manage_character_memory');
             
             for (const toolCall of result.toolCalls) {
-                console.debug('[FC_DEBUG] incoming toolCall:', JSON.stringify(toolCall, null, 2));
                 const functionName = toolCall.functionCall.name;
                 const functionArgs = toolCall.functionCall.args;
-                const toolCallId = toolCall.tool_call_id || toolCall.id || toolCall.functionCall?.id || null;
                 
                 if (functionName === 'generate_image_stable_diffusion') {
                     uiUtils.setLoadingIndicatorText('SDで画像生成中...');
@@ -7278,13 +7342,10 @@ const appLogic = {
                 let toolResult;
                 try {
                     const argsWithContext = { ...functionArgs, _responseTextForQc: responseTextForQc };
-                    const executionContext = {
+                    toolResult = await window.functionCallingTools[functionName](argsWithContext, {
                         messages: historyForFunctions.filter(m => m.role !== 'tool'),
-                        persistentMemory: state.currentPersistentMemory,
-                        toolCallId
-                    };
-                    toolResult = await window.functionCallingTools[functionName](argsWithContext, executionContext);
-                    console.debug('[FC_DEBUG] toolResult:', functionName, JSON.stringify(toolResult, null, 2));
+                        persistentMemory: state.currentPersistentMemory
+                    });
                 } catch (toolError) {
                     console.error(`[_internalHandleSend] ${functionName}の実行中に予期せぬエラー:`, toolError);
                     toolResult = { error: { message: `ツール実行中に予期せぬエラーが発生しました: ${toolError.message}` } };
@@ -7311,11 +7372,9 @@ const appLogic = {
                     role: 'tool', 
                     name: functionName, 
                     response: responseForAI, 
-                    timestamp: Date.now() 
+                    timestamp: Date.now(),
+                    _toolCallId: toolCall.functionCall._toolCallId  // OpenAI互換APIのtool_call_idを保持
                 };
-                if (toolCallId) {
-                    toolResponseMessage.tool_call_id = toolCallId;
-                }
                 
                 if(toolResult._internal_ui_action){
                     toolResponseMessage._internal_ui_action = toolResult._internal_ui_action;
@@ -7327,37 +7386,20 @@ const appLogic = {
             
             finalTurnResults.push(...toolResults);
             
-            if (isAllCharacterMemory) {
-                consecutiveCharacterMemoryCalls += result.toolCalls.length;
-                console.debug(`[FC_DEBUG] consecutive manage_character_memory calls: ${consecutiveCharacterMemoryCalls}`);
-            } else {
-                consecutiveCharacterMemoryCalls = 0;
-            }
-            
             if (containsTerminalAction) {
                 console.log("終端アクションが検出されたため、Function Callingループを終了します。");
                 if (!result.content) {
                     console.log("[_internalHandleSend] テキスト応答がなかったため、ツール結果を基に最終応答を生成します。");
                     uiUtils.setLoadingIndicatorText('最終応答を生成中...');
 
-                    const modelMessageForApi = { 
-                        role: 'model', 
-                        parts: result.toolCalls.map(tc => {
-                            const functionCall = { ...tc.functionCall };
-                            if (tc.id && !functionCall.id) {
-                                functionCall.id = tc.id;
-                            }
-                            return { functionCall };
-                        }) 
-                    };
+                    const modelMessageForApi = { role: 'model', parts: result.toolCalls.map(tc => ({ functionCall: tc.functionCall })) };
                     const toolResultsForApi = toolResults.map(tr => ({ 
                         role: 'tool', 
                         parts: [{ 
                             functionResponse: { 
                                 name: tr.name, 
                                 response: tr.response,
-                                id: tr.tool_call_id || tr.name,
-                                tool_call_id: tr.tool_call_id || tr.name 
+                                _toolCallId: tr._toolCallId  // OpenAI互換APIのtool_call_idを引き継ぐ
                             } 
                         }] 
                     }));
@@ -7376,69 +7418,14 @@ const appLogic = {
                 break;
             }
 
-            if (isAllCharacterMemory && consecutiveCharacterMemoryCalls >= CHARACTER_MEMORY_LOOP_THRESHOLD) {
-                console.log("[_internalHandleSend] manage_character_memory が連続しているため、テキスト応答取得を強制します。");
-                const modelMessageForApi = { 
-                    role: 'model', 
-                    parts: result.toolCalls.map(tc => {
-                        const functionCall = { ...tc.functionCall };
-                        if (tc.tool_call_id && !functionCall.id) {
-                            functionCall.id = tc.tool_call_id;
-                        } else if (tc.id && !functionCall.id) {
-                            functionCall.id = tc.id;
-                        }
-                        return { functionCall };
-                    }) 
-                };
-                const toolResultsForApi = toolResults.map(tr => ({ 
-                    role: 'tool', 
-                    parts: [{ 
-                        functionResponse: { 
-                            name: tr.name, 
-                            response: tr.response,
-                            id: tr.tool_call_id || tr.name,
-                            tool_call_id: tr.tool_call_id || tr.name 
-                        } 
-                    }] 
-                }));
-                currentTurnHistory.push(modelMessageForApi, ...toolResultsForApi);
-
-                const textResult = await this.callApiWithRetry({ 
-                    messagesForApi: currentTurnHistory,
-                    generationConfig,
-                    systemInstruction,
-                    tools: null,
-                    isFirstCall: false
-                });
-
-                if (textResult.toolCalls && textResult.toolCalls.length > 0) {
-                    console.warn("[_internalHandleSend] 強制テキスト呼び出しにも関わらずツール呼び出しが返されました。処理を中断します。");
-                } else {
-                    modelMessage.content = (modelMessage.content || '') + (textResult.content || '');
-                    modelMessage.thoughtSummary = modelMessage.thoughtSummary || textResult.thoughtSummary;
-                    modelMessage.finishReason = textResult.finishReason || modelMessage.finishReason;
-                    modelMessage.usageMetadata = textResult.usageMetadata || modelMessage.usageMetadata;
-                }
-                break;
-            }
-
-            const modelMessageForApi = { 
-                role: 'model', 
-                parts: result.toolCalls.map(tc => {
-                    const functionCall = { ...tc.functionCall };
-                    if (tc.id && !functionCall.id) {
-                        functionCall.id = tc.id;
-                    }
-                    return { functionCall };
-                }) 
-            };
+            const modelMessageForApi = { role: 'model', parts: result.toolCalls.map(tc => ({ functionCall: tc.functionCall })) };
             const toolResultsForApi = toolResults.map(tr => ({ 
                 role: 'tool', 
                 parts: [{ 
                     functionResponse: { 
                         name: tr.name, 
                         response: tr.response,
-                        id: tr.tool_call_id || tr.name 
+                        _toolCallId: tr._toolCallId  // OpenAI互換APIのtool_call_idを引き継ぐ
                     } 
                 }] 
             }));
@@ -9019,7 +9006,6 @@ const appLogic = {
                 let finalThoughtSummary = '';
                 let finalToolCalls = [];
 
-                const functionCallParts = [];
                 parts.forEach(part => {
                     if (part.text) {
                         if (part.thought === true) {
@@ -9028,20 +9014,9 @@ const appLogic = {
                             finalContent += part.text;
                         }
                     } else if (part.functionCall) {
-                        const originalCall = part.functionCall;
-                        const callId = originalCall.tool_call_id || originalCall.id || null;
-                        const functionCall = { ...originalCall };
-                        if (callId && !functionCall.id) {
-                            functionCall.id = callId;
-                        }
-                        const toolCallEntry = { id: callId, tool_call_id: callId, functionCall };
-                        finalToolCalls.push(toolCallEntry);
-                        functionCallParts.push(functionCall);
+                        finalToolCalls.push({ functionCall: part.functionCall });
                     }
                 });
-                if (functionCallParts.length > 0) {
-                    console.debug('[FC_DEBUG] parsed functionCall parts:', JSON.stringify(functionCallParts, null, 2));
-                }
 
                 if (candidate.thoughts?.parts) {
                     candidate.thoughts.parts.forEach(part => {
