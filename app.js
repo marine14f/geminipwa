@@ -3141,17 +3141,21 @@ const apiUtils = {
                 // ツールレスポンスの処理
                 for (const part of parts) {
                     if (part.functionResponse) {
-                        const toolCallId = part.functionResponse.id 
-                            || part.functionResponse.tool_call_id 
+                        const toolCallId = part.functionResponse.tool_call_id 
+                            || part.functionResponse.id 
                             || part.functionResponse.name;
                         const responseContent = part.functionResponse.response;
-                        openAIMessages.push({
+                        const toolMessage = {
                             role: 'tool',
                             tool_call_id: toolCallId,
                             content: typeof responseContent === 'string' 
                                 ? responseContent 
                                 : JSON.stringify(responseContent ?? null)
-                        });
+                        };
+                        if (part.functionResponse.name) {
+                            toolMessage.name = part.functionResponse.name;
+                        }
+                        openAIMessages.push(toolMessage);
                     }
                 }
             } else {
@@ -3170,8 +3174,8 @@ const apiUtils = {
                         });
                     } else if (part.functionCall) {
                         // Function Callingの変換
-                        const toolCallId = part.functionCall.id 
-                            || part.functionCall.tool_call_id 
+                        const toolCallId = part.functionCall.tool_call_id 
+                            || part.functionCall.id 
                             || `call_${Date.now()}_${Math.random()}`;
                         toolCalls.push({
                             id: toolCallId,
@@ -3252,10 +3256,10 @@ const apiUtils = {
                                 args: parsedArgs
                             }
                         };
-                        if (toolCall.id) {
-                            functionCallPart.functionCall.id = toolCall.id;
-                        } else if (toolCall.tool_call_id) {
+                        if (toolCall.tool_call_id) {
                             functionCallPart.functionCall.id = toolCall.tool_call_id;
+                        } else if (toolCall.id) {
+                            functionCallPart.functionCall.id = toolCall.id;
                         }
                         parts.push(functionCallPart);
                     }
@@ -7251,7 +7255,7 @@ const appLogic = {
             for (const toolCall of result.toolCalls) {
                 const functionName = toolCall.functionCall.name;
                 const functionArgs = toolCall.functionCall.args;
-                const toolCallId = toolCall.id || toolCall.functionCall?.id || null;
+                const toolCallId = toolCall.tool_call_id || toolCall.id || toolCall.functionCall?.id || null;
                 
                 if (functionName === 'generate_image_stable_diffusion') {
                     uiUtils.setLoadingIndicatorText('SDで画像生成中...');
@@ -7264,10 +7268,12 @@ const appLogic = {
                 let toolResult;
                 try {
                     const argsWithContext = { ...functionArgs, _responseTextForQc: responseTextForQc };
-                    toolResult = await window.functionCallingTools[functionName](argsWithContext, {
+                    const executionContext = {
                         messages: historyForFunctions.filter(m => m.role !== 'tool'),
-                        persistentMemory: state.currentPersistentMemory
-                    });
+                        persistentMemory: state.currentPersistentMemory,
+                        toolCallId
+                    };
+                    toolResult = await window.functionCallingTools[functionName](argsWithContext, executionContext);
                 } catch (toolError) {
                     console.error(`[_internalHandleSend] ${functionName}の実行中に予期せぬエラー:`, toolError);
                     toolResult = { error: { message: `ツール実行中に予期せぬエラーが発生しました: ${toolError.message}` } };
@@ -7332,7 +7338,8 @@ const appLogic = {
                             functionResponse: { 
                                 name: tr.name, 
                                 response: tr.response,
-                                id: tr.tool_call_id || tr.name 
+                                id: tr.tool_call_id || tr.name,
+                                tool_call_id: tr.tool_call_id || tr.name 
                             } 
                         }] 
                     }));
@@ -8957,12 +8964,13 @@ const appLogic = {
                         }
                     } else if (part.functionCall) {
                         const originalCall = part.functionCall;
-                        const callId = originalCall.id || originalCall.tool_call_id || null;
+                        const callId = originalCall.tool_call_id || originalCall.id || null;
                         const functionCall = { ...originalCall };
                         if (callId && !functionCall.id) {
                             functionCall.id = callId;
                         }
-                        finalToolCalls.push({ id: callId, functionCall });
+                        const toolCallEntry = { id: callId, tool_call_id: callId, functionCall };
+                        finalToolCalls.push(toolCallEntry);
                     }
                 });
 
