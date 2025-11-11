@@ -240,6 +240,7 @@ try {
         saveSystemPromptBtn: document.getElementById('save-system-prompt-btn'),
         cancelSystemPromptBtn: document.getElementById('cancel-system-prompt-btn'),
         apiProviderSelect: document.getElementById('api-provider'),
+        apiProviderRow: document.getElementById('api-provider-row'),
         apiKeyInput: document.getElementById('api-key'),
         zaiApiKeyInput: document.getElementById('zai-api-key'),
         geminiApiKeyContainer: document.getElementById('gemini-api-key-container'),
@@ -2449,7 +2450,24 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
     applySettingsToUI() {
         // プロバイダーとAPIキーの設定（要素が存在する場合のみ）
         if (elements.apiProviderSelect) {
-            elements.apiProviderSelect.value = state.settings.apiProvider || 'gemini';
+            let provider = state.settings.apiProvider || 'gemini';
+            if (!state.settings.debugMode && provider === 'zai') {
+                provider = 'gemini';
+                state.settings.apiProvider = provider;
+                if (state.activeProfile && state.activeProfile.settings) {
+                    state.activeProfile.settings.apiProvider = provider;
+                    dbUtils.updateProfile(state.activeProfile)
+                        .then(() => appLogic.markAsDirtyAndSchedulePush('structural'))
+                        .catch(error => console.error("[Settings] APIプロバイダーの同期更新に失敗しました:", error));
+                }
+            }
+            elements.apiProviderSelect.value = provider;
+            const shouldShowProviderSelect = state.settings.debugMode === true;
+            if (elements.apiProviderRow) {
+                elements.apiProviderRow.classList.toggle('hidden', !shouldShowProviderSelect);
+            }
+            appLogic.updateProviderUI(provider);
+            appLogic.updateModelOptions(provider);
         }
         elements.apiKeyInput.value = state.settings.apiKey || '';
         if (elements.zaiApiKeyInput) {
@@ -2531,14 +2549,6 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
         this.updateModelWarningMessage();
         this.applyBackgroundImage();
         appLogic.applyWideMode();
-        
-        // プロバイダーに応じたUIの初期化
-        if (elements.apiProviderSelect) {
-            const provider = state.settings.apiProvider || 'gemini';
-            appLogic.updateProviderUI(provider);
-            appLogic.updateModelOptions(provider);
-        }
-
         appLogic.toggleDebugLogButtonVisibility(state.settings.debugMode);
 
         elements.sdApiUrlInput.value = state.settings.sdApiUrl || '';
@@ -5219,10 +5229,12 @@ const appLogic = {
      */
     markAsDirtyAndSchedulePush(type = 'message') {
         const timestamp = new Date().toLocaleTimeString();
-        console.log(`[SYNC_DEBUG ${timestamp}] markAsDirtyAndSchedulePush called. type=${type}, isSending=${state.isSending}, isSyncing=${state.sync.isSyncing}, isDirty=${state.sync.isDirty}`);
+        const normalizedType = type === true ? 'structural' : type;
 
-        const tokenData = dbUtils.getSetting('dropboxTokens');
-        if (!tokenData) {
+        console.log(`[SYNC_DEBUG ${timestamp}] markAsDirtyAndSchedulePush called. type=${normalizedType}, isSending=${state.isSending}, isSyncing=${state.sync.isSyncing}, isDirty=${state.sync.isDirty}`);
+
+        const tokenDataPromise = dbUtils.getSetting('dropboxTokens');
+        if (!tokenDataPromise) {
             console.log(`[SYNC_DEBUG ${timestamp}] -> SKIPPED: Dropbox not connected.`);
             return;
         }
@@ -5231,7 +5243,7 @@ const appLogic = {
             console.log(`[SYNC_DEBUG ${timestamp}] -> SKIPPED: Already syncing.`);
             return;
         }
-        
+
         if (!state.sync.isDirty) {
             state.sync.isDirty = true;
             dbUtils.saveSetting('syncIsDirty', true);
@@ -5239,70 +5251,63 @@ const appLogic = {
         }
         this.updateSyncStatusUI('dirty');
 
-        // AIが応答中の場合は、同期処理のスケジュールを遅延させる
-        if (state.isSending) {
+        if (normalizedType === 'message' && state.isSending) {
             console.log(`[SYNC_DEBUG ${timestamp}] -> SKIPPED: AI is responding (isSending=true).`);
             return;
         }
 
         const frequency = state.settings.dropboxSyncFrequency;
 
-        // 手動同期モードの場合の特別処理
         if (frequency === 'manual') {
-            // トリガーがメッセージの場合のみ自動Pushをスキップ
-            if (type === 'message') {
+            if (normalizedType === 'message') {
                 console.log(`[SYNC_DEBUG ${timestamp}] -> SKIPPED: Manual sync mode for message update.`);
                 return;
             }
-            // 構造的な変更の場合は、手動モードでも即時同期する
             console.log(`[SYNC_DEBUG ${timestamp}] -> EXECUTING: Structural change detected in manual sync mode. Forcing push.`);
             this.handlePush();
             return;
         }
 
-        // メッセージ送受信時のカウンター処理
-        if (type === 'message') {
-            state.syncMessageCounter++;
-            console.log(`[SYNC_DEBUG ${timestamp}] Message counter incremented to: ${state.syncMessageCounter}`);
+        // 構造的な変更は常に即時Push
+        if (normalizedType !== 'message') {
+            console.log(`[SYNC_DEBUG ${timestamp}] -> EXECUTING: Non-message change detected. Triggering push immediately.`);
+            this.handlePush();
+            return;
         }
 
+        // メッセージターンの完了をカウント
+        state.syncMessageCounter++;
+        console.log(`[SYNC_DEBUG ${timestamp}] Message counter incremented to: ${state.syncMessageCounter}`);
+
+        // 既存の予約があればクリア
         if (state.sync.pushTimeoutId) {
             clearTimeout(state.sync.pushTimeoutId);
+            state.sync.pushTimeoutId = null;
         }
 
-        const schedulePush = (isCounterReset = false) => {
-            state.sync.pushTimeoutId = setTimeout(() => {
-                const scheduledTimestamp = new Date().toLocaleTimeString();
-                console.log(`[SYNC_DEBUG ${scheduledTimestamp}] -> EXECUTING: Timeout finished. Calling handlePush.`);
-                this.handlePush();
-                if (isCounterReset) {
-                    state.syncMessageCounter = 0;
-                    console.log(`[SYNC_DEBUG ${scheduledTimestamp}] Message counter reset to 0.`);
-                }
-            }, 3000); // 3秒のデバウンス
-        };
-
         if (frequency === 'instant') {
-            console.log(`[SYNC_DEBUG ${timestamp}] -> SCHEDULING: Instant sync mode. Setting 3-second timeout.`);
-            schedulePush();
+            console.log(`[SYNC_DEBUG ${timestamp}] -> EXECUTING: Instant mode, pushing immediately.`);
+            this.handlePush();
+            state.syncMessageCounter = 0;
             return;
         }
 
         const threshold = parseInt(frequency, 10);
         if (!isNaN(threshold)) {
-            // 構造的な変更の場合はカウンターに関係なく即時実行をスケジュール
-            if (type === 'structural') {
-                console.log(`[SYNC_DEBUG ${timestamp}] -> SCHEDULING: Structural change detected. Setting 3-second timeout.`);
-                schedulePush();
-            }
-            // メッセージの場合はカウンターで判断
-            else if (state.syncMessageCounter >= threshold) {
-                console.log(`[SYNC_DEBUG ${timestamp}] -> SCHEDULING: Threshold (${threshold}) reached. Setting 3-second timeout.`);
-                schedulePush(true);
+            if (state.syncMessageCounter >= threshold) {
+                console.log(`[SYNC_DEBUG ${timestamp}] -> EXECUTING: Threshold (${threshold}) reached. Triggering push immediately.`);
+                this.handlePush();
+                state.syncMessageCounter = 0;
             } else {
-                console.log(`[SYNC_DEBUG ${timestamp}] -> SKIPPED: Threshold (${frequency}) not reached.`);
+                console.log(`[SYNC_DEBUG ${timestamp}] -> WAITING: Threshold (${threshold}) not reached yet.`);
             }
+            return;
         }
+
+        // その他の設定値の場合は安全のため即時実行
+        console.log(`[SYNC_DEBUG ${timestamp}] -> EXECUTING: Unrecognized frequency '${frequency}'. Triggering push as fallback.`);
+        this.handlePush();
+        state.syncMessageCounter = 0;
     },
 
 
@@ -5786,6 +5791,23 @@ const appLogic = {
                 element: elements.apiProviderSelect, 
                 event: 'change',
                 onUpdate: (value) => {
+                    if (!state.settings.debugMode && value === 'zai') {
+                        const fallbackProvider = 'gemini';
+                        state.settings.apiProvider = fallbackProvider;
+                        if (state.activeProfile && state.activeProfile.settings) {
+                            state.activeProfile.settings.apiProvider = fallbackProvider;
+                            dbUtils.updateProfile(state.activeProfile)
+                                .then(() => this.markAsDirtyAndSchedulePush('structural'))
+                                .catch(error => console.error("[Settings] デバッグモードOFF中にZ.aiが選択されましたがGeminiへ戻す際の保存に失敗しました:", error));
+                        }
+                        if (elements.apiProviderSelect) {
+                            elements.apiProviderSelect.value = fallbackProvider;
+                        }
+                        this.updateProviderUI(fallbackProvider);
+                        this.updateModelOptions(fallbackProvider);
+                        uiUtils.showCustomAlert("デバッグモードが無効のため、Z.aiは選択できません。");
+                        return;
+                    }
                     this.updateProviderUI(value);
                     this.updateModelOptions(value);
                 }
@@ -5821,6 +5843,31 @@ const appLogic = {
             debugMode: { element: elements.debugModeToggle, event: 'change', onUpdate: (value) => {
                 DebugLogger.init();
                 this.toggleDebugLogButtonVisibility(value);
+
+                if (elements.apiProviderRow) {
+                    elements.apiProviderRow.classList.toggle('hidden', !value);
+                }
+
+                if (!value && state.settings.apiProvider === 'zai') {
+                    const fallbackProvider = 'gemini';
+                    state.settings.apiProvider = fallbackProvider;
+                    if (state.activeProfile && state.activeProfile.settings) {
+                        state.activeProfile.settings.apiProvider = fallbackProvider;
+                        dbUtils.updateProfile(state.activeProfile)
+                            .then(() => this.markAsDirtyAndSchedulePush('structural'))
+                            .catch(error => console.error("[Settings] デバッグモードOFF時のAPIプロバイダー更新に失敗しました:", error));
+                    }
+                    if (elements.apiProviderSelect) {
+                        elements.apiProviderSelect.value = fallbackProvider;
+                    }
+                    this.updateProviderUI(fallbackProvider);
+                    this.updateModelOptions(fallbackProvider);
+                    uiUtils.showCustomAlert("デバッグモードを無効にしたため、APIプロバイダーをGeminiに戻しました。");
+                } else if (value) {
+                    const provider = state.settings.apiProvider || 'gemini';
+                    this.updateProviderUI(provider);
+                    this.updateModelOptions(provider);
+                }
             }},
             fontFamily: { element: elements.fontFamilyInput, event: 'input', onUpdate: () => uiUtils.applyFontFamily() },
             hideSystemPromptInChat: { element: elements.hideSystemPromptToggle, event: 'change', onUpdate: () => uiUtils.toggleSystemPromptVisibility() },
@@ -7573,7 +7620,7 @@ const appLogic = {
             this.scrollToBottom();
         }
         
-        await dbUtils.saveChat();
+        await dbUtils.saveChat(null, null, { skipPush: true });
         
         try {
             const generationConfig = {};
@@ -7613,7 +7660,7 @@ const appLogic = {
             uiUtils.renderChatMessages();
 
             // モデルの応答をDBに保存
-            await dbUtils.saveChat();
+            await dbUtils.saveChat(null, null, { skipPush: true });
 
             this.updateCharacterProfileButtonVisibility();
 
@@ -7635,7 +7682,7 @@ const appLogic = {
             uiUtils.renderChatMessages(() => uiUtils.scrollToBottom());
             
             // エラー発生時もDBに保存
-            await dbUtils.saveChat();
+            await dbUtils.saveChat(null, null, { skipPush: true });
         } finally {
             uiUtils.setSendingState(false);
             state.abortController = null;
@@ -8533,14 +8580,8 @@ const appLogic = {
             state.pendingCascadeResponses = originalResponses;
             
             // UI上から古い応答を削除し、stateもユーザープロンプトまでの状態に戻す
-            const messagesToRemove = state.currentMessages.slice(index + 1);
-            messagesToRemove.forEach((msg, i) => {
-                const elementToRemove = elements.messageContainer.querySelector(`.message[data-index="${index + 1 + i}"]`);
-                if (elementToRemove) {
-                    elementToRemove.remove();
-                }
-            });
             state.currentMessages.splice(index + 1);
+            uiUtils.renderChatMessages();
     
             let modelMessage;
     
