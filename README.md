@@ -53,16 +53,17 @@ Dropboxアカウントと連携すると、チャット履歴やプロファイ�
 
 ## 🎨 Stable Diffusion連携（WebUI/Forge/Reforge）
 
-!!! warning
-    本機能は上級者向けです。最低でも、Stable Diffusion WebUIを自力でインストール・更新し、モデルやLoRAの配置、プロンプト設計、トラブルシューティングを行える知識と環境が必要です。
-    各ユーザーのローカル環境に起因する問題（GPUドライバ、依存パッケージ、WebUI拡張など）について個別サポートは行っていません。
+> [!WARNING]
+>本機能は上級者向けです。最低でも、Stable Diffusion WebUIを自力で環境構築出来る知識が必要です。
+>導入方法についての個別サポートは行っていません。わからないことがあった場合はAIに聞いてみて下さい。スレ内で聞くこともスレ違いのため控えて下さい。
+>バグを発見した場合のみissuesで報告お願いします。
 
 ローカルネットワーク上で稼働するStable Diffusion WebUI（Automatic1111系）やForge/Reforgeと連携し、チャット内の指示だけで高品質な画像を生成できます。GeminiによるFunction Callingから `generate_image_stable_diffusion` 関数が呼び出され、生成した画像は自動でIndexedDBに保存されます。
 
 ### 事前準備
 - Stable Diffusion WebUI/Forge/Reforgeを`--listen`オプション付きで起動し、Gemini PWAからアクセスできるURL（例: `http://127.0.0.1:7860`）を確認します。
 - WebUIにBasic認証を設定している場合は、ユーザー名・パスワードも用意してください。
-- ポートは`7860`を指定。
+- ポートは`7860`以外には対応してません。
 
 ### GitHub Pages (https://kinkan04.github.io/Gemini-PWA-Mk-II/) から利用する際の注意点
 
