@@ -31,8 +31,11 @@ const DUPLICATE_SUFFIX = ' (コピー)';
 const IMPORT_PREFIX = '(取込) ';
 const LIGHT_THEME_COLOR = '#4a90e2';
 const DARK_THEME_COLOR = '#007aff';
-const APP_VERSION = "0.5";
+const APP_VERSION = "1.0";
 const DEFAULT_ZAI_MODEL = 'glm-4.6';
+const VERSION_NOTICE_SESSION_KEY = 'pendingVersionNotice';
+const VERSION_ACK_STORAGE_KEY = 'appVersionAcknowledged';
+const VERSION_LEGACY_STORAGE_KEY = 'appVersion';
 
 // プロバイダーごとのモデルリスト
 const GEMINI_MODELS = [
@@ -53,11 +56,11 @@ const ZAI_MODELS = [
 ];
 
 const VERSION_HISTORY = {
-    "0.6": [
-        "Dropbox同期の安定性を向上させる同期ロック機能を導入しました。",
-        "Dropbox同期時にアセット（画像）の差分のみをダウンロードするように改善し、同期速度を向上させました。",
-        "手動/自動問わず、アプリ更新時にバージョンアップ通知と更新内容を表示するようにしました。",
-        "その他、複数の不具合修正とパフォーマンス改善を行いました。"
+    "1.0": [
+        "Dropbox連携機能とStable Diffusion WebUI/Forge/Reforge連携を追加し、PWA内のデータと画像生成ワークフローをクラウドやローカル環境とシームレスに同期できるようにしました。",
+        "添付ファイルのサムネイル表示やアップデート内容を告知するダイアログ、URLコンテンツを取り込むfetch_url_content関数、プロファイルへのgemini-2.5-pro使用回数表示、デバッグモード切替などのUI/機能改善を実装しました。",
+        "gemini-2.5-flash-imageやveo-3.1シリーズなど最新モデルの追加、画像/動画関連関数のモデル選択改善、URL要約や要約機能まわりのエラーハンドリング強化を行いました。",
+        "Firefoxでのパフォーマンス劣化や再生成時の履歴破損、記憶管理画面の不具合など多数のバグを修正し、DB関連関数の保存ロジックも刷新しました。"
     ]
 };
 const SWIPE_THRESHOLD = 50; // スワイプ判定の閾値 (px)
@@ -931,17 +934,6 @@ const dbUtils = {
 
     async saveChat(optionalTitle = null, chatObjectToSave = null, options = {}) {
         await this.openDB();
-
-        // ★デバッグログここから追加
-        const dataBeingSaved = chatObjectToSave ? chatObjectToSave : {
-            messages: state.currentMessages,
-            systemPrompt: state.currentSystemPrompt,
-            persistentMemory: state.currentPersistentMemory,
-            summarizedContext: state.currentSummarizedContext,
-            isMemoryEnabledForChat: state.isMemoryEnabledForChat,
-        };
-        console.log("[DEBUG SAVECHAT] Saving chat data to DB. Title:", optionalTitle, "Options:", options, "Data:", JSON.stringify(dataBeingSaved, null, 2));
-        // ★ここまで追加
     
         let messagesForStats = [];
         let chatDataToSave;
@@ -1439,7 +1431,6 @@ const dbUtils = {
      */
      async clearAndImportData(data, localAssetsBeforeClear, downloadedAssets, requiredAssetIds) {
         console.log("[DB Import V2] 安全なデータインポート処理を開始します。");
-        console.log("[DEBUG PULL] Data to be imported into DB:", data); // ★追加
         uiUtils.showProgressDialog('データベースを準備中...');
 
         const { profiles, chats, memories, assets, settings } = data;
@@ -4853,26 +4844,51 @@ const appLogic = {
         uiUtils.showProgressDialog(isSyncReload ? 'データベースを準備中...' : '初期化処理を開始中...');
 
         setupBroadcastChannel();
+        let versionNoticeData = null;
     
         // --- ステップ0: バージョンアップ通知 ---
         try {
-            const lastVersion = localStorage.getItem('appVersion');
-            const currentVersion = APP_VERSION;
-    
-            // バージョンが上がった場合のみ通知
-            if (lastVersion && lastVersion !== currentVersion) {
-                const newFeatures = VERSION_HISTORY[currentVersion];
-                let message = `アプリがバージョン ${currentVersion} にアップデートされました。`;
-    
-                if (newFeatures && newFeatures.length > 0) {
-                    message += "\n\n主な更新内容:\n- " + newFeatures.join("\n- ");
+            const pendingNoticeRaw = sessionStorage.getItem(VERSION_NOTICE_SESSION_KEY);
+            if (pendingNoticeRaw) {
+                try {
+                    versionNoticeData = JSON.parse(pendingNoticeRaw);
+                    console.log(`[VersionNotice] ペンディング通知を検出しました。version=${versionNoticeData.version}`);
+                } catch (parseError) {
+                    console.error("[VersionNotice] ペンディング通知の解析に失敗しました。削除して再生成します。", parseError);
+                    sessionStorage.removeItem(VERSION_NOTICE_SESSION_KEY);
+                    versionNoticeData = null;
                 }
-                // ページ読み込みの他の処理を妨げないよう、少し遅延させて表示
-                setTimeout(() => uiUtils.showCustomAlert(message), 500);
             }
-            
-            // 現在のバージョンを保存
-            localStorage.setItem('appVersion', currentVersion);
+
+            if (!versionNoticeData) {
+                const acknowledgedVersion = localStorage.getItem(VERSION_ACK_STORAGE_KEY);
+                const legacyVersion = localStorage.getItem(VERSION_LEGACY_STORAGE_KEY);
+                const currentVersion = APP_VERSION;
+                console.log(`[VersionNotice] バージョンチェック開始。ack=${acknowledgedVersion ?? 'none'}, legacy=${legacyVersion ?? 'none'}, current=${currentVersion}`);
+
+                const shouldShowNotice =
+                    !acknowledgedVersion ||
+                    acknowledgedVersion !== currentVersion ||
+                    (legacyVersion && legacyVersion !== currentVersion);
+
+                if (shouldShowNotice) {
+                    const newFeatures = VERSION_HISTORY[currentVersion];
+                    let message = `アプリがバージョン ${currentVersion} にアップデートされました。`;
+    
+                    if (newFeatures && newFeatures.length > 0) {
+                        message += "\n\n主な更新内容:\n- " + newFeatures.join("\n- ");
+                    }
+                    versionNoticeData = {
+                        version: currentVersion,
+                        message,
+                        shouldPersist: true
+                    };
+                    sessionStorage.setItem(VERSION_NOTICE_SESSION_KEY, JSON.stringify(versionNoticeData));
+                    console.log(`[VersionNotice] 新しいバージョン通知を作成しました。(ack=${acknowledgedVersion ?? 'none'}, legacy=${legacyVersion ?? 'none'})`);
+                } else {
+                    console.log("[VersionNotice] 既に最新バージョンが確認済みのため通知をスキップします。");
+                }
+            }
         } catch (e) {
             console.error("バージョンチェック処理中にエラー:", e);
         }
@@ -5178,6 +5194,23 @@ const appLogic = {
             // finallyブロックで必ずダイアログを閉じる
             uiUtils.hideProgressDialog();
             sessionStorage.removeItem('isSyncReload');
+
+            if (versionNoticeData && versionNoticeData.message) {
+                try {
+                    console.log(`[VersionNotice] 通知を表示します。version=${versionNoticeData.version}`);
+                    await uiUtils.showCustomAlert(versionNoticeData.message);
+                    console.log("[VersionNotice] 通知がユーザーによって確認されました。");
+                    if (versionNoticeData.shouldPersist) {
+                        localStorage.setItem(VERSION_ACK_STORAGE_KEY, versionNoticeData.version);
+                        localStorage.setItem(VERSION_LEGACY_STORAGE_KEY, versionNoticeData.version);
+                        console.log(`[VersionNotice] バージョン ${versionNoticeData.version} をACK/LEGACYキーに保存しました。`);
+                    }
+                } catch (versionAlertError) {
+                    console.error("[VersionNotice] 通知の表示に失敗しました:", versionAlertError);
+                } finally {
+                    sessionStorage.removeItem(VERSION_NOTICE_SESSION_KEY);
+                }
+            }
         }
     },
 
@@ -5187,7 +5220,7 @@ const appLogic = {
         const pullConfirm = await uiUtils.showCustomConfirm(
             "【同期エラーの復旧】\n\n" +
             "前回の同期が正常に完了しなかったようです。\n\n" +
-            "クラウドのデータで現在の端末を上書き復元しますか？ (推奨)\n\n" +
+            "クラウドのデータで現在のブラウザのデータを上書き復元しますか？ (推奨)\n\n" +
             "※「キャンセル」を押すと、ローカルのデータでクラウドを上書きする選択肢が表示されます。"
         );
         if (pullConfirm) {
@@ -5196,7 +5229,7 @@ const appLogic = {
 
         const pushConfirm = await uiUtils.showCustomConfirm(
             "【同期エラーの復旧】\n\n" +
-            "現在の端末のデータで、クラウド上のデータを強制的に上書きしますか？\n\n" +
+            "現在のブラウザのデータで、クラウド上のデータを強制的に上書きしますか？\n\n" +
             "※ 他のデバイスで行った変更が失われる可能性があります。"
         );
         if (pushConfirm) {
@@ -6286,7 +6319,7 @@ const appLogic = {
                 // syncIdが異なる -> 他のデバイスが更新した可能性 -> Pullを実行
                 if (cloudSyncId !== localSyncId) {
                     console.log("[Manual Sync] syncIdが異なります。Pull処理を実行します。");
-                    uiUtils.updateProgressMessage('他の端末の変更を同期中...');
+                    uiUtils.updateProgressMessage('他のブラウザのデータの変更を同期中...');
                     state.sync.isSyncing = false; // handlePullを呼ぶ前にリセット
                     await this.handlePull(true);
                     return;
@@ -6727,7 +6760,6 @@ const appLogic = {
         try {
             const dbGetStartTime = performance.now();
             const chat = await dbUtils.getChat(id);
-            console.log("[DEBUG LOADCHAT] Loaded chat data from DB:", JSON.stringify(chat, null, 2)); // ★追加
             const dbGetEndTime = performance.now();
             
             if (chat) {
@@ -6949,8 +6981,11 @@ const appLogic = {
                 const newId = await dbUtils.addProfile(newProfile);
                 const newlyAddedProfile = await dbUtils.getProfile(newId);
                 state.profiles.push(newlyAddedProfile);
-                
+                await dbUtils.saveSetting('activeProfileId', newId);
+                state.activeProfileId = newId;
+
                 this.markAsDirtyAndSchedulePush(true);
+                this.applyActiveProfile();
                 uiUtils.updateProfileSwitcherUI();
                 await uiUtils.showCustomAlert(`プロファイル「${finalName}」をインポートしました。`);
 
@@ -10734,12 +10769,6 @@ const appLogic = {
                 const tx = state.db.transaction(CHATS_STORE, 'readwrite');
                 const store = tx.objectStore(CHATS_STORE);
                 for (const chat of chatsToUpdate) {
-                    // ★ここから追加
-                    console.log(`[DEBUG EXPORT] ChatID ${chat.id} の永続化処理を開始します。`);
-                    if (chat.id === state.currentChatId) {
-                        console.log("[DEBUG EXPORT] 現在のチャットの state.currentMessages (更新前):", JSON.stringify(state.currentMessages));
-                    }
-                    // ★ここまで追加
 
                     // DBに保存する前にディープコピーを作成し、コピーからbase64Dataを削除する
                     const chatForDb = JSON.parse(JSON.stringify(chat));
@@ -10754,8 +10783,6 @@ const appLogic = {
                     // メモリ上のstate.currentMessagesは、base64Dataが削除されていない元のchatオブジェクトで更新する
                     if (chat.id === state.currentChatId) {
                         state.currentMessages = chat.messages;
-                        // ★追加
-                        console.log("[DEBUG EXPORT] 現在のチャットの state.currentMessages (更新後):", JSON.stringify(state.currentMessages));
                     }
                 }
             }
@@ -10802,10 +10829,6 @@ const appLogic = {
             
             console.log(`[Data Export V2] データ準備完了。syncId: ${syncId}, アセット数: ${localAssets.size}`);
 
-            // ★デバッグログ
-            const metadataJsonString = JSON.stringify(metadata);
-            console.log("[DEBUG PUSH] Uploading metadata:", metadataJsonString); 
-
             return {
                 metadataJson: JSON.stringify(metadata),
                 localAssets: localAssets
@@ -10823,7 +10846,6 @@ const appLogic = {
 
     async importDataFromString(jsonString) {
         console.log("[Data Import V2] 文字列からのデータインポートを開始します。");
-        console.log("[DEBUG PULL] Downloaded metadata string:", jsonString); // ★追加
         uiUtils.showProgressDialog('インポートデータを準備中...');
     
         try {

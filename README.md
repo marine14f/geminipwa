@@ -65,6 +65,7 @@ Dropboxアカウントと連携すると、チャット履歴やプロファイ�
 >バグを発見した場合のみissuesで報告お願いします。
 
 ローカルネットワーク上で稼働するStable Diffusion WebUI（Automatic1111系）やForge/Reforgeと連携し、チャット内の指示だけで高品質な画像を生成できます。GeminiによるFunction Callingから `generate_image_stable_diffusion` 関数が呼び出され、生成した画像は自動でIndexedDBに保存されます。
+これからStable Diffusionの導入を検討している場合は、EasyReforgeを使用するのがオススメです。
 
 ### 事前準備
 - Stable Diffusion WebUI/Forge/Reforgeを`--listen`オプション付きで起動し、Gemini PWAからアクセスできるURL（例: `http://127.0.0.1:7860`）を確認します。
@@ -91,7 +92,7 @@ Gemini PWAのホスティング先がGitHub PagesなどのHTTPSドメインで�
 ### 使い方
 1.  設定画面の `画像生成 (Stable Diffusion)` セクションで、WebUIのURL・必要に応じて認証情報を入力し、**「接続テスト」** ボタンで疎通を確認します。
 2.  チャットで「Stable Diffusionで〜」「SDで生成して」などと指示すると、`generate_image_stable_diffusion` 関数が呼び出され、指定したパラメータで画像が生成されます。結果はサムネイル付きで会話に表示され、`manage_image_assets` を通じて再利用することも可能です。
-3.  プロンプトやシード、解像度などの詳細パラメータは、会話の中で明示するか、Function Callingのシステムプロンプトにテンプレートを記載して運用してください。
+3.  プロンプトやチェックポイント名、解像度などの詳細パラメータは、会話の中で明示するか、Function Callingのシステムプロンプトにテンプレートを記載して運用してください。
 
 ### 品質管理オプション
 - 「生成画像クオリティチェッカー」を有効化すると、Gemini Visionモデルが生成結果を自動評価し、プロンプトから逸脱していると判断した場合に、プロンプトを編集して再生成を試みます。
@@ -429,8 +430,8 @@ AIがユーザーの意図を汲み取り、事前に用意された様々な「
 *   **データ保存**: `manage_persistent_memory`などで記憶した情報は、ブラウザのデータベース（IndexedDB）に保存されます。このデータは会話履歴のエクスポート/インポートに含まれるため、環境を移行しても記憶を引き継ぐことが可能です。
 *   **Ver1.0でのメモリ共有仕様**: `manage_persistent_memory` や `manage_character_memory` など、データベースに保存する8つの関数は `get` アクションを廃止し、保存済みデータをAPIリクエストに自動添付する方式に変更しました。
 *   **リトライ時の挙動**: 生成を手動でリトライした場合、直前に実行された関数の効果（ステータス変更やアイテム追加など）は**取り消されません**。
-*   ⚠️ **Google Searchとの併用不可**: APIの仕様上、標準のGoogle Search機能とFunction Callingは同時に利用できません。両方が有効な場合、**Function Callingが優先**されます。
-*   💡 **FC有効時のWeb検索**: Function Callingが有効な状態でWeb検索を行いたい場合は、`search_web`関数が自動的に使用されます。（ただし、[事前の設定](#search_web関数の設定方法)が必要です）
+*   ⚠️ **Google Searchとの併用不可**: APIの仕様上、Gemini API標準のGoogle Search機能(グラウンディング)とFunction Calling(tool)は同時利用できません。
+*   💡 **FC有効時のWeb検索**: Function Calling使用時にWeb検索を行いたい場合は、`search_web`関数が自動的に使用されます。（ただし、[事前の設定](#search_web関数の設定方法)が必要です）
 *   > **⚠️ RPDのカウントについて:** Function Calling利用時、「モデル呼び出し→関数実行→モデル呼び出し」という手順で処理が実行されます。**1回の生成で複数回モデルを呼び出す**ため、APIのリクエスト回数が消費されやすくなります。エラーによる自動リトライが発生した場合は、さらに呼び出し回数が増えるため、特に無料枠のユーザーはご注意ください。
 
 ## 実装済みの関数一覧
