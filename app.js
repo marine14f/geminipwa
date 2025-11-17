@@ -9031,6 +9031,11 @@ const appLogic = {
         const maxRetries = state.settings.enableAutoRetry ? state.settings.maxRetries : 0;
         const forceCalling = state.settings.forceFunctionCalling && isFirstCall;
         
+        // state.abortControllerを確実に作成（ユーザーの手動キャンセル用）
+        if (!state.abortController) {
+            state.abortController = new AbortController();
+        }
+        
         // タイムアウト設定の取得
         const timeoutEnabled = state.settings.enableApiTimeout || false;
         const timeoutMs = timeoutEnabled ? (state.settings.apiTimeoutSeconds || 90) * 1000 : null;
