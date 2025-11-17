@@ -3617,7 +3617,7 @@ const apiUtils = {
 
                 const response = await fetch(endpoint, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
                     body: JSON.stringify(requestBody),
                     signal: timeoutController.signal
                 });
@@ -10409,7 +10409,7 @@ const appLogic = {
             const endpoint = `${GEMINI_API_BASE_URL}${state.settings.modelName}:generateContent`;
             const response = await fetch(endpoint, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.settings.apiKey },
                 body: JSON.stringify(requestBody),
             });
 
