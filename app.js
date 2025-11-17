@@ -4919,8 +4919,15 @@ const appLogic = {
             await dbUtils.openDB();
         } catch (dbError) {
             console.error("初期化中のDBオープンに失敗:", dbError);
-            await uiUtils.showCustomAlert(`データベースの起動に失敗しました: ${dbError.message}`);
-            elements.appContainer.innerHTML = `<p style="padding: 20px; text-align: center; color: red;">アプリの起動に失敗しました。</p>`;
+            const shouldReload = await uiUtils.showCustomConfirm(
+                `データベースの起動に失敗しました: ${dbError.message}\n\nハードリロードを実行しますか？\n（チャット履歴などのデータは保持されます）`
+            );
+            if (shouldReload) {
+                console.log("ユーザーがリロードを選択しました。");
+                window.location.reload(true);
+            } else {
+                elements.appContainer.innerHTML = `<p style="padding: 20px; text-align: center; color: red;">アプリの起動に失敗しました。</p>`;
+            }
             return;
         }
     
@@ -5190,7 +5197,14 @@ const appLogic = {
     
         } catch (error) {
             console.error("初期化中のデータ処理で失敗:", error);
-            await uiUtils.showCustomAlert(`データの読み込みに失敗しました: ${error.message}`);
+            const shouldReload = await uiUtils.showCustomConfirm(
+                `データの読み込みに失敗しました: ${error.message}\n\nハードリロードを実行しますか？\n（チャット履歴などのデータは保持されます）`
+            );
+            if (shouldReload) {
+                console.log("ユーザーがリロードを選択しました。");
+                window.location.reload(true);
+                return; // リロード後は処理を終了
+            }
         } finally {
             // --- ステップ5: 最終的なUI設定と表示 ---
             if (isSyncReload) uiUtils.updateProgressMessage('画面を描画中...');
