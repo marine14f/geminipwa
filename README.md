@@ -706,7 +706,12 @@ AIがユーザーの意図を汲み取り、事前に用意された様々な「
 設定後、「明日の東京の天気をネット検索して調べて」のように指示し、情報が返ってくれば成功です。
 
 # 更新履歴
-### Version 1.0 Dropbox連携&Stable Diffusion連携 (2025-10-04)
+### Version 1.1 (2025-11-19)
+*   **修正・改善**
+    *   `gemini-3-pro-preview`モデルを追加。
+    *   `gemini-3-pro-preview`でのFunction Calling使用時に発生していた「thought_signature」エラーを修正。
+
+### Version 1.0 Dropbox連携&Stable Diffusion連携 (2025-11-16)
 *   **機能追加**
     *   Dropboxとの連携機能を追加。
     *   Stable Diffusion WebUI/Forge/Reforgeとの連携機能を追加。

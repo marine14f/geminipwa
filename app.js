@@ -57,6 +57,10 @@ const ZAI_MODELS = [
 ];
 
 const VERSION_HISTORY = {
+    "1.1": [
+        "gemini-3-pro-previewモデルを追加しました。",
+        "gemini-3-pro-previewでのFunction Calling使用時に発生していた「thought_signature」エラーを修正しました。"
+    ],
     "1.0": [
         "Dropbox連携機能とStable Diffusion WebUI/Forge/Reforge連携を追加し、PWA内のデータと画像生成ワークフローをクラウドやローカル環境とシームレスに同期できるようにしました。",
         "添付ファイルのサムネイル表示やアップデート内容を告知するダイアログ、URLコンテンツを取り込むfetch_url_content関数、プロファイルへのgemini-2.5-pro使用回数表示、デバッグモード切替などのUI/機能改善を実装しました。",
@@ -7548,29 +7552,23 @@ const appLogic = {
                 break;
             }
 
-            const partsForApi = [
-                ...(result.thoughtParts || []),
-                ...result.toolCalls.map(tc => ({ functionCall: tc.functionCall }))
-            ];
-            
-            console.log('[Thought Debug] Building model message for API. thoughtParts:', result.thoughtParts?.length || 0, 'toolCalls:', result.toolCalls?.length || 0);
-            console.log('[Thought Debug] partsForApi:', JSON.stringify(partsForApi, null, 2));
-            
-            const modelMessageForApi = { role: 'model', parts: partsForApi };
-            const toolResultsForApi = toolResults.map(tr => ({ 
-                role: 'tool', 
-                parts: [{ 
-                    functionResponse: { 
-                        name: tr.name, 
-                        response: tr.response,
-                        _toolCallId: tr._toolCallId  // OpenAI互換APIのtool_call_idを引き継ぐ
-                    } 
-                }] 
-            }));
-            currentTurnHistory.push(modelMessageForApi, ...toolResultsForApi);
-            
-            console.log('[Thought Debug] currentTurnHistory length:', currentTurnHistory.length);
-            console.log('[Thought Debug] Last 3 items of currentTurnHistory:', JSON.stringify(currentTurnHistory.slice(-3), null, 2));
+                const partsForApi = [
+                    ...(result.thoughtParts || []),
+                    ...result.toolCalls.map(tc => ({ functionCall: tc.functionCall }))
+                ];
+
+                const modelMessageForApi = { role: 'model', parts: partsForApi };
+                const toolResultsForApi = toolResults.map(tr => ({
+                    role: 'tool',
+                    parts: [{
+                        functionResponse: {
+                            name: tr.name,
+                            response: tr.response,
+                            _toolCallId: tr._toolCallId  // OpenAI互換APIのtool_call_idを引き継ぐ
+                        }
+                    }]
+                }));
+                currentTurnHistory.push(modelMessageForApi, ...toolResultsForApi);
             
             uiUtils.setLoadingIndicatorText('応答生成中...');
         }
@@ -9200,22 +9198,17 @@ const appLogic = {
                 let finalToolCalls = [];
                 let finalThoughtParts = [];
 
-                // デバッグ: レスポンスの構造を確認
-                console.log('[Thought Debug] candidate.content.parts:', JSON.stringify(parts, null, 2));
-
                 parts.forEach(part => {
                     // Thought Signature + Function Call の検出 (Gemini 3の関数呼び出し)
                     // thoughtSignature と functionCall の両方を持つパートのみ特別扱い
                     if (part.thoughtSignature && part.functionCall) {
                         finalThoughtParts.push(part);
                         finalToolCalls.push({ functionCall: part.functionCall });
-                        console.log('[Thought Debug] Thought signature + function call part detected:', JSON.stringify(part, null, 2));
                     }
                     
                     // Thought Partの検出 (旧形式: thought がオブジェクトの場合)
                     else if (part.thought && part.thought !== true) {
                         finalThoughtParts.push(part);
-                        console.log('[Thought Debug] Thought part detected:', JSON.stringify(part, null, 2));
                     }
 
                     // テキストコンテンツの処理
@@ -9233,9 +9226,6 @@ const appLogic = {
                         finalToolCalls.push({ functionCall: part.functionCall });
                     }
                 });
-
-                console.log('[Thought Debug] finalThoughtParts count:', finalThoughtParts.length);
-                console.log('[Thought Debug] finalToolCalls count:', finalToolCalls.length);
 
                 // 古い形式のthoughts（candidate.thoughts）の処理
                 if (candidate.thoughts?.parts) {
