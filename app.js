@@ -46,7 +46,8 @@ const GEMINI_MODELS = [
     { value: 'gemini-2.0-flash-lite', label: 'gemini-2.0-flash-lite' },
     { value: 'gemini-2.5-flash-preview-09-2025', label: 'gemini-2.5-flash-preview-09-2025', group: 'プレビュー版' },
     { value: 'gemini-2.5-flash-lite-preview-09-2025', label: 'gemini-2.5-flash-lite-preview-09-2025', group: 'プレビュー版' },
-    { value: 'gemini-2.5-flash-image-preview', label: 'gemini-2.5-flash-image-preview (Nano Banana)', group: 'プレビュー版' }
+    { value: 'gemini-2.5-flash-image-preview', label: 'gemini-2.5-flash-image-preview (Nano Banana)', group: 'プレビュー版' },
+    { value: 'gemini-3-pro-preview', label: 'gemini-3-pro-preview', group: 'プレビュー版' }
 ];
 
 const ZAI_MODELS = [
@@ -816,7 +817,7 @@ const dbUtils = {
                                 oldSettingsObject[item.key] = item.value;
                             });
 
-                            const profileSettingKeys = [
+                                const profileSettingKeys = [
                                 'apiProvider', 'apiKey', 'zaiApiKey', 'modelName', 'systemPrompt', 'temperature', 'maxTokens', 'topK', 'topP',
                                 'presencePenalty', 'frequencyPenalty', 'thinkingBudget', 'includeThoughts',
                                 'enableThoughtTranslation', 'thoughtTranslationModel', 'dummyUser',
@@ -2453,7 +2454,8 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
         // プロバイダーとAPIキーの設定（要素が存在する場合のみ）
         if (elements.apiProviderSelect) {
             let provider = state.settings.apiProvider || 'gemini';
-            if (!state.settings.debugMode && provider === 'zai') {
+            const isDebugOnlyProvider = provider === 'zai';
+            if (!state.settings.debugMode && isDebugOnlyProvider) {
                 provider = 'gemini';
                 state.settings.apiProvider = provider;
                 if (state.activeProfile && state.activeProfile.settings) {
@@ -5858,7 +5860,8 @@ const appLogic = {
                 element: elements.apiProviderSelect, 
                 event: 'change',
                 onUpdate: (value) => {
-                    if (!state.settings.debugMode && value === 'zai') {
+                    const isDebugOnlyProvider = value === 'zai';
+                    if (!state.settings.debugMode && isDebugOnlyProvider) {
                         const fallbackProvider = 'gemini';
                         state.settings.apiProvider = fallbackProvider;
                         if (state.activeProfile && state.activeProfile.settings) {
@@ -5872,7 +5875,7 @@ const appLogic = {
                         }
                         this.updateProviderUI(fallbackProvider);
                         this.updateModelOptions(fallbackProvider);
-                        uiUtils.showCustomAlert("デバッグモードが無効のため、Z.aiは選択できません。");
+                        uiUtils.showCustomAlert("デバッグモードが無効のため、このプロバイダーは選択できません。Geminiに戻しました。");
                         return;
                     }
                     this.updateProviderUI(value);
@@ -5915,7 +5918,8 @@ const appLogic = {
                     elements.apiProviderRow.classList.toggle('hidden', !value);
                 }
 
-                if (!value && state.settings.apiProvider === 'zai') {
+                const isDebugOnlyProvider = state.settings.apiProvider === 'zai';
+                if (!value && isDebugOnlyProvider) {
                     const fallbackProvider = 'gemini';
                     state.settings.apiProvider = fallbackProvider;
                     if (state.activeProfile && state.activeProfile.settings) {
@@ -7514,7 +7518,11 @@ const appLogic = {
                     console.log("[_internalHandleSend] テキスト応答がなかったため、ツール結果を基に最終応答を生成します。");
                     uiUtils.setLoadingIndicatorText('最終応答を生成中...');
 
-                    const modelMessageForApi = { role: 'model', parts: result.toolCalls.map(tc => ({ functionCall: tc.functionCall })) };
+                    const partsForApi = [
+                        ...(result.thoughtParts || []),
+                        ...result.toolCalls.map(tc => ({ functionCall: tc.functionCall }))
+                    ];
+                    const modelMessageForApi = { role: 'model', parts: partsForApi };
                     const toolResultsForApi = toolResults.map(tr => ({ 
                         role: 'tool', 
                         parts: [{ 
@@ -7540,7 +7548,15 @@ const appLogic = {
                 break;
             }
 
-            const modelMessageForApi = { role: 'model', parts: result.toolCalls.map(tc => ({ functionCall: tc.functionCall })) };
+            const partsForApi = [
+                ...(result.thoughtParts || []),
+                ...result.toolCalls.map(tc => ({ functionCall: tc.functionCall }))
+            ];
+            
+            console.log('[Thought Debug] Building model message for API. thoughtParts:', result.thoughtParts?.length || 0, 'toolCalls:', result.toolCalls?.length || 0);
+            console.log('[Thought Debug] partsForApi:', JSON.stringify(partsForApi, null, 2));
+            
+            const modelMessageForApi = { role: 'model', parts: partsForApi };
             const toolResultsForApi = toolResults.map(tr => ({ 
                 role: 'tool', 
                 parts: [{ 
@@ -7552,6 +7568,10 @@ const appLogic = {
                 }] 
             }));
             currentTurnHistory.push(modelMessageForApi, ...toolResultsForApi);
+            
+            console.log('[Thought Debug] currentTurnHistory length:', currentTurnHistory.length);
+            console.log('[Thought Debug] Last 3 items of currentTurnHistory:', JSON.stringify(currentTurnHistory.slice(-3), null, 2));
+            
             uiUtils.setLoadingIndicatorText('応答生成中...');
         }
 
@@ -8688,21 +8708,41 @@ const appLogic = {
                 // 成功したので、待避していたデータを取得し、待避領域をクリア
                 const finalOriginalResponses = state.pendingCascadeResponses || [];
                 state.pendingCascadeResponses = null;
-    
+
                 const siblingGroupId = (finalOriginalResponses.length > 0 && finalOriginalResponses[0].siblingGroupId)
                     ? finalOriginalResponses[0].siblingGroupId
                     : `gid-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-    
+
                 finalOriginalResponses.forEach(msg => {
                     msg.isCascaded = true;
                     msg.isSelected = false;
                     msg.siblingGroupId = siblingGroupId;
                 });
-    
+
+                // 最終結果のexecutedFunctionsを初期化
+                newAggregatedMessage.executedFunctions = newAggregatedMessage.executedFunctions || [];
+                
+                // 再生成中に実行された関数呼び出しがあれば、それらも新しいメッセージのexecutedFunctionsに追加する
+                newMessages.forEach(msg => {
+                    if (msg.executedFunctions && Array.isArray(msg.executedFunctions)) {
+                         msg.executedFunctions.forEach(funcName => {
+                             if (!newAggregatedMessage.executedFunctions.includes(funcName)) {
+                                 newAggregatedMessage.executedFunctions.push(funcName);
+                             }
+                         });
+                    }
+                    // ツール実行結果からも復元
+                     if (msg.role === 'tool' && msg.name) {
+                         if (!newAggregatedMessage.executedFunctions.includes(msg.name)) {
+                             newAggregatedMessage.executedFunctions.push(msg.name);
+                         }
+                     }
+                });
+                
                 newAggregatedMessage.isCascaded = true;
                 newAggregatedMessage.isSelected = true;
                 newAggregatedMessage.siblingGroupId = siblingGroupId;
-    
+
                 state.currentMessages.splice(modelMessageIndex, 1, ...finalOriginalResponses, newAggregatedMessage);
                 uiUtils.renderChatMessages();
                 this.scrollToBottom();
@@ -9158,19 +9198,46 @@ const appLogic = {
                 let finalContent = '';
                 let finalThoughtSummary = '';
                 let finalToolCalls = [];
+                let finalThoughtParts = [];
+
+                // デバッグ: レスポンスの構造を確認
+                console.log('[Thought Debug] candidate.content.parts:', JSON.stringify(parts, null, 2));
 
                 parts.forEach(part => {
-                    if (part.text) {
+                    // Thought Signature + Function Call の検出 (Gemini 3の関数呼び出し)
+                    // thoughtSignature と functionCall の両方を持つパートのみ特別扱い
+                    if (part.thoughtSignature && part.functionCall) {
+                        finalThoughtParts.push(part);
+                        finalToolCalls.push({ functionCall: part.functionCall });
+                        console.log('[Thought Debug] Thought signature + function call part detected:', JSON.stringify(part, null, 2));
+                    }
+                    
+                    // Thought Partの検出 (旧形式: thought がオブジェクトの場合)
+                    else if (part.thought && part.thought !== true) {
+                        finalThoughtParts.push(part);
+                        console.log('[Thought Debug] Thought part detected:', JSON.stringify(part, null, 2));
+                    }
+
+                    // テキストコンテンツの処理
+                    // thoughtSignatureを持つがfunctionCallを持たないパートもここで処理
+                    else if (part.text) {
                         if (part.thought === true) {
                             finalThoughtSummary += part.text;
                         } else {
                             finalContent += part.text;
                         }
-                    } else if (part.functionCall) {
+                    }
+                    
+                    // 関数呼び出しの処理（thoughtSignatureを持たない通常のfunctionCall）
+                    else if (part.functionCall) {
                         finalToolCalls.push({ functionCall: part.functionCall });
                     }
                 });
 
+                console.log('[Thought Debug] finalThoughtParts count:', finalThoughtParts.length);
+                console.log('[Thought Debug] finalToolCalls count:', finalToolCalls.length);
+
+                // 古い形式のthoughts（candidate.thoughts）の処理
                 if (candidate.thoughts?.parts) {
                     candidate.thoughts.parts.forEach(part => {
                         if (part.text) {
@@ -9190,6 +9257,7 @@ const appLogic = {
                     content: finalContent,
                     thoughtSummary: finalThoughtSummary.trim() || null,
                     toolCalls: finalToolCalls.length > 0 ? finalToolCalls : null,
+                    thoughtParts: finalThoughtParts.length > 0 ? finalThoughtParts : null, // 追加
                     finishReason: candidate.finishReason,
                     safetyRatings: candidate.safetyRatings,
                     usageMetadata: responseData.usageMetadata,

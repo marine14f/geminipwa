@@ -222,6 +222,7 @@
                     <select id="api-provider" aria-label="APIプロバイダー">
                         <option value="gemini">Gemini</option>
                         <option value="zai">Z.ai</option>
+                        <option value="bedrock">Amazon Bedrock</option>
                     </select>
 
                     <div id="gemini-api-key-container">
@@ -232,6 +233,21 @@
                     <div id="zai-api-key-container" class="hidden">
                         <label for="zai-api-key">Z.ai APIキー:</label>
                         <input type="password" autocomplete="new-password" id="zai-api-key" placeholder="Z.ai APIキーを入力" aria-label="Z.ai APIキー">
+                    </div>
+
+                    <div id="bedrock-api-key-container" class="hidden">
+                        <label for="bedrock-api-key">Bedrock APIキー:</label>
+                        <input type="password" autocomplete="new-password" id="bedrock-api-key" placeholder="Bedrock APIキーを入力" aria-label="Bedrock APIキー">
+                        <label for="bedrock-region">Bedrockリージョン:</label>
+                        <select id="bedrock-region" aria-label="Bedrockリージョン">
+                            <option value="us-east-1">us-east-1 (N. Virginia)</option>
+                            <option value="us-west-2">us-west-2 (Oregon)</option>
+                            <option value="ap-northeast-1">ap-northeast-1 (Tokyo)</option>
+                            <option value="eu-central-1">eu-central-1 (Frankfurt)</option>
+                        </select>
+                        <p style="font-size: 11px; color: var(--text-secondary); margin-top: 8px;">
+                            ※ Amazon Bedrockはデバッグモード専用です。APIキーは短期利用向けに安全に管理してください。
+                        </p>
                     </div>
 
                     <label for="model-name">モデル名:</label>
