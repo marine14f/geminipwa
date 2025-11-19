@@ -293,6 +293,7 @@ try {
         applyDummyToProofreadCheckbox: document.getElementById('apply-dummy-to-proofread'),
         applyDummyToTranslateCheckbox: document.getElementById('apply-dummy-to-translate'),
         dummyModelInput: document.getElementById('dummy-model'),
+        reverseDummyOrderCheckbox: document.getElementById('reverse-dummy-order'),
         concatDummyModelCheckbox: document.getElementById('concat-dummy-model'),
         additionalModelsTextarea: document.getElementById('additional-models'),
         enterToSendCheckbox: document.getElementById('enter-to-send'),
@@ -519,6 +520,7 @@ const state = {
         applyDummyToProofread: false,
         applyDummyToTranslate: false,
         dummyModel: '',
+        reverseDummyOrder: false,
         concatDummyModel: false,
         additionalModels: '',
         enterToSend: true,
@@ -854,7 +856,7 @@ const dbUtils = {
                                 'modelName', 'systemPrompt', 'temperature', 'maxTokens', 'topK', 'topP',
                                 'presencePenalty', 'frequencyPenalty', 'thinkingBudget', 'includeThoughts',
                                 'enableThoughtTranslation', 'thoughtTranslationModel', 'dummyUser',
-                                'applyDummyToProofread', 'applyDummyToTranslate', 'dummyModel', 'concatDummyModel',
+                                'applyDummyToProofread', 'applyDummyToTranslate', 'dummyModel', 'reverseDummyOrder', 'concatDummyModel',
                                 'additionalModels', 'enterToSend', 'historySortOrder', 'darkMode', 'fontFamily',
                                 'hideSystemPromptInChat', 'enableSwipeNavigation', 'enableAutoRetry', 'maxRetries',
                                 'useFixedRetryDelay', 'fixedRetryDelaySeconds', 'maxBackoffDelaySeconds',
@@ -2537,6 +2539,7 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
         elements.applyDummyToProofreadCheckbox.checked = state.settings.applyDummyToProofread;
         elements.applyDummyToTranslateCheckbox.checked = state.settings.applyDummyToTranslate;
         elements.dummyModelInput.value = state.settings.dummyModel || '';
+        elements.reverseDummyOrderCheckbox.checked = state.settings.reverseDummyOrder;
         elements.concatDummyModelCheckbox.checked = state.settings.concatDummyModel;
         elements.additionalModelsTextarea.value = state.settings.additionalModels || '';
         elements.enterToSendCheckbox.checked = state.settings.enterToSend;
@@ -4908,7 +4911,7 @@ const appLogic = {
         const settings = {};
         const stringKeys = ['apiProvider', 'apiKey', 'zaiApiKey', 'openrouterApiKey', 'bedrockAccessKey', 'bedrockSecretKey', 'bedrockRegion', 'modelName', 'dummyUser', 'dummyModel', 'additionalModels', 'historySortOrder', 'fontFamily', 'proofreadingModelName', 'proofreadingSystemInstruction', 'googleSearchApiKey', 'googleSearchEngineId', 'headerColor', 'thoughtTranslationModel', 'summarySystemPrompt'];
         const numberKeys = ['temperature', 'maxTokens', 'topK', 'topP', 'thinkingBudget', 'maxRetries', 'maxBackoffDelaySeconds', 'overlayOpacity', 'messageOpacity'];
-        const booleanKeys = ['enterToSend', 'darkMode', 'geminiEnableGrounding', 'geminiEnableFunctionCalling', 'enableSwipeNavigation', 'enableProofreading', 'enableAutoRetry', 'useFixedRetryDelay', 'concatDummyModel', 'includeThoughts', 'enableThoughtTranslation', 'applyDummyToProofread', 'applyDummyToTranslate', 'forceFunctionCalling', 'autoScroll', 'enableWideMode', 'enableSummaryButton'];
+        const booleanKeys = ['enterToSend', 'darkMode', 'geminiEnableGrounding', 'geminiEnableFunctionCalling', 'enableSwipeNavigation', 'enableProofreading', 'enableAutoRetry', 'useFixedRetryDelay', 'reverseDummyOrder', 'concatDummyModel', 'includeThoughts', 'enableThoughtTranslation', 'applyDummyToProofread', 'applyDummyToTranslate', 'forceFunctionCalling', 'autoScroll', 'enableWideMode', 'enableSummaryButton'];
         
         settings.systemPrompt = elements.systemPromptDefaultTextarea.value.trim();
         settings.fixedRetryDelaySeconds = parseFloat(elements.fixedRetryDelayInput.value) || null;
@@ -5008,11 +5011,22 @@ const appLogic = {
         }
 
         // ダミープロンプトの追加処理は共通
-        if (state.settings.dummyUser) {
-            historyToProcess.push({ role: 'user', content: state.settings.dummyUser, attachments: [] });
-        }
-        if (state.settings.dummyModel) {
-            historyToProcess.push({ role: 'model', content: state.settings.dummyModel, attachments: [] });
+        if (state.settings.reverseDummyOrder) {
+            // 順序を入れ替える場合: ダミーModel → ダミーUser
+            if (state.settings.dummyModel) {
+                historyToProcess.push({ role: 'model', content: state.settings.dummyModel, attachments: [] });
+            }
+            if (state.settings.dummyUser) {
+                historyToProcess.push({ role: 'user', content: state.settings.dummyUser, attachments: [] });
+            }
+        } else {
+            // 通常の順序: ダミーUser → ダミーModel
+            if (state.settings.dummyUser) {
+                historyToProcess.push({ role: 'user', content: state.settings.dummyUser, attachments: [] });
+            }
+            if (state.settings.dummyModel) {
+                historyToProcess.push({ role: 'model', content: state.settings.dummyModel, attachments: [] });
+            }
         }
         
         return historyToProcess.map(msg => {
@@ -6614,6 +6628,7 @@ const appLogic = {
             applyDummyToProofread: { element: elements.applyDummyToProofreadCheckbox, event: 'change' },
             applyDummyToTranslate: { element: elements.applyDummyToTranslateCheckbox, event: 'change' },
             dummyModel: { element: elements.dummyModelInput, event: 'input' },
+            reverseDummyOrder: { element: elements.reverseDummyOrderCheckbox, event: 'change' },
             concatDummyModel: { element: elements.concatDummyModelCheckbox, event: 'change' },
             additionalModels: { element: elements.additionalModelsTextarea, event: 'input' },
             enterToSend: { element: elements.enterToSendCheckbox, event: 'change' },
