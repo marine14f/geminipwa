@@ -27,12 +27,14 @@ const CHAT_TITLE_LENGTH = 15;
 const TEXTAREA_MAX_HEIGHT = 120;
 const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models/';
 const ZAI_API_BASE_URL = 'https://api.z.ai/api/paas/v4/chat/completions';
+const OPENROUTER_API_BASE_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const DUPLICATE_SUFFIX = ' (コピー)';
 const IMPORT_PREFIX = '(取込) ';
 const LIGHT_THEME_COLOR = '#4a90e2';
 const DARK_THEME_COLOR = '#007aff';
 const APP_VERSION = "1.1";
 const DEFAULT_ZAI_MODEL = 'glm-4.6';
+const DEFAULT_OPENROUTER_MODEL = 'anthropic/claude-3.5-sonnet';
 const VERSION_NOTICE_SESSION_KEY = 'pendingVersionNotice';
 const VERSION_ACK_STORAGE_KEY = 'appVersionAcknowledged';
 const VERSION_LEGACY_STORAGE_KEY = 'appVersion';
@@ -55,6 +57,19 @@ const ZAI_MODELS = [
     { value: 'glm-4.5-Air', label: 'GLM-4.5 Air' },
     { value: 'glm-4.5-flash', label: 'GLM-4.5 Flash' }
 ];
+
+const BEDROCK_MODELS = [
+    { value: 'jp.anthropic.claude-sonnet-4-5-20250929-v1:0', label: 'Claude Sonnet 4.5 (推奨・東京リージョン用)' },
+    { value: 'anthropic.claude-sonnet-4-5-20250929-v1:0', label: 'Claude Sonnet 4.5 (標準リージョン用)' },
+    { value: 'anthropic.claude-3-5-sonnet-20241022-v2:0', label: 'Claude 3.5 Sonnet v2' },
+    { value: 'anthropic.claude-3-5-sonnet-20240620-v1:0', label: 'Claude 3.5 Sonnet v1' },
+    { value: 'anthropic.claude-3-opus-20240229-v1:0', label: 'Claude 3 Opus' },
+    { value: 'anthropic.claude-3-sonnet-20240229-v1:0', label: 'Claude 3 Sonnet' },
+    { value: 'anthropic.claude-3-haiku-20240307-v1:0', label: 'Claude 3 Haiku' }
+];
+
+const DEFAULT_BEDROCK_MODEL = 'jp.anthropic.claude-sonnet-4-5-20250929-v1:0';
+const DEFAULT_BEDROCK_REGION = 'us-east-1';
 
 const VERSION_HISTORY = {
     "1.1": [
@@ -253,7 +268,16 @@ try {
         zaiApiKeyInput: document.getElementById('zai-api-key'),
         geminiApiKeyContainer: document.getElementById('gemini-api-key-container'),
         zaiApiKeyContainer: document.getElementById('zai-api-key-container'),
+        openrouterApiKeyInput: document.getElementById('openrouter-api-key'),
+        openrouterApiKeyContainer: document.getElementById('openrouter-api-key-container'),
+        openrouterModelInput: document.getElementById('openrouter-model-input'),
+        openrouterModelInputContainer: document.getElementById('openrouter-model-input-container'),
+        bedrockAccessKeyInput: document.getElementById('bedrock-access-key'),
+        bedrockSecretKeyInput: document.getElementById('bedrock-secret-key'),
+        bedrockRegionSelect: document.getElementById('bedrock-region'),
+        bedrockApiKeyContainer: document.getElementById('bedrock-api-key-container'),
         modelNameSelect: document.getElementById('model-name'),
+        modelNameLabel: document.getElementById('model-name-label'),
         userDefinedModelsGroup: document.getElementById('user-defined-models-group'),
         systemPromptDefaultTextarea: document.getElementById('system-prompt-default'),
         temperatureInput: document.getElementById('temperature'),
@@ -474,9 +498,13 @@ const state = {
     videoUrlCache: new Map(),
     imageUrlCache: new Map(),
     settings: {
-        apiProvider: 'gemini', // 'gemini' | 'zai'
+        apiProvider: 'gemini', // 'gemini' | 'zai' | 'bedrock' | 'openrouter'
         apiKey: '',
         zaiApiKey: '',
+        openrouterApiKey: '',
+        bedrockAccessKey: '',
+        bedrockSecretKey: '',
+        bedrockRegion: DEFAULT_BEDROCK_REGION,
         modelName: DEFAULT_MODEL,
         systemPrompt: '',
         temperature: null,
@@ -822,7 +850,8 @@ const dbUtils = {
                             });
 
                                 const profileSettingKeys = [
-                                'apiProvider', 'apiKey', 'zaiApiKey', 'modelName', 'systemPrompt', 'temperature', 'maxTokens', 'topK', 'topP',
+                                'apiProvider', 'apiKey', 'zaiApiKey', 'bedrockAccessKey', 'bedrockSecretKey', 'bedrockRegion', 
+                                'modelName', 'systemPrompt', 'temperature', 'maxTokens', 'topK', 'topP',
                                 'presencePenalty', 'frequencyPenalty', 'thinkingBudget', 'includeThoughts',
                                 'enableThoughtTranslation', 'thoughtTranslationModel', 'dummyUser',
                                 'applyDummyToProofread', 'applyDummyToTranslate', 'dummyModel', 'concatDummyModel',
@@ -2458,7 +2487,7 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
         // プロバイダーとAPIキーの設定（要素が存在する場合のみ）
         if (elements.apiProviderSelect) {
             let provider = state.settings.apiProvider || 'gemini';
-            const isDebugOnlyProvider = provider === 'zai';
+            const isDebugOnlyProvider = provider === 'zai' || provider === 'openrouter' || provider === 'bedrock';
             if (!state.settings.debugMode && isDebugOnlyProvider) {
                 provider = 'gemini';
                 state.settings.apiProvider = provider;
@@ -2480,6 +2509,18 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
         elements.apiKeyInput.value = state.settings.apiKey || '';
         if (elements.zaiApiKeyInput) {
             elements.zaiApiKeyInput.value = state.settings.zaiApiKey || '';
+        }
+        if (elements.openrouterApiKeyInput) {
+            elements.openrouterApiKeyInput.value = state.settings.openrouterApiKey || '';
+        }
+        if (elements.bedrockAccessKeyInput) {
+            elements.bedrockAccessKeyInput.value = state.settings.bedrockAccessKey || '';
+        }
+        if (elements.bedrockSecretKeyInput) {
+            elements.bedrockSecretKeyInput.value = state.settings.bedrockSecretKey || '';
+        }
+        if (elements.bedrockRegionSelect) {
+            elements.bedrockRegionSelect.value = state.settings.bedrockRegion || DEFAULT_BEDROCK_REGION;
         }
         elements.modelNameSelect.value = state.settings.modelName || DEFAULT_MODEL;
         elements.systemPromptDefaultTextarea.value = state.settings.systemPrompt || '';
@@ -3400,6 +3441,201 @@ const apiUtils = {
         }
     },
 
+    // Gemini形式からBedrock Converse形式への変換
+    convertGeminiToConverseFormat(messagesForApi) {
+        const converseMessages = [];
+        let pendingToolResults = [];  // 連続するtoolメッセージを一時保存
+        
+        for (let i = 0; i < messagesForApi.length; i++) {
+            const geminiMsg = messagesForApi[i];
+            
+            // まずロールを判定（デフォルト）
+            let role = geminiMsg.role === 'model' ? 'assistant' : geminiMsg.role;
+            const content = [];
+            
+            // functionResponseが含まれているかチェック
+            let hasFunctionResponse = false;
+            
+            if (geminiMsg.parts) {
+                for (const part of geminiMsg.parts) {
+                    if (part.text) {
+                        content.push({ text: part.text });
+                    } else if (part.inlineData) {
+                        // Base64画像データをバイナリに変換
+                        const base64Data = part.inlineData.data;
+                        const format = part.inlineData.mimeType.split('/')[1];
+                        content.push({
+                            image: {
+                                format: format,
+                                source: { 
+                                    bytes: Uint8Array.from(atob(base64Data), c => c.charCodeAt(0))
+                                }
+                            }
+                        });
+                    } else if (part.functionCall) {
+                        // Tool use形式に変換
+                        content.push({
+                            toolUse: {
+                                toolUseId: part.functionCall._toolCallId || `tool_${Date.now()}_${Math.random()}`,
+                                name: part.functionCall.name,
+                                input: part.functionCall.args || {}
+                            }
+                        });
+                    } else if (part.functionResponse) {
+                        // Tool result形式に変換
+                        hasFunctionResponse = true;
+                        const responseContent = typeof part.functionResponse.response === 'string' 
+                            ? part.functionResponse.response 
+                            : JSON.stringify(part.functionResponse.response);
+                        
+                        // toolUseIdは元のtoolCallIdを使用（なければ関数名をフォールバック）
+                        const toolUseId = part.functionResponse._toolCallId || part.functionResponse.name;
+                        
+                        content.push({
+                            toolResult: {
+                                toolUseId: toolUseId,
+                                content: [{ text: responseContent }]
+                            }
+                        });
+                    }
+                }
+            }
+            
+            // role: "tool" の場合は、連続するtoolメッセージを集める
+            if (geminiMsg.role === 'tool' || hasFunctionResponse) {
+                pendingToolResults.push(...content);
+                
+                // 次のメッセージがtool以外の場合、または最後のメッセージの場合
+                const nextMsg = messagesForApi[i + 1];
+                const isLastMessage = i === messagesForApi.length - 1;
+                const nextIsNotTool = !nextMsg || (nextMsg.role !== 'tool' && !nextMsg.parts?.some(p => p.functionResponse));
+                
+                if (isLastMessage || nextIsNotTool) {
+                    // 溜まっているtoolResultsを1つの"user"メッセージとして追加
+                    if (pendingToolResults.length > 0) {
+                        converseMessages.push({
+                            role: 'user',
+                            content: pendingToolResults
+                        });
+                        pendingToolResults = [];
+                    }
+                }
+            } else {
+                // tool以外のメッセージはそのまま追加
+                if (content.length > 0) {
+                    converseMessages.push({ role, content });
+                }
+            }
+        }
+        
+        return converseMessages;
+    },
+
+    // Bedrock Converse形式からGemini形式への変換
+    convertConverseToGeminiFormat(converseResponse) {
+        const parts = [];
+        
+        if (converseResponse.output && converseResponse.output.message) {
+            const message = converseResponse.output.message;
+            
+            for (const contentItem of message.content || []) {
+                if (contentItem.text) {
+                    parts.push({ text: contentItem.text });
+                } else if (contentItem.toolUse) {
+                    parts.push({
+                        functionCall: {
+                            name: contentItem.toolUse.name,
+                            args: contentItem.toolUse.input || {},
+                            _toolCallId: contentItem.toolUse.toolUseId
+                        }
+                    });
+                }
+            }
+        }
+        
+        // finishReasonのマッピング
+        let finishReason = 'STOP';
+        if (converseResponse.stopReason) {
+            const reasonMap = {
+                'end_turn': 'STOP',
+                'tool_use': 'STOP',
+                'max_tokens': 'MAX_TOKENS',
+                'stop_sequence': 'STOP',
+                'content_filtered': 'SAFETY'
+            };
+            finishReason = reasonMap[converseResponse.stopReason] || 'STOP';
+        }
+        
+        return {
+            candidates: [{
+                content: {
+                    parts: parts,
+                    role: 'model'
+                },
+                finishReason: finishReason
+            }],
+            usageMetadata: {
+                promptTokenCount: converseResponse.usage?.inputTokens || 0,
+                candidatesTokenCount: converseResponse.usage?.outputTokens || 0,
+                totalTokenCount: (converseResponse.usage?.inputTokens || 0) + (converseResponse.usage?.outputTokens || 0)
+            }
+        };
+    },
+
+    // Gemini形式のFunction DeclarationsをBedrock形式に変換
+    convertGeminiToolsToBedrock(geminiTools) {
+        // JSON Schemaの型名を小文字に変換する再帰関数
+        const normalizeJsonSchema = (schema) => {
+            if (!schema || typeof schema !== 'object') {
+                return schema;
+            }
+
+            const normalized = Array.isArray(schema) ? [] : {};
+
+            for (const key in schema) {
+                if (!schema.hasOwnProperty(key)) continue;
+
+                let value = schema[key];
+
+                // "type"フィールドの値を小文字に変換
+                if (key === 'type' && typeof value === 'string') {
+                    value = value.toLowerCase();
+                }
+                // オブジェクトまたは配列の場合は再帰処理
+                else if (typeof value === 'object' && value !== null) {
+                    value = normalizeJsonSchema(value);
+                }
+
+                normalized[key] = value;
+            }
+
+            return normalized;
+        };
+
+        const bedrockTools = [];
+        
+        for (const geminiTool of geminiTools) {
+            if (geminiTool.function_declarations && Array.isArray(geminiTool.function_declarations)) {
+                for (const funcDecl of geminiTool.function_declarations) {
+                    // parametersを正規化（型名を小文字に変換）
+                    const normalizedParameters = normalizeJsonSchema(funcDecl.parameters || {});
+                    
+                    bedrockTools.push({
+                        toolSpec: {
+                            name: funcDecl.name,
+                            description: funcDecl.description || '',
+                            inputSchema: {
+                                json: normalizedParameters
+                            }
+                        }
+                    });
+                }
+            }
+        }
+        
+        return bedrockTools;
+    },
+
     // Gemini APIを呼び出す
     async callGeminiApi(messagesForApi, generationConfig, systemInstruction, tools = null, forceCalling = false, signal = null) {
         console.log(`[Debug] callGeminiApi: 現在の設定値を確認します。`, {
@@ -3888,12 +4124,382 @@ const apiUtils = {
         }
     },
 
+    // OpenRouter APIを呼び出す
+    async callOpenRouterApi(messagesForApi, generationConfig, systemInstruction, tools = null, forceCalling = false, signal = null) {
+        console.log(`[Debug] callOpenRouterApi: OpenRouter APIを呼び出します。`);
+
+        const apiKey = state.settings.openrouterApiKey;
+        if (!apiKey) {
+            throw new Error("OpenRouter APIキーが設定されていません。");
+        }
+
+        // signalが渡されていない場合のみstate.abortControllerを作成
+        if (!signal) {
+            state.abortController = new AbortController();
+            signal = state.abortController.signal;
+        }
+
+        const model = state.settings.modelName || DEFAULT_OPENROUTER_MODEL;
+
+        // Gemini形式のメッセージをOpenAI形式に変換
+        const openAIMessages = this.convertGeminiToOpenAIFormat(messagesForApi);
+
+        // システムプロンプトの処理
+        if (systemInstruction && systemInstruction.parts && systemInstruction.parts.length > 0) {
+            const systemText = systemInstruction.parts[0].text;
+            if (systemText) {
+                // システムメッセージを先頭に追加
+                openAIMessages.unshift({
+                    role: 'system',
+                    content: systemText
+                });
+            }
+        }
+
+        // リクエストボディの構築
+        const requestBody = {
+            model: model,
+            messages: openAIMessages
+        };
+
+        // 生成パラメータの変換
+        if (generationConfig) {
+            if (generationConfig.temperature !== undefined) {
+                requestBody.temperature = generationConfig.temperature;
+            }
+            if (generationConfig.maxOutputTokens !== undefined) {
+                requestBody.max_tokens = generationConfig.maxOutputTokens;
+            }
+            if (generationConfig.topP !== undefined) {
+                requestBody.top_p = generationConfig.topP;
+            }
+        }
+
+        // Function Callingの処理
+        if (state.settings.geminiEnableFunctionCalling && window.functionDeclarations) {
+            // Gemini形式のfunction declarationsをOpenAI形式に変換
+            const openAITools = [];
+            
+            for (const geminiTool of window.functionDeclarations) {
+                if (geminiTool.function_declarations && Array.isArray(geminiTool.function_declarations)) {
+                    // Gemini形式: { function_declarations: [{ name, description, parameters }] }
+                    for (const funcDecl of geminiTool.function_declarations) {
+                        openAITools.push({
+                            type: 'function',
+                            function: {
+                                name: funcDecl.name,
+                                description: funcDecl.description || '',
+                                parameters: funcDecl.parameters || {}
+                            }
+                        });
+                    }
+                } else if (geminiTool.google_search) {
+                    // Google SearchはOpenRouterではサポートされていない可能性があるためスキップ
+                    console.warn("OpenRouter APIではGoogle Searchはサポートされていません。スキップします。");
+                }
+            }
+
+            if (openAITools.length > 0) {
+                requestBody.tools = openAITools;
+                if (forceCalling) {
+                    requestBody.tool_choice = 'required';
+                } else {
+                    requestBody.tool_choice = 'auto';
+                }
+                console.log(`OpenRouter APIに ${openAITools.length} 個のFunction Callingツールを設定しました。`);
+            }
+        }
+
+        console.log("OpenRouterへの送信データ:", JSON.stringify(requestBody, (key, value) => {
+            if (key === 'data' && typeof value === 'string' && value.length > 100) {
+                return value.substring(0, 50) + '...[省略]...' + value.substring(value.length - 20);
+            }
+            return value;
+        }, 2));
+        
+        // メッセージ構造の詳細をログ出力（デバッグ用）
+        if (requestBody.messages && requestBody.messages.length > 0) {
+            const recentMessages = requestBody.messages.slice(-6);
+            console.log('[OpenRouter Debug] 送信する最近のメッセージ構造:');
+            recentMessages.forEach((msg, idx) => {
+                const info = { role: msg.role };
+                if (msg.tool_calls) {
+                    info.tool_calls = msg.tool_calls.map(tc => ({ id: tc.id, name: tc.function?.name }));
+                }
+                if (msg.tool_call_id) {
+                    info.tool_call_id = msg.tool_call_id;
+                }
+                // contentの存在を常に表示（空文字列でも）
+                if ('content' in msg) {
+                    if (typeof msg.content === 'string') {
+                        if (msg.content === '') {
+                            info.content = '""'; // 空文字列を明示
+                        } else {
+                            info.content_preview = msg.content.substring(0, 50) + '...';
+                        }
+                    } else {
+                        info.content_type = typeof msg.content;
+                    }
+                } else {
+                    info.no_content_field = true;
+                }
+                console.log(`  [${idx}]`, JSON.stringify(info));
+            });
+        }
+        
+        console.log("ターゲットエンドポイント:", OPENROUTER_API_BASE_URL);
+
+        try {
+            const timestamp = new Date().toLocaleTimeString();
+            console.log(`[API_DEBUG ${timestamp}] Sending fetch request to OpenRouter API...`);
+
+            const response = await fetch(OPENROUTER_API_BASE_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`,
+                    'HTTP-Referer': window.location.origin,
+                    'X-Title': 'Gemini PWA'
+                },
+                body: JSON.stringify(requestBody),
+                signal
+            });
+
+            const receivedTimestamp = new Date().toLocaleTimeString();
+            console.log(`[API_DEBUG ${receivedTimestamp}] Received response from OpenRouter API. Status: ${response.status}`);
+
+            if (!response.ok) {
+                let errorMsg = `APIエラー (${response.status}): ${response.statusText}`;
+                let errorData = null;
+                try {
+                    errorData = await response.json();
+                    console.error("APIエラーレスポンスボディ:", errorData);
+                    
+                    // 詳細なエラー情報をログ出力
+                    if (errorData.error) {
+                        console.error("[OpenRouter] エラー詳細:", JSON.stringify(errorData.error, null, 2));
+                        if (errorData.error.metadata) {
+                            console.error("[OpenRouter] メタデータ:", errorData.error.metadata);
+                        }
+                        if (errorData.error.code) {
+                            console.error("[OpenRouter] エラーコード:", errorData.error.code);
+                        }
+                    }
+                    
+                    if (errorData.error && errorData.error.message) {
+                        errorMsg = `APIエラー (${response.status}): ${errorData.error.message}`;
+                        // OpenRouter特有の追加情報があれば追加
+                        if (errorData.error.code) {
+                            errorMsg += ` (code: ${errorData.error.code})`;
+                        }
+                    } else if (errorData.message) {
+                        errorMsg = `APIエラー (${response.status}): ${errorData.message}`;
+                    }
+                } catch (e) {
+                    console.error("APIエラーレスポンスボディのパース失敗:", e);
+                }
+                const error = new Error(errorMsg);
+                error.status = response.status;
+                error.data = errorData;
+                throw error;
+            }
+
+            // レスポンスを取得してGemini形式に変換
+            const openAIResponse = await response.json();
+            
+            // デバッグ用：OpenRouter APIからのレスポンス構造を確認
+            if (openAIResponse.choices && openAIResponse.choices[0]) {
+                const choice = openAIResponse.choices[0];
+                console.log('[OpenRouter Debug] APIレスポンス情報:');
+                console.log(`  - finish_reason: ${choice.finish_reason}`);
+                if (choice.message) {
+                    if (choice.message.tool_calls) {
+                        console.log(`  - tool_calls数: ${choice.message.tool_calls.length}`);
+                        choice.message.tool_calls.forEach((tc, idx) => {
+                            console.log(`    [${idx}] id: ${tc.id}, name: ${tc.function?.name}`);
+                        });
+                    }
+                    if (choice.message.content) {
+                        console.log(`  - content: ${choice.message.content.substring(0, 50)}...`);
+                    }
+                }
+            }
+            
+            const geminiFormatResponse = this.convertOpenAIToGeminiFormat(openAIResponse);
+
+            // Responseオブジェクトのように扱えるようにラップ
+            return {
+                ok: true,
+                status: response.status,
+                json: async () => geminiFormatResponse
+            };
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                throw new Error("リクエストがキャンセルされました。");
+            } else {
+                throw error;
+            }
+        }
+    },
+
+    // Amazon Bedrock APIを呼び出す
+    async callBedrockApi(messagesForApi, generationConfig, systemInstruction, tools = null, forceCalling = false, signal = null) {
+        console.log(`[Debug] callBedrockApi: Amazon Bedrock APIを呼び出します。`);
+        
+        const accessKey = state.settings.bedrockAccessKey;
+        const secretKey = state.settings.bedrockSecretKey;
+        const region = state.settings.bedrockRegion || DEFAULT_BEDROCK_REGION;
+        
+        // デバッグ情報を出力
+        console.log(`[Bedrock Debug] Access Key存在: ${!!accessKey}, Secret Key存在: ${!!secretKey}, Region: ${region}`);
+        console.log(`[Bedrock Debug] state.settings:`, {
+            bedrockAccessKey: accessKey ? `${accessKey.substring(0, 8)}...` : 'なし',
+            bedrockSecretKey: secretKey ? '設定済み' : 'なし',
+            bedrockRegion: region
+        });
+        
+        if (!accessKey || !secretKey) {
+            console.error('[Bedrock Debug] 認証情報が不足しています。elements確認:', {
+                bedrockAccessKeyInput: elements.bedrockAccessKeyInput,
+                bedrockSecretKeyInput: elements.bedrockSecretKeyInput,
+                bedrockAccessKeyValue: elements.bedrockAccessKeyInput?.value,
+                bedrockSecretKeyValue: elements.bedrockSecretKeyInput ? '存在する' : 'なし'
+            });
+            throw new Error("Bedrock認証情報（Access KeyまたはSecret Key）が設定されていません。");
+        }
+
+        // AWS SDK が読み込まれているか確認
+        if (!window.BedrockRuntimeClient || !window.ConverseCommand) {
+            throw new Error("AWS Bedrock SDK が読み込まれていません。ページを再読み込みしてください。");
+        }
+
+        // signalが渡されていない場合のみstate.abortControllerを作成
+        if (!signal) {
+            state.abortController = new AbortController();
+            signal = state.abortController.signal;
+        }
+
+        const modelId = state.settings.modelName || DEFAULT_BEDROCK_MODEL;
+
+        try {
+            // BedrockRuntimeClientの初期化
+            const client = new window.BedrockRuntimeClient({
+                region: region,
+                credentials: {
+                    accessKeyId: accessKey,
+                    secretAccessKey: secretKey
+                }
+            });
+
+            // Gemini形式からBedrock Converse形式へ変換
+            const converseMessages = this.convertGeminiToConverseFormat(messagesForApi);
+            
+            // デバッグ: 変換後のメッセージ数とtoolResult数を確認
+            console.log(`[Bedrock] 変換後のメッセージ数: ${converseMessages.length}`);
+            converseMessages.forEach((msg, idx) => {
+                const toolResults = msg.content?.filter(c => c.toolResult) || [];
+                if (toolResults.length > 0) {
+                    console.log(`[Bedrock] メッセージ${idx} (role: ${msg.role}): ${toolResults.length}個のtoolResultを含む`);
+                }
+            });
+            
+            // システムプロンプトの処理
+            let systemPrompts = [];
+            if (systemInstruction && systemInstruction.parts && systemInstruction.parts.length > 0) {
+                const systemText = systemInstruction.parts[0].text;
+                if (systemText) {
+                    systemPrompts.push({ text: systemText });
+                }
+            }
+
+            // リクエストボディの構築
+            const requestBody = {
+                modelId: modelId,
+                messages: converseMessages,
+                inferenceConfig: {}
+            };
+
+            // システムプロンプトを追加
+            if (systemPrompts.length > 0) {
+                requestBody.system = systemPrompts;
+            }
+
+            // 生成設定の追加
+            if (generationConfig.maxOutputTokens) {
+                requestBody.inferenceConfig.maxTokens = generationConfig.maxOutputTokens;
+            }
+            
+            // Claude Sonnet 4.5では temperature と topP を同時に指定できないため、temperatureのみ使用
+            const isClaudeSonnet45 = modelId.includes('claude-sonnet-4-5');
+            
+            if (generationConfig.temperature !== undefined && generationConfig.temperature !== null) {
+                requestBody.inferenceConfig.temperature = generationConfig.temperature;
+            }
+            
+            // Claude Sonnet 4.5以外の場合のみtopPを設定
+            if (!isClaudeSonnet45 && generationConfig.topP !== undefined && generationConfig.topP !== null) {
+                requestBody.inferenceConfig.topP = generationConfig.topP;
+            } else if (isClaudeSonnet45 && generationConfig.topP !== undefined) {
+                console.log('[Bedrock] Claude Sonnet 4.5では topP パラメータをスキップします（temperature と topP の同時指定不可のため）');
+            }
+
+            // Function Callingの処理
+            if (state.settings.geminiEnableFunctionCalling && window.functionDeclarations) {
+                const bedrockTools = this.convertGeminiToolsToBedrock(window.functionDeclarations);
+                if (bedrockTools.length > 0) {
+                    requestBody.toolConfig = {
+                        tools: bedrockTools
+                    };
+                    
+                    if (forceCalling) {
+                        requestBody.toolConfig.toolChoice = { any: {} };
+                    } else {
+                        requestBody.toolConfig.toolChoice = { auto: {} };
+                    }
+                    
+                    console.log(`Amazon Bedrock APIに ${bedrockTools.length} 個のFunction Callingツールを設定しました。`);
+                }
+            }
+
+            console.log("Amazon Bedrockへの送信データ:", JSON.stringify(requestBody, (key, value) => {
+                if (key === 'bytes' && value instanceof Uint8Array) {
+                    return `[Uint8Array: ${value.length} bytes]`;
+                }
+                return value;
+            }, 2));
+
+            // Converse APIコマンドを実行
+            const command = new window.ConverseCommand(requestBody);
+            const response = await client.send(command);
+            
+            console.log("Amazon Bedrockからのレスポンス:", response);
+
+            // レスポンスをGemini形式に変換
+            const geminiFormatResponse = this.convertConverseToGeminiFormat(response);
+
+            // Responseオブジェクトのように扱えるようにラップ
+            return {
+                ok: true,
+                status: 200,
+                json: async () => geminiFormatResponse
+            };
+
+        } catch (error) {
+            console.error("Amazon Bedrock API呼び出しエラー:", error);
+            throw new Error(`Bedrock APIエラー: ${error.message}`);
+        }
+    },
+
     // プロバイダーに応じて適切なAPIを呼び出すラッパー関数
     async callApi(messagesForApi, generationConfig, systemInstruction, tools = null, forceCalling = false, signal = null) {
         const provider = state.settings.apiProvider || 'gemini';
         
         if (provider === 'zai') {
             return await this.callZaiApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling, signal);
+        } else if (provider === 'openrouter') {
+            return await this.callOpenRouterApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling, signal);
+        } else if (provider === 'bedrock') {
+            return await this.callBedrockApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling, signal);
         } else {
             return await this.callGeminiApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling, signal);
         }
@@ -4300,7 +4906,7 @@ const appLogic = {
 
     getCurrentUiSettings() {
         const settings = {};
-        const stringKeys = ['apiProvider', 'apiKey', 'zaiApiKey', 'modelName', 'dummyUser', 'dummyModel', 'additionalModels', 'historySortOrder', 'fontFamily', 'proofreadingModelName', 'proofreadingSystemInstruction', 'googleSearchApiKey', 'googleSearchEngineId', 'headerColor', 'thoughtTranslationModel', 'summarySystemPrompt'];
+        const stringKeys = ['apiProvider', 'apiKey', 'zaiApiKey', 'openrouterApiKey', 'bedrockAccessKey', 'bedrockSecretKey', 'bedrockRegion', 'modelName', 'dummyUser', 'dummyModel', 'additionalModels', 'historySortOrder', 'fontFamily', 'proofreadingModelName', 'proofreadingSystemInstruction', 'googleSearchApiKey', 'googleSearchEngineId', 'headerColor', 'thoughtTranslationModel', 'summarySystemPrompt'];
         const numberKeys = ['temperature', 'maxTokens', 'topK', 'topP', 'thinkingBudget', 'maxRetries', 'maxBackoffDelaySeconds', 'overlayOpacity', 'messageOpacity'];
         const booleanKeys = ['enterToSend', 'darkMode', 'geminiEnableGrounding', 'geminiEnableFunctionCalling', 'enableSwipeNavigation', 'enableProofreading', 'enableAutoRetry', 'useFixedRetryDelay', 'concatDummyModel', 'includeThoughts', 'enableThoughtTranslation', 'applyDummyToProofread', 'applyDummyToTranslate', 'forceFunctionCalling', 'autoScroll', 'enableWideMode', 'enableSummaryButton'];
         
@@ -4314,8 +4920,18 @@ const appLogic = {
         }
 
         stringKeys.forEach(key => {
-            const element = elements[key + 'Input'] || elements[key + 'Select'] || elements[key + 'Textarea'];
-            if (element) settings[key] = element.value.trim();
+            // modelNameは特別処理（OpenRouter選択時はテキスト入力から取得）
+            if (key === 'modelName') {
+                const provider = settings.apiProvider || state.settings.apiProvider || 'gemini';
+                if (provider === 'openrouter' && elements.openrouterModelInput) {
+                    settings[key] = elements.openrouterModelInput.value.trim();
+                } else if (elements.modelNameSelect) {
+                    settings[key] = elements.modelNameSelect.value.trim();
+                }
+            } else {
+                const element = elements[key + 'Input'] || elements[key + 'Select'] || elements[key + 'Textarea'];
+                if (element) settings[key] = element.value.trim();
+            }
         });
         
         numberKeys.forEach(key => {
@@ -4423,7 +5039,13 @@ const appLogic = {
             }
             if (msg.role === 'tool') {
                 if (msg.name && msg.response) {
-                    parts.push({ functionResponse: { name: msg.name, response: msg.response } });
+                    parts.push({ 
+                        functionResponse: { 
+                            name: msg.name, 
+                            response: msg.response,
+                            _toolCallId: msg._toolCallId || msg.tool_call_id  // 元のtoolCallIdを保存
+                        } 
+                    });
                 }
             }
             return { role: msg.role === 'tool' ? 'tool' : (msg.role === 'model' ? 'model' : 'user'), parts };
@@ -4697,6 +5319,8 @@ const appLogic = {
     updateProviderUI(provider) {
         const isGemini = provider === 'gemini';
         const isZai = provider === 'zai';
+        const isOpenRouter = provider === 'openrouter';
+        const isBedrock = provider === 'bedrock';
         
         // APIキー入力欄の表示/非表示
         if (elements.geminiApiKeyContainer) {
@@ -4705,6 +5329,39 @@ const appLogic = {
         if (elements.zaiApiKeyContainer) {
             elements.zaiApiKeyContainer.classList.toggle('hidden', !isZai);
         }
+        if (elements.openrouterApiKeyContainer) {
+            elements.openrouterApiKeyContainer.classList.toggle('hidden', !isOpenRouter);
+        }
+        if (elements.bedrockApiKeyContainer) {
+            elements.bedrockApiKeyContainer.classList.toggle('hidden', !isBedrock);
+        }
+        
+        // モデル選択UIの表示/非表示（OpenRouterはテキスト入力、その他はセレクトボックス）
+        if (elements.modelNameLabel) {
+            elements.modelNameLabel.classList.toggle('hidden', isOpenRouter);
+        }
+        if (elements.modelNameSelect) {
+            elements.modelNameSelect.classList.toggle('hidden', isOpenRouter);
+        }
+        if (elements.openrouterModelInputContainer) {
+            elements.openrouterModelInputContainer.classList.toggle('hidden', !isOpenRouter);
+        }
+        
+        // デバッグモード専用プロバイダーのチェック
+        const isDebugOnlyProvider = isZai || isOpenRouter || isBedrock;
+        if (!state.settings.debugMode && isDebugOnlyProvider) {
+            // デバッグモードOFFならGeminiに戻す
+            state.settings.apiProvider = 'gemini';
+            if (state.activeProfile && state.activeProfile.settings) {
+                state.activeProfile.settings.apiProvider = 'gemini';
+                dbUtils.updateProfile(state.activeProfile)
+                    .then(() => this.markAsDirtyAndSchedulePush('structural'))
+                    .catch(error => console.error("[Settings] APIプロバイダーの同期更新に失敗しました:", error));
+            }
+            this.updateProviderUI('gemini');
+            this.updateModelOptions('gemini');
+            uiUtils.showCustomAlert("デバッグモードを無効にしたため、APIプロバイダーをGeminiに戻しました。");
+        }
         
         // プロバイダー固有の設定項目の表示/非表示
         // Gemini専用機能（グラウンディング、Function Callingなど）の表示制御は後で実装
@@ -4712,6 +5369,19 @@ const appLogic = {
 
     // プロバイダーに応じたモデルリストの更新
     updateModelOptions(provider) {
+        // OpenRouterの場合はテキスト入力を使用するためセレクトボックスの更新は不要
+        if (provider === 'openrouter') {
+            // テキストボックスに現在のモデル名を設定
+            if (elements.openrouterModelInput) {
+                const currentModel = state.settings.modelName || DEFAULT_OPENROUTER_MODEL;
+                elements.openrouterModelInput.value = currentModel;
+            }
+            // モデル警告メッセージとAPI使用状況の更新
+            uiUtils.updateModelWarningMessage();
+            this.updateApiUsageUI();
+            return;
+        }
+        
         const modelSelect = elements.modelNameSelect;
         if (!modelSelect) return;
         
@@ -4731,7 +5401,15 @@ const appLogic = {
         options.forEach(option => option.remove());
         
         // プロバイダーに応じたモデルリストを追加
-        const models = provider === 'zai' ? ZAI_MODELS : GEMINI_MODELS;
+        let models;
+        if (provider === 'zai') {
+            models = ZAI_MODELS;
+        } else if (provider === 'bedrock') {
+            models = BEDROCK_MODELS;
+        } else {
+            models = GEMINI_MODELS;
+        }
+        
         const groups = {};
         
         models.forEach(model => {
@@ -4767,7 +5445,16 @@ const appLogic = {
             modelSelect.value = currentValue;
         } else {
             // デフォルトモデルを設定
-            const defaultModel = provider === 'zai' ? DEFAULT_ZAI_MODEL : DEFAULT_MODEL;
+            let defaultModel;
+            if (provider === 'zai') {
+                defaultModel = DEFAULT_ZAI_MODEL;
+            } else if (provider === 'openrouter') {
+                defaultModel = DEFAULT_OPENROUTER_MODEL;
+            } else if (provider === 'bedrock') {
+                defaultModel = DEFAULT_BEDROCK_MODEL;
+            } else {
+                defaultModel = DEFAULT_MODEL;
+            }
             modelSelect.value = defaultModel;
             state.settings.modelName = defaultModel;
         }
@@ -5816,30 +6503,36 @@ const appLogic = {
         });
     
         // --- 設定項目（即時保存） ---
-        const setupInstantSave = (element, key, eventType = 'change', onUpdate = null) => { // onUpdateコールバックを追加
+        const setupInstantSave = (element, key, eventType = 'change', onUpdate = null, getValue = null) => { // getValue関数を追加
             if (element) {
                 element.addEventListener(eventType, async () => {
                     if (!state.activeProfile) return;
                     let value;
-                    switch (element.type) {
-                        case 'checkbox':
-                            value = element.checked;
-                            break;
-                        case 'range':
-                            value = parseFloat(element.value) / 100;
-                            break;
-                        case 'number':
-                        case 'select-one':
-                            const rawValue = element.value;
-                            value = parseFloat(rawValue);
-                            if (isNaN(value)) {
-                                // 空文字列の場合はnullに、それ以外の文字列（selectなど）はそのまま
-                                value = rawValue === '' ? null : rawValue;
-                            }
-                            break;
-                        default:
-                            value = element.value;
-                            break;
+                    
+                    // getValue関数が提供されている場合はそれを使用
+                    if (getValue) {
+                        value = getValue();
+                    } else {
+                        switch (element.type) {
+                            case 'checkbox':
+                                value = element.checked;
+                                break;
+                            case 'range':
+                                value = parseFloat(element.value) / 100;
+                                break;
+                            case 'number':
+                            case 'select-one':
+                                const rawValue = element.value;
+                                value = parseFloat(rawValue);
+                                if (isNaN(value)) {
+                                    // 空文字列の場合はnullに、それ以外の文字列（selectなど）はそのまま
+                                    value = rawValue === '' ? null : rawValue;
+                                }
+                                break;
+                            default:
+                                value = element.value;
+                                break;
+                        }
                     }
                     
                     state.settings[key] = value;
@@ -5864,7 +6557,7 @@ const appLogic = {
                 element: elements.apiProviderSelect, 
                 event: 'change',
                 onUpdate: (value) => {
-                    const isDebugOnlyProvider = value === 'zai';
+                    const isDebugOnlyProvider = value === 'zai' || value === 'openrouter' || value === 'bedrock';
                     if (!state.settings.debugMode && isDebugOnlyProvider) {
                         const fallbackProvider = 'gemini';
                         state.settings.apiProvider = fallbackProvider;
@@ -5872,7 +6565,7 @@ const appLogic = {
                             state.activeProfile.settings.apiProvider = fallbackProvider;
                             dbUtils.updateProfile(state.activeProfile)
                                 .then(() => this.markAsDirtyAndSchedulePush('structural'))
-                                .catch(error => console.error("[Settings] デバッグモードOFF中にZ.aiが選択されましたがGeminiへ戻す際の保存に失敗しました:", error));
+                                .catch(error => console.error("[Settings] デバッグモードOFF中にデバッグ専用プロバイダーが選択されましたがGeminiへ戻す際の保存に失敗しました:", error));
                         }
                         if (elements.apiProviderSelect) {
                             elements.apiProviderSelect.value = fallbackProvider;
@@ -5888,13 +6581,25 @@ const appLogic = {
             },
             apiKey: { element: elements.apiKeyInput, event: 'input' },
             zaiApiKey: { element: elements.zaiApiKeyInput, event: 'input' },
+            openrouterApiKey: { element: elements.openrouterApiKeyInput, event: 'input' },
+            bedrockAccessKey: { element: elements.bedrockAccessKeyInput, event: 'input' },
+            bedrockSecretKey: { element: elements.bedrockSecretKeyInput, event: 'input' },
+            bedrockRegion: { element: elements.bedrockRegionSelect, event: 'change' },
             modelName: { 
                 element: elements.modelNameSelect, 
                 event: 'change', 
                 onUpdate: () => {
                     uiUtils.updateModelWarningMessage();
                     this.updateApiUsageUI(); // onUpdateに統合
-                } 
+                },
+                getValue: () => {
+                    // OpenRouter選択時はテキスト入力から取得
+                    const provider = state.settings.apiProvider || 'gemini';
+                    if (provider === 'openrouter' && elements.openrouterModelInput) {
+                        return elements.openrouterModelInput.value.trim();
+                    }
+                    return elements.modelNameSelect ? elements.modelNameSelect.value.trim() : '';
+                }
             },
             systemPrompt: { element: elements.systemPromptDefaultTextarea, event: 'input' },
             temperature: { element: elements.temperatureInput, event: 'input' },
@@ -5922,7 +6627,7 @@ const appLogic = {
                     elements.apiProviderRow.classList.toggle('hidden', !value);
                 }
 
-                const isDebugOnlyProvider = state.settings.apiProvider === 'zai';
+                const isDebugOnlyProvider = state.settings.apiProvider === 'zai' || state.settings.apiProvider === 'openrouter' || state.settings.apiProvider === 'bedrock';
                 if (!value && isDebugOnlyProvider) {
                     const fallbackProvider = 'gemini';
                     state.settings.apiProvider = fallbackProvider;
@@ -5993,14 +6698,20 @@ const appLogic = {
         };
     
         for (const key in settingsMap) {
-            const { element, event, onUpdate } = settingsMap[key];
-            setupInstantSave(element, key, event, onUpdate);
+            const { element, event, onUpdate, getValue } = settingsMap[key];
+            setupInstantSave(element, key, event, onUpdate, getValue);
         }
-
     
-        for (const key in settingsMap) {
-            const { element, event } = settingsMap[key];
-            setupInstantSave(element, key, event);
+        // --- OpenRouterモデル名テキストボックスのイベントリスナー ---
+        if (elements.openrouterModelInput) {
+            elements.openrouterModelInput.addEventListener('input', async () => {
+                if (!state.activeProfile) return;
+                const value = elements.openrouterModelInput.value.trim();
+                state.settings.modelName = value;
+                state.activeProfile.settings.modelName = value;
+                await dbUtils.updateProfile(state.activeProfile);
+                appLogic.markAsDirtyAndSchedulePush('structural');
+            });
         }
     
         // --- メモリ機能の個別イベントリスナー ---
@@ -7539,6 +8250,14 @@ const appLogic = {
                     }));
                     currentTurnHistory.push(modelMessageForApi, ...toolResultsForApi);
 
+                    // Bedrock使用時はレート制限回避のため遅延を入れる
+                    if (state.settings.apiProvider === 'bedrock') {
+                        const delayMs = 6500; // 6.5秒の遅延（レート制限: 毎分10リクエスト = 6秒間隔 + 余裕0.5秒）
+                        console.log(`[Bedrock] レート制限回避のため ${delayMs}ms 待機します...`);
+                        uiUtils.setLoadingIndicatorText(`レート制限回避のため ${delayMs/1000}秒待機中...`);
+                        await interruptibleSleep(delayMs, state.abortController.signal);
+                    }
+
                     const textResult = await this.callApiWithRetry({ 
                         messagesForApi: currentTurnHistory,
                         generationConfig,
@@ -7569,6 +8288,14 @@ const appLogic = {
                     }]
                 }));
                 currentTurnHistory.push(modelMessageForApi, ...toolResultsForApi);
+            
+            // Bedrock使用時はレート制限回避のため遅延を入れる
+            if (state.settings.apiProvider === 'bedrock') {
+                const delayMs = 6500; // 6.5秒の遅延（レート制限: 毎分10リクエスト = 6秒間隔 + 余裕0.5秒）
+                console.log(`[Bedrock] レート制限回避のため ${delayMs}ms 待機します...`);
+                uiUtils.setLoadingIndicatorText(`レート制限回避のため ${delayMs/1000}秒待機中...`);
+                await interruptibleSleep(delayMs, state.abortController.signal);
+            }
             
             uiUtils.setLoadingIndicatorText('応答生成中...');
         }
@@ -8200,7 +8927,8 @@ const appLogic = {
                 role: 'tool', 
                 name: functionName, 
                 response: responseForAI, 
-                timestamp: Date.now() 
+                timestamp: Date.now(),
+                _toolCallId: toolCall.functionCall._toolCallId  // Bedrock API用にtoolCallIdを保持
             });
 
             if (containsTerminalAction) {

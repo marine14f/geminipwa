@@ -17,6 +17,19 @@
     <script src="marked.js" defer></script>
     <script src="function-calling.js?v=1.1" defer></script>
     <script src="dropbox.js" defer></script>
+    <!-- AWS SDK for Bedrock Runtime (ESM形式で読み込み) -->
+    <script type="module">
+        // AWS SDK v3のBedrock Runtimeクライアントを動的にインポート
+        import('https://cdn.jsdelivr.net/npm/@aws-sdk/client-bedrock-runtime@3/+esm')
+            .then(module => {
+                window.BedrockRuntimeClient = module.BedrockRuntimeClient;
+                window.ConverseCommand = module.ConverseCommand;
+                console.log("AWS Bedrock Runtime SDK の読み込みが完了しました。");
+            })
+            .catch(err => {
+                console.error("AWS Bedrock Runtime SDKの読み込みに失敗しました:", err);
+            });
+    </script>
     <script src="app.js?v=1.1" defer></script>
 </head>
 <body>
@@ -222,6 +235,7 @@
                     <select id="api-provider" aria-label="APIプロバイダー">
                         <option value="gemini">Gemini</option>
                         <option value="zai">Z.ai</option>
+                        <option value="openrouter">OpenRouter</option>
                         <option value="bedrock">Amazon Bedrock</option>
                     </select>
 
@@ -235,9 +249,22 @@
                         <input type="password" autocomplete="new-password" id="zai-api-key" placeholder="Z.ai APIキーを入力" aria-label="Z.ai APIキー">
                     </div>
 
+                    <div id="openrouter-api-key-container" class="hidden">
+                        <label for="openrouter-api-key">OpenRouter APIキー:</label>
+                        <input type="password" autocomplete="new-password" id="openrouter-api-key" placeholder="OpenRouter APIキーを入力" aria-label="OpenRouter APIキー">
+                        <p style="font-size: 11px; color: var(--text-secondary); margin-top: 8px;">
+                            ※ OpenRouterはデバッグモード専用です。APIキーは安全に管理してください。<br>
+                            ※ APIキーは <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer">OpenRouter</a> から取得できます。
+                        </p>
+                    </div>
+
                     <div id="bedrock-api-key-container" class="hidden">
-                        <label for="bedrock-api-key">Bedrock APIキー:</label>
-                        <input type="password" autocomplete="new-password" id="bedrock-api-key" placeholder="Bedrock APIキーを入力" aria-label="Bedrock APIキー">
+                        <label for="bedrock-access-key">Bedrock Access Key:</label>
+                        <input type="password" autocomplete="new-password" id="bedrock-access-key" placeholder="AWS Access Keyを入力" aria-label="Bedrock Access Key">
+                        
+                        <label for="bedrock-secret-key">Bedrock Secret Key:</label>
+                        <input type="password" autocomplete="new-password" id="bedrock-secret-key" placeholder="AWS Secret Keyを入力" aria-label="Bedrock Secret Key">
+                        
                         <label for="bedrock-region">Bedrockリージョン:</label>
                         <select id="bedrock-region" aria-label="Bedrockリージョン">
                             <option value="us-east-1">us-east-1 (N. Virginia)</option>
@@ -246,11 +273,12 @@
                             <option value="eu-central-1">eu-central-1 (Frankfurt)</option>
                         </select>
                         <p style="font-size: 11px; color: var(--text-secondary); margin-top: 8px;">
-                            ※ Amazon Bedrockはデバッグモード専用です。APIキーは短期利用向けに安全に管理してください。
+                            ※ Amazon Bedrockはデバッグモード専用です。認証情報は安全に管理してください。<br>
+                            ※ IAM Access Key/Secret Keyが必要です。Bedrock APIへのアクセス権限を持つキーを使用してください。
                         </p>
                     </div>
 
-                    <label for="model-name">モデル名:</label>
+                    <label for="model-name" id="model-name-label">モデル名:</label>
                     <select id="model-name" aria-label="モデル名">
                         <option value="gemini-2.5-pro">gemini-2.5-pro</option>
                         <option value="gemini-2.5-flash">gemini-2.5-flash</option>
@@ -265,6 +293,16 @@
                         <optgroup label="ユーザー指定" id="user-defined-models-group">
                         </optgroup>
                     </select>
+
+                    <div id="openrouter-model-input-container" class="hidden">
+                        <label for="openrouter-model-input">OpenRouter モデル名:</label>
+                        <input type="text" id="openrouter-model-input" placeholder="例: anthropic/claude-3.5-sonnet, openai/gpt-4-turbo" aria-label="OpenRouter モデル名">
+                        <p style="font-size: 11px; color: var(--text-secondary); margin-top: 8px;">
+                            ※ 利用可能なモデル一覧は <a href="https://openrouter.ai/models" target="_blank" rel="noopener noreferrer">OpenRouter Models</a> で確認できます。<br>
+                            ※ モデル名は "プロバイダー/モデル名" の形式で入力してください（例: anthropic/claude-3.5-sonnet）
+                        </p>
+                    </div>
+
                     <div id="api-usage-container" class="api-usage-container hidden">
                         <p id="api-usage-text" class="api-usage-text"></p>
                         <button id="reset-api-count-btn" class="settings-reset-button" type="button">カウントをリセット</button>
