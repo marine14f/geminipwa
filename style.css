@@ -517,6 +517,15 @@ body.dark-mode #attach-file-btn {
     padding-bottom: var(--spacing-unit);
 }
 
+/* ダークモード時の設定画面のリンク色をピンク色に変更 */
+body.dark-mode #settings-screen a {
+    color: #ff91af;
+}
+body.dark-mode #settings-screen a:hover {
+    color: #ffb3cc;
+    text-decoration: underline;
+}
+
 /* --- Custom Dialog Styles (Alert, Confirm, Prompt) --- */
 .custom-dialog {
     position: fixed;
