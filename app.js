@@ -79,6 +79,12 @@ const VERSION_HISTORY = {
     "1.1": [
         "gemini-3-pro-previewモデルを追加しました。",
         "gemini-3-pro-previewでのFunction Calling使用時に発生していた「thought_signature」エラーを修正しました。"
+    ],
+    "1.0": [
+        "Dropbox連携機能とStable Diffusion WebUI/Forge/Reforge連携を追加し、PWA内のデータと画像生成ワークフローをクラウドやローカル環境とシームレスに同期できるようにしました。",
+        "添付ファイルのサムネイル表示やアップデート内容を告知するダイアログ、URLコンテンツを取り込むfetch_url_content関数、プロファイルへのgemini-2.5-pro使用回数表示、デバッグモード切替などのUI/機能改善を実装しました。",
+        "gemini-2.5-flash-imageやveo-3.1シリーズなど最新モデルの追加、画像/動画関連関数のモデル選択改善、URL要約や要約機能まわりのエラーハンドリング強化を行いました。",
+        "Firefoxでのパフォーマンス劣化や再生成時の履歴破損、記憶管理画面の不具合など多数のバグを修正し、DB関連関数の保存ロジックも刷新しました。"
     ]
 };
 const SWIPE_THRESHOLD = 50; // スワイプ判定の閾値 (px)
@@ -773,6 +779,34 @@ function registerServiceWorker() {
     });
 }
 
+// --- HTMLエスケープユーティリティ ---
+const htmlUtils = {
+    // HTML要素内のテキストコンテンツ用エスケープ
+    escapeHtml(text) {
+        if (text === null || text === undefined) return '';
+        const div = document.createElement('div');
+        div.textContent = String(text);
+        return div.innerHTML;
+    },
+
+    // HTML属性値用エスケープ（より厳格）
+    escapeAttr(text) {
+        if (text === null || text === undefined) return '';
+        return String(text)
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    },
+
+    // CSSセレクタ用の安全な文字列を生成
+    escapeSelector(text) {
+        if (text === null || text === undefined) return '';
+        // CSS.escapeを使用（全ブラウザでサポート済み）
+        return CSS.escape(String(text));
+    }
+};
 
 // --- IndexedDBユーティリティ (dbUtils) ---
 const dbUtils = {
@@ -3019,7 +3053,7 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
                     url = URL.createObjectURL(profile.icon);
                     state.profileIconUrls.set(profile.id, url);
                 }
-                iconContainer.innerHTML = `<img src="${url}" alt="${profile.name}">`;
+                iconContainer.innerHTML = `<img src="${url}" alt="${htmlUtils.escapeAttr(profile.name)}">`;
             } else {
                 iconContainer.innerHTML = `<span class="material-symbols-outlined">account_circle</span>`;
             }
@@ -10634,19 +10668,19 @@ const appLogic = {
         detailPane.innerHTML = `
             <div class="profile-detail-section">
                 <label for="profile-status">状態</label>
-                <input type="text" id="profile-status" value="${data.status || ''}">
+                <input type="text" id="profile-status" value="${htmlUtils.escapeAttr(data.status || '')}">
             </div>
             <div class="profile-detail-section">
                 <label for="profile-location">現在地</label>
-                <input type="text" id="profile-location" value="${data.current_location || ''}">
+                <input type="text" id="profile-location" value="${htmlUtils.escapeAttr(data.current_location || '')}">
             </div>
             <div class="profile-detail-section">
                 <label for="profile-summary">概要</label>
-                <textarea id="profile-summary">${data.summary || ''}</textarea>
+                <textarea id="profile-summary">${htmlUtils.escapeHtml(data.summary || '')}</textarea>
             </div>
             <div class="profile-detail-section">
                 <label for="profile-goal">短期目標</label>
-                <textarea id="profile-goal">${data.short_term_goal || ''}</textarea>
+                <textarea id="profile-goal">${htmlUtils.escapeHtml(data.short_term_goal || '')}</textarea>
             </div>
             <div class="profile-detail-section">
                 <div class="profile-detail-section-header">
@@ -10654,20 +10688,25 @@ const appLogic = {
                     <button id="add-relationship-btn" class="add-relationship-btn">＋ 追加</button>
                 </div>
                 <div id="profile-relationships-grid" class="profile-relationships-grid">
-                    ${Object.keys(data.relationships || {}).map(targetName => `
-                        <div class="profile-relationship-card" data-target-name="${targetName}">
+                    ${Object.keys(data.relationships || {}).map((targetName, index) => {
+                        const escapedNameHtml = htmlUtils.escapeHtml(targetName);
+                        const escapedContext = htmlUtils.escapeHtml(data.relationships[targetName].context || '');
+                        const affinity = data.relationships[targetName].affinity || 0;
+                        return `
+                        <div class="profile-relationship-card" data-rel-index="${index}">
                             <div class="profile-relationship-card-header">
-                                <h5>${targetName}</h5>
-                                <button class="delete-relationship-btn" title="この関係性を削除">
+                                <h5>${escapedNameHtml}</h5>
+                                <button class="delete-relationship-btn" data-target-name="${htmlUtils.escapeAttr(targetName)}" title="この関係性を削除">
                                     <span class="material-symbols-outlined">delete</span>
                                 </button>
                             </div>
-                            <label for="affinity-${targetName}">親密度</label>
-                            <input type="number" id="affinity-${targetName}" value="${(data.relationships[targetName].affinity || 0)}">
-                            <label for="context-${targetName}" style="margin-top:10px;">関係性の文脈</label>
-                            <textarea id="context-${targetName}">${(data.relationships[targetName].context || '')}</textarea>
+                            <label for="affinity-${index}">親密度</label>
+                            <input type="number" id="affinity-${index}" value="${affinity}">
+                            <label for="context-${index}" style="margin-top:10px;">関係性の文脈</label>
+                            <textarea id="context-${index}">${escapedContext}</textarea>
                         </div>
-                    `).join('')}
+                        `;
+                    }).join('')}
                 </div>
             </div>
             <div class="profile-detail-section profile-delete-character-section">
@@ -10687,11 +10726,18 @@ const appLogic = {
         detailPane.querySelector('#add-relationship-btn').addEventListener('click', () => this.addRelationship(characterName));
         detailPane.querySelector('#delete-character-btn').addEventListener('click', () => this.confirmDeleteCharacter(characterName)); // 追加
 
-        Object.keys(data.relationships || {}).forEach(targetName => {
-            const card = detailPane.querySelector(`.profile-relationship-card[data-target-name="${targetName}"]`);
-            card.querySelector(`#affinity-${targetName}`).addEventListener('blur', createFieldUpdater(['relationships', targetName, 'affinity']));
-            card.querySelector(`#context-${targetName}`).addEventListener('blur', createFieldUpdater(['relationships', targetName, 'context']));
-            card.querySelector('.delete-relationship-btn').addEventListener('click', () => this.deleteRelationship(characterName, targetName));
+        Object.keys(data.relationships || {}).forEach((targetName, index) => {
+            const card = detailPane.querySelector(`.profile-relationship-card[data-rel-index="${index}"]`);
+            if (!card) {
+                console.warn(`関係性カードが見つかりません: index=${index}, name=${targetName}`);
+                return;
+            }
+            card.querySelector(`#affinity-${index}`).addEventListener('blur', createFieldUpdater(['relationships', targetName, 'affinity']));
+            card.querySelector(`#context-${index}`).addEventListener('blur', createFieldUpdater(['relationships', targetName, 'context']));
+            card.querySelector('.delete-relationship-btn').addEventListener('click', (e) => {
+                const targetNameFromBtn = e.currentTarget.dataset.targetName;
+                this.deleteRelationship(characterName, targetNameFromBtn);
+            });
         });
     },
 
