@@ -32,7 +32,7 @@ const DUPLICATE_SUFFIX = ' (コピー)';
 const IMPORT_PREFIX = '(取込) ';
 const LIGHT_THEME_COLOR = '#4a90e2';
 const DARK_THEME_COLOR = '#007aff';
-const APP_VERSION = "1.11";
+const APP_VERSION = "1.12";
 const DEFAULT_ZAI_MODEL = 'glm-4.6';
 const DEFAULT_OPENROUTER_MODEL = 'x-ai/grok-4.1-fast';
 const VERSION_NOTICE_SESSION_KEY = 'pendingVersionNotice';
@@ -72,9 +72,16 @@ const DEFAULT_BEDROCK_MODEL = 'jp.anthropic.claude-sonnet-4-5-20250929-v1:0';
 const DEFAULT_BEDROCK_REGION = 'us-east-1';
 
 const VERSION_HISTORY = {
+    "1.12": [
+        "ユーザー追加モデル対応を全面強化。思考プロセス翻訳、校正、要約、画像品質チェック、プロンプト改善の各機能で、ユーザーが追加したモデルを選択可能に。",
+        "「追加モデル (カンマ区切り):」入力後、ページリロード不要で全モデル選択セレクターに即座に反映されるよう改善。",
+        "`edit_image`関数にユーザー指定モデル機能を追加。`gemini-3-pro-image-preview`を含む任意のモデルで画像編集が可能に。",
+        "開発者が更新を停止しても、ユーザーが新規モデルを追加すれば各種機能で使用できる拡張性の高い設計を実現。"
+    ],
     "1.11": [
         "デバッグモード有効時のみ、`OpenRouter`、`Z.ai`、`AmazonBedrock`のプロバイダーを追加。開発者向け機能のため既存機能との連携は保証されていません。",
-        "設定画面に「ダミーUserプロンプトとダミーModelプロンプトの順序を入れ替える」を追加。"
+        "設定画面に「ダミーUserプロンプトとダミーModelプロンプトの順序を入れ替える」を追加。",
+        "metadata内のキャラクター名や関係性名に特殊文字が使用されているとquerySelectorが正常に動作しない問題を修正"
     ],
     "1.1": [
         "gemini-3-pro-previewモデルを追加しました。",
@@ -2654,28 +2661,63 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
 
     // ユーザー指定モデルをコンボボックスに反映
     updateUserModelOptions() {
-        const group = elements.userDefinedModelsGroup;
-        group.innerHTML = ''; // 一旦クリア
         const models = (state.settings.additionalModels || '')
             .split(',')
             .map(m => m.trim())
             .filter(m => m !== ''); // カンマ区切りで分割し、空要素を除去
 
-        if (models.length > 0) {
-            group.disabled = false; // optgroupを有効化
-            models.forEach(modelId => {
-                const option = document.createElement('option');
-                option.value = modelId;
-                option.textContent = modelId;
-                group.appendChild(option);
-            });
-            // 現在選択中のモデルがユーザー指定モデルに含まれていれば、それを選択状態にする
-            if (models.includes(state.settings.modelName)) {
-                elements.modelNameSelect.value = state.settings.modelName;
+        // 更新対象のグループとそれに対応するセレクターの設定値
+        const targetGroups = [
+            { 
+                groupId: 'user-defined-models-group', 
+                selectElement: elements.modelNameSelect, 
+                currentValue: state.settings.modelName 
+            },
+            { 
+                groupId: 'thought-translation-user-models', 
+                selectElement: elements.thoughtTranslationModelSelect, 
+                currentValue: state.settings.thoughtTranslationModel 
+            },
+            { 
+                groupId: 'proofreading-user-models', 
+                selectElement: elements.proofreadingModelNameSelect, 
+                currentValue: state.settings.proofreadingModelName 
+            },
+            { 
+                groupId: 'sd-qc-user-models', 
+                selectElement: elements.sdQcModelSelect, 
+                currentValue: state.settings.sdQcModel 
+            },
+            { 
+                groupId: 'sd-prompt-improve-user-models', 
+                selectElement: elements.sdPromptImproveModelSelect, 
+                currentValue: state.settings.sdPromptImproveModel 
             }
-        } else {
-            group.disabled = true; // モデルがなければoptgroupを無効化
-        }
+        ];
+
+        // 各グループに対してユーザー定義モデルを追加
+        targetGroups.forEach(({ groupId, selectElement, currentValue }) => {
+            const group = document.getElementById(groupId);
+            if (!group) return; // グループが存在しない場合はスキップ
+            
+            group.innerHTML = ''; // 一旦クリア
+
+            if (models.length > 0) {
+                group.disabled = false; // optgroupを有効化
+                models.forEach(modelId => {
+                    const option = document.createElement('option');
+                    option.value = modelId;
+                    option.textContent = modelId;
+                    group.appendChild(option);
+                });
+                // 現在選択中のモデルがユーザー指定モデルに含まれていれば、それを選択状態にする
+                if (models.includes(currentValue) && selectElement) {
+                    selectElement.value = currentValue;
+                }
+            } else {
+                group.disabled = true; // モデルがなければoptgroupを無効化
+            }
+        });
     },
 
     // ダークモードを適用
@@ -6758,6 +6800,13 @@ const appLogic = {
                 state.activeProfile.settings.modelName = value;
                 await dbUtils.updateProfile(state.activeProfile);
                 appLogic.markAsDirtyAndSchedulePush('structural');
+            });
+        }
+    
+        // --- 追加モデルのblurイベントリスナー（モデル一覧の即時更新用） ---
+        if (elements.additionalModelsTextarea) {
+            elements.additionalModelsTextarea.addEventListener('blur', () => {
+                uiUtils.updateUserModelOptions();
             });
         }
     

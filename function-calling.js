@@ -1301,7 +1301,7 @@ async function generate_image(args = {}) {
  * @param {object} chat - 現在のチャットデータ
  * @returns {Promise<object>} 処理結果
  */
- async function edit_image({ prompt, source_images }, chat) {
+ async function edit_image({ prompt, source_images, model = "gemini-2.5-flash-image-preview" }, chat) {
     // ▼▼▼ デバッグ用ログ出力コード。また出番があったらつかう。 ▼▼▼
     /*
     console.log("--- [DEBUG] edit_image が受け取った chat オブジェクト ---");
@@ -1318,7 +1318,7 @@ async function generate_image(args = {}) {
     console.log("--- [DEBUG] ログここまで ---");
     */
 
-    console.log(`[Function Calling] edit_imageが呼び出されました。`, { prompt, source_images });
+    console.log(`[Function Calling] edit_imageが呼び出されました。`, { prompt, source_images, model });
 
     const apiKey = window.state?.settings?.apiKey;
     if (!apiKey) return { error: "APIキーが設定されていません。" };
@@ -1388,9 +1388,9 @@ async function generate_image(args = {}) {
 
         imageParts.push({ text: prompt });
 
-        console.log(`${logPrefix} APIリクエストを送信します。画像パーツ数: ${imageParts.length - 1}`);
+        console.log(`${logPrefix} APIリクエストを送信します。使用モデル: ${model}, 画像パーツ数: ${imageParts.length - 1}`);
         const resp = await ai.models.generateContent({
-            model: "gemini-2.5-flash-image-preview",
+            model: model,
             contents: imageParts
         });
         console.log(`${logPrefix} APIから応答を受信しました。`, resp);
@@ -1432,7 +1432,7 @@ async function generate_image(args = {}) {
                 imageIds: imageIds
             },
             meta: {
-                modelUsed: "gemini-2.5-flash-image-preview",
+                modelUsed: model,
                 prompt,
                 numberOfImages: imageIds.length
             }
@@ -2202,6 +2202,14 @@ window.functionDeclarations = [
                                 }
                             }
                         }
+                    },
+                    "model": {
+                        "type": "STRING",
+                        "description": "使用する画像編集モデルを指定します。指定がない場合はデフォルトの 'gemini-2.5-flash-image-preview' が使用されます。",
+                        "enum": [
+                            "gemini-2.5-flash-image-preview",
+                            "gemini-3-pro-image-preview"
+                        ]
                     }
                 },
                 "required": ["prompt", "source_images"]
