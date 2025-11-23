@@ -12,10 +12,10 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,400,0,0" />
     <!-- CSSファイルを外部から読み込む -->
-    <link rel="stylesheet" href="style.css?v=1.11">
+    <link rel="stylesheet" href="style.css?v=1.12">
     <link rel="stylesheet" href="prism.css" />
     <script src="marked.js" defer></script>
-    <script src="function-calling.js?v=1.11" defer></script>
+    <script src="function-calling.js?v=1.12" defer></script>
     <script src="dropbox.js" defer></script>
     <!-- AWS SDK for Bedrock Runtime (ESM形式で読み込み) -->
     <script type="module">
@@ -693,6 +693,22 @@
                         <input type="checkbox" id="enable-summary-button-toggle">
                         チャット画面に要約ボタンを表示する
                     </label>
+                    <label for="summary-model-name">要約用モデル名:</label>
+                    <select id="summary-model-name" aria-label="要約用モデル名">
+                        <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+                        <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                        <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
+                        <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+                        <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite</option>
+                        <optgroup label="プレビュー版">
+                            <option value="gemini-2.5-flash-preview-09-2025">gemini-2.5-flash-preview-09-2025</option>
+                            <option value="gemini-2.5-flash-lite-preview-09-2025">gemini-2.5-flash-lite-preview-09-2025</option>
+                            <option value="gemini-2.5-flash-image-preview">gemini-2.5-flash-image-preview (Nano Banana)</option>
+                            <option value="gemini-3-pro-preview">gemini-3-pro-preview</option>
+                        </optgroup>
+                        <optgroup label="ユーザー指定" id="summary-user-models">
+                        </optgroup>
+                    </select>
                     <label for="summary-system-prompt">要約実行時のシステムプロンプト:</label>
                     <textarea id="summary-system-prompt" placeholder="要約を実行するAIへの指示を入力します。" aria-label="要約実行時のシステムプロンプト"></textarea>
                 </div>
@@ -816,9 +832,6 @@
                    <!-- 追加モデル入力欄 -->
                    <label for="additional-models">追加モデル (カンマ区切り):</label>
                    <textarea id="additional-models" placeholder="例: gemini-2.0-pro,gemini-2.0-flash-lite" aria-label="追加モデル"></textarea>
-                   <p style="font-size: 11px; color: var(--text-secondary); margin-top: -5px; margin-bottom: 10px;">
-                       ※ 追加後は設定を保存の上、ページをリロード。
-                   </p>
 
                    <label class="checkbox-label" style="margin-top: 15px;">
                     <input type="checkbox" id="debug-mode-toggle">

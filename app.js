@@ -427,6 +427,7 @@ try {
         headerAutoHideToggle: document.getElementById('header-auto-hide-toggle'),
         headerTriggerArea: document.getElementById('header-trigger-area'),
         summarizeHistoryBtn: document.getElementById('summarize-history-btn'),
+        summaryModelNameSelect: document.getElementById('summary-model-name'),
         summarySystemPromptTextarea: document.getElementById('summary-system-prompt'),
         summaryDialog: document.getElementById('summaryDialog'),
         summaryStats: document.getElementById('summary-stats'),
@@ -565,6 +566,7 @@ const state = {
         enableMemory: false,
         memoryAutoSaveInterval: 30,
         headerAutoHide: false,
+        summaryModelName: '', // 空の場合はmodelNameを使用
         summarySystemPrompt:`あなたはプロの編集者です。以下の会話履歴を、第三者の視点から見た物語の「あらすじ」として要約してください。
 「承知しました」等のAIとしての応答は不要です。要約文のみ出力して下さい。
 
@@ -2624,6 +2626,7 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
         
         // ヘッダー自動非表示機能のUIを更新
         elements.headerAutoHideToggle.checked = state.settings.headerAutoHide;
+        elements.summaryModelNameSelect.value = state.settings.summaryModelName || state.settings.modelName || 'gemini-2.5-flash';
         elements.summarySystemPromptTextarea.value = state.settings.summarySystemPrompt || '';
         elements.enableSummaryButtonToggle.checked = state.settings.enableSummaryButton;
         document.body.classList.toggle('header-auto-hide', state.settings.headerAutoHide);
@@ -2692,6 +2695,11 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
                 groupId: 'sd-prompt-improve-user-models', 
                 selectElement: elements.sdPromptImproveModelSelect, 
                 currentValue: state.settings.sdPromptImproveModel 
+            },
+            { 
+                groupId: 'summary-user-models', 
+                selectElement: elements.summaryModelNameSelect, 
+                currentValue: state.settings.summaryModelName || state.settings.modelName 
             }
         ];
 
@@ -2702,21 +2710,21 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
             
             group.innerHTML = ''; // 一旦クリア
 
-            if (models.length > 0) {
-                group.disabled = false; // optgroupを有効化
-                models.forEach(modelId => {
-                    const option = document.createElement('option');
-                    option.value = modelId;
-                    option.textContent = modelId;
-                    group.appendChild(option);
-                });
-                // 現在選択中のモデルがユーザー指定モデルに含まれていれば、それを選択状態にする
+        if (models.length > 0) {
+            group.disabled = false; // optgroupを有効化
+            models.forEach(modelId => {
+                const option = document.createElement('option');
+                option.value = modelId;
+                option.textContent = modelId;
+                group.appendChild(option);
+            });
+            // 現在選択中のモデルがユーザー指定モデルに含まれていれば、それを選択状態にする
                 if (models.includes(currentValue) && selectElement) {
                     selectElement.value = currentValue;
-                }
-            } else {
-                group.disabled = true; // モデルがなければoptgroupを無効化
             }
+        } else {
+            group.disabled = true; // モデルがなければoptgroupを無効化
+        }
         });
     },
 
@@ -4983,7 +4991,7 @@ const appLogic = {
 
     getCurrentUiSettings() {
         const settings = {};
-        const stringKeys = ['apiProvider', 'apiKey', 'zaiApiKey', 'openrouterApiKey', 'bedrockAccessKey', 'bedrockSecretKey', 'bedrockRegion', 'modelName', 'dummyUser', 'dummyModel', 'additionalModels', 'historySortOrder', 'fontFamily', 'proofreadingModelName', 'proofreadingSystemInstruction', 'googleSearchApiKey', 'googleSearchEngineId', 'headerColor', 'thoughtTranslationModel', 'summarySystemPrompt'];
+        const stringKeys = ['apiProvider', 'apiKey', 'zaiApiKey', 'openrouterApiKey', 'bedrockAccessKey', 'bedrockSecretKey', 'bedrockRegion', 'modelName', 'dummyUser', 'dummyModel', 'additionalModels', 'historySortOrder', 'fontFamily', 'proofreadingModelName', 'proofreadingSystemInstruction', 'googleSearchApiKey', 'googleSearchEngineId', 'headerColor', 'thoughtTranslationModel', 'summaryModelName', 'summarySystemPrompt'];
         const numberKeys = ['temperature', 'maxTokens', 'topK', 'topP', 'thinkingBudget', 'maxRetries', 'maxBackoffDelaySeconds', 'overlayOpacity', 'messageOpacity'];
         const booleanKeys = ['enterToSend', 'darkMode', 'geminiEnableGrounding', 'geminiEnableFunctionCalling', 'enableSwipeNavigation', 'enableProofreading', 'enableAutoRetry', 'useFixedRetryDelay', 'reverseDummyOrder', 'concatDummyModel', 'includeThoughts', 'enableThoughtTranslation', 'applyDummyToProofread', 'applyDummyToTranslate', 'forceFunctionCalling', 'autoScroll', 'enableWideMode', 'enableSummaryButton'];
         
@@ -6766,6 +6774,7 @@ const appLogic = {
             memoryAutoSaveInterval: { element: elements.memoryAutoSaveIntervalSelect, event: 'change' },
             headerAutoHide: { element: elements.headerAutoHideToggle, event: 'change', onUpdate: (value) => document.body.classList.toggle('header-auto-hide', value) },
             dropboxSyncFrequency: { element: elements.dropboxSyncFrequencySelect, event: 'change' },
+            summaryModelName: { element: elements.summaryModelNameSelect, event: 'change' },
             summarySystemPrompt: { element: elements.summarySystemPromptTextarea, event: 'input' },
             enableSummaryButton: { element: elements.enableSummaryButtonToggle, event: 'change', onUpdate: () => this.toggleSummaryButtonVisibility() },
             floatingPanelBehavior: { element: elements.floatingPanelBehaviorSelect, event: 'change', onUpdate: () => this.applyFloatingPanelBehavior() },
@@ -8267,6 +8276,8 @@ const appLogic = {
             for (const toolCall of result.toolCalls) {
                 const functionName = toolCall.functionCall.name;
                 const functionArgs = toolCall.functionCall.args;
+                
+                console.log(`[Function Calling] 実行: ${functionName}`, functionArgs);
                 
                 if (functionName === 'generate_image_stable_diffusion') {
                     uiUtils.setLoadingIndicatorText('SDで画像生成中...');
@@ -11393,11 +11404,12 @@ const appLogic = {
                 ]
             };
 
+            const summaryModel = state.settings.summaryModelName || state.settings.modelName;
             console.log("--- [要約API] リクエスト開始 ---");
-            console.log("使用モデル:", state.settings.modelName);
+            console.log("使用モデル:", summaryModel);
             console.log("リクエストボディ:", JSON.stringify(requestBody, null, 2));
 
-            const endpoint = `${GEMINI_API_BASE_URL}${state.settings.modelName}:generateContent`;
+            const endpoint = `${GEMINI_API_BASE_URL}${summaryModel}:generateContent`;
             const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.settings.apiKey },
