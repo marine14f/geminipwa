@@ -3931,6 +3931,9 @@ const apiUtils = {
         const maxTranslationRetries = state.settings.enableAutoRetry ? state.settings.maxRetries : 0;
 
         for (let attempt = 0; attempt <= maxTranslationRetries; attempt++) {
+            let abortListener = null;
+            let timeoutId = null;
+            
             try {
                 if (state.abortController?.signal.aborted) {
                     throw new Error("リクエストがキャンセルされました。");
@@ -3956,8 +3959,22 @@ const apiUtils = {
                     uiUtils.setLoadingIndicatorText('思考プロセスを翻訳中...');
                 }
 
+                // fetch()呼び出し前に再度中断状態をチェック
+                if (state.abortController?.signal.aborted) {
+                    throw new DOMException("リクエストがキャンセルされました。", "AbortError");
+                }
+
                 const timeoutController = new AbortController();
-                const timeoutId = setTimeout(() => timeoutController.abort(), 15000);
+                timeoutId = setTimeout(() => timeoutController.abort(), 15000);
+                
+                // state.abortControllerの中断イベントを監視し、timeoutControllerにも伝播
+                if (state.abortController && !state.abortController.signal.aborted) {
+                    abortListener = () => {
+                        console.log("[Abort] 翻訳処理: state.abortControllerが中断されました。timeoutControllerも中断します。");
+                        timeoutController.abort();
+                    };
+                    state.abortController.signal.addEventListener('abort', abortListener, { once: true });
+                }
 
                 const response = await fetch(endpoint, {
                     method: 'POST',
@@ -3965,8 +3982,15 @@ const apiUtils = {
                     body: JSON.stringify(requestBody),
                     signal: timeoutController.signal
                 });
-
+                
+                // リスナーのクリーンアップ
+                if (abortListener && state.abortController) {
+                    state.abortController.signal.removeEventListener('abort', abortListener);
+                    abortListener = null;
+                }
+                
                 clearTimeout(timeoutId);
+                timeoutId = null;
 
                 if (!response.ok) {
                     let errorBody = await response.text();
@@ -3990,6 +4014,16 @@ const apiUtils = {
                     throw new Error("翻訳APIの応答形式が不正です。");
                 }
             } catch (error) {
+                // タイマーとリスナーのクリーンアップ（エラー時も確実にクリーンアップ）
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                    timeoutId = null;
+                }
+                if (abortListener && state.abortController) {
+                    state.abortController.signal.removeEventListener('abort', abortListener);
+                    abortListener = null;
+                }
+                
                 lastError = error;
                 if (error.name === 'AbortError' || error.name === 'TimeoutError') {
                     if (state.abortController?.signal.aborted) {
@@ -8168,6 +8202,11 @@ const appLogic = {
                     uiUtils.setLoadingIndicatorText(`校正処理${attempt}回目の再試行中...`);
                 }
 
+                // fetch()呼び出し前に再度中断状態をチェック
+                if (state.abortController?.signal.aborted) {
+                    throw new DOMException("リクエストがキャンセルされました。", "AbortError");
+                }
+
                 const response = await fetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
@@ -9937,8 +9976,18 @@ const appLogic = {
             // このリトライ専用のAbortController
             const attemptController = new AbortController();
             let timeoutId = null;
+            let abortListener = null;
             
             try {
+                // state.abortControllerの中断イベントを監視し、attemptControllerにも伝播
+                if (state.abortController && !state.abortController.signal.aborted) {
+                    abortListener = () => {
+                        console.log("[Abort] state.abortControllerが中断されました。attemptControllerも中断します。");
+                        attemptController.abort();
+                    };
+                    state.abortController.signal.addEventListener('abort', abortListener, { once: true });
+                }
+                
                 if (state.abortController?.signal.aborted) {
                     throw new DOMException("リクエストがキャンセルされました。", "AbortError");
                 }
@@ -9972,6 +10021,11 @@ const appLogic = {
                         console.warn(`[Timeout] API呼び出しが${elapsed}ms経過。タイムアウト(${timeoutMs}ms)により中断します。`);
                         attemptController.abort();
                     }, timeoutMs);
+                }
+
+                // fetch()呼び出し前に再度中断状態をチェック
+                if (state.abortController?.signal.aborted) {
+                    throw new DOMException("リクエストがキャンセルされました。", "AbortError");
                 }
 
                 const response = await apiUtils.callApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling, attemptController.signal);
@@ -10094,6 +10148,11 @@ const appLogic = {
                 if (timeoutId) {
                     clearTimeout(timeoutId);
                     timeoutId = null;
+                }
+                
+                // リスナーのクリーンアップ
+                if (abortListener && state.abortController) {
+                    state.abortController.signal.removeEventListener('abort', abortListener);
                 }
 
                 lastError = error;
