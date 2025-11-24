@@ -32,7 +32,7 @@ const DUPLICATE_SUFFIX = ' (コピー)';
 const IMPORT_PREFIX = '(取込) ';
 const LIGHT_THEME_COLOR = '#4a90e2';
 const DARK_THEME_COLOR = '#007aff';
-const APP_VERSION = "1.12";
+const APP_VERSION = "1.13";
 const DEFAULT_ZAI_MODEL = 'glm-4.6';
 const DEFAULT_OPENROUTER_MODEL = 'x-ai/grok-4.1-fast';
 const VERSION_NOTICE_SESSION_KEY = 'pendingVersionNotice';
@@ -59,6 +59,7 @@ const ZAI_MODELS = [
 ];
 
 const BEDROCK_MODELS = [
+    { value: 'anthropic.claude-opus-4-5-20251101-v1:0', label: 'Claude Opus 4.5' },
     { value: 'jp.anthropic.claude-sonnet-4-5-20250929-v1:0', label: 'Claude Sonnet 4.5 (推奨・東京リージョン用)' },
     { value: 'anthropic.claude-sonnet-4-5-20250929-v1:0', label: 'Claude Sonnet 4.5 (標準リージョン用)' },
     { value: 'anthropic.claude-3-5-sonnet-20241022-v2:0', label: 'Claude 3.5 Sonnet v2' },
@@ -72,6 +73,11 @@ const DEFAULT_BEDROCK_MODEL = 'jp.anthropic.claude-sonnet-4-5-20250929-v1:0';
 const DEFAULT_BEDROCK_REGION = 'us-east-1';
 
 const VERSION_HISTORY = {
+    "1.13": [
+        "AmazonBedrockのモデルリストに`anthropic.claude-opus-4-5-20251101-v1:0`を追加。",
+        "API送信時の停止ボタンが即座に中断されない問題を修正。`state.abortController`の中断シグナルが各API呼び出し関数に確実に伝播するよう改善。",
+        "`callApiWithRetry()`、`translateText()`、`proofreadText()`関数で、リトライ待機中や`fetch()`実行中にも即座に中断できるように修正。"
+    ],
     "1.12": [
         "ユーザー追加モデル対応を全面強化。思考プロセス翻訳、校正、要約、画像品質チェック、プロンプト改善の各機能で、ユーザーが追加したモデルを選択可能に。",
         "「追加モデル (カンマ区切り):」入力後、ページリロード不要で全モデル選択セレクターに即座に反映されるよう改善。",
