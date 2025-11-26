@@ -4625,12 +4625,19 @@ const apiUtils = {
                 modelId
             );
 
+            // fetchで送るヘッダーからhostを除外（fetchが自動設定するため）
+            // また、Cloudflare WorkersでHostヘッダーを手動設定するとエラーになる可能性がある
+            const headersToSend = { ...signedHeaders };
+            delete headersToSend['host'];
+            // content-lengthも自動設定されるので削除
+            delete headersToSend['content-length'];
+
             // プロキシへ送信 (署名済みリクエストを転送するだけ)
             const proxyRequestBody = {
                 type: 'proxy',
                 url: endpoint,
                 method: method,
-                headers: signedHeaders,
+                headers: headersToSend,
                 body: bodyString
             };
 
