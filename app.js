@@ -4625,28 +4625,22 @@ const apiUtils = {
                 modelId
             );
 
-            // fetchで送るヘッダーからhostを除外（fetchが自動設定するため）
-            // また、Cloudflare WorkersでHostヘッダーを手動設定するとエラーになる可能性がある
+            // fetchで送るヘッダーからhostを除外
             const headersToSend = { ...signedHeaders };
             delete headersToSend['host'];
-            // content-lengthも自動設定されるので削除
             delete headersToSend['content-length'];
 
-            // プロキシへ送信 (署名済みリクエストを転送するだけ)
-            const proxyRequestBody = {
-                type: 'proxy',
-                url: endpoint,
-                method: method,
-                headers: headersToSend,
-                body: bodyString
-            };
-
-            const proxyResponse = await fetch(PROXY_URL, {
+            // ストリームプロキシ方式で送信
+            // ボディをJSONでラップせず、生の文字列として送信することで、
+            // Worker側でのパース負荷を回避し、CPU制限を回避する
+            const proxyResponse = await fetch(`${PROXY_URL}?type=proxy`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
+                    'X-Proxy-Url': endpoint,
+                    'X-Proxy-Method': method,
+                    'X-Proxy-Headers': JSON.stringify(headersToSend)
                 },
-                body: JSON.stringify(proxyRequestBody),
+                body: bodyString, // 生のJSON文字列を送信
                 signal: signal
             });
 
