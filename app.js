@@ -10,7 +10,7 @@ import("https://esm.run/@google/genai").then(module => {
 
 // --- 定数 ---
 const DB_NAME = 'GeminiPWA_DB';
-const DB_VERSION = 13; 
+const DB_VERSION = 13;
 const SETTINGS_STORE = 'settings';
 const PROFILES_STORE = 'profiles';
 const CHATS_STORE = 'chats';
@@ -377,7 +377,7 @@ try {
         headerColorInput: document.getElementById('header-color-input'),
         resetHeaderColorBtn: document.getElementById('reset-header-color-btn'),
         messageOpacitySlider: document.getElementById('message-opacity-slider'),
-        messageOpacityValue:  document.getElementById('message-opacity-value'),
+        messageOpacityValue: document.getElementById('message-opacity-value'),
         modelWarningMessage: document.getElementById('model-warning-message'),
         profileCardHeaderWrapper: document.getElementById('profile-card-header-wrapper'),
         profileCardHeader: document.getElementById('profile-card-header'),
@@ -548,7 +548,7 @@ const state = {
         hideSystemPromptInChat: false,
         enableSwipeNavigation: false,
         enableAutoRetry: true,
-        maxRetries: 30, 
+        maxRetries: 30,
         useFixedRetryDelay: false,
         fixedRetryDelaySeconds: 15,
         maxBackoffDelaySeconds: 60,
@@ -572,7 +572,7 @@ const state = {
         memoryAutoSaveInterval: 30,
         headerAutoHide: false,
         summaryModelName: '', // 空の場合はmodelNameを使用
-        summarySystemPrompt:`あなたはプロの編集者です。以下の会話履歴を、第三者の視点から見た物語の「あらすじ」として要約してください。
+        summarySystemPrompt: `あなたはプロの編集者です。以下の会話履歴を、第三者の視点から見た物語の「あらすじ」として要約してください。
 「承知しました」等のAIとしての応答は不要です。要約文のみ出力して下さい。
 
 【最重要ルール】
@@ -661,20 +661,20 @@ window.addEventListener('DOMContentLoaded', (event) => {
 // --- ユーティリティ関数 ---
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
- /**
- * 中断可能なsleep関数
- * @param {number} ms - 待機する時間 (ミリ秒)
- * @param {AbortSignal} signal - 中断を監視するためのAbortSignal
- * @returns {Promise<void>} 待機が完了するとresolveし、中断されるとrejectするPromise
- */
- function interruptibleSleep(ms, signal) {
+/**
+* 中断可能なsleep関数
+* @param {number} ms - 待機する時間 (ミリ秒)
+* @param {AbortSignal} signal - 中断を監視するためのAbortSignal
+* @returns {Promise<void>} 待機が完了するとresolveし、中断されるとrejectするPromise
+*/
+function interruptibleSleep(ms, signal) {
     return new Promise((resolve, reject) => {
         // 待機開始前にもし既に中断されていたら、即座にエラーを投げる
         if (signal.aborted) {
             const error = new Error("Sleep aborted");
             error.name = "AbortError";
             return reject(error);
-        }   
+        }
 
         let timeoutId;
 
@@ -883,22 +883,22 @@ const dbUtils = {
                     console.log("[DB Migration] v10へのデータ移行処理を実行します。");
                     const settingsStore = transaction.objectStore(SETTINGS_STORE);
                     const profilesStore = transaction.objectStore(PROFILES_STORE);
-                    
+
                     const getAllSettingsReq = settingsStore.getAll();
-                    
+
                     getAllSettingsReq.onsuccess = () => {
                         const oldSettingsArray = getAllSettingsReq.result;
-                        
+
                         if (oldSettingsArray.length > 0) {
                             console.log("[DB Migration] 既存の設定を検出しました。新しいプロファイル構造に移行します...");
-                            
+
                             const oldSettingsObject = {};
                             oldSettingsArray.forEach(item => {
                                 oldSettingsObject[item.key] = item.value;
                             });
 
-                                const profileSettingKeys = [
-                                'apiProvider', 'apiKey', 'zaiApiKey', 'bedrockAccessKey', 'bedrockSecretKey', 'bedrockRegion', 
+                            const profileSettingKeys = [
+                                'apiProvider', 'apiKey', 'zaiApiKey', 'bedrockAccessKey', 'bedrockSecretKey', 'bedrockRegion',
                                 'modelName', 'systemPrompt', 'temperature', 'maxTokens', 'topK', 'topP',
                                 'presencePenalty', 'frequencyPenalty', 'thinkingBudget', 'includeThoughts',
                                 'enableThoughtTranslation', 'thoughtTranslationModel', 'dummyUser',
@@ -923,9 +923,9 @@ const dbUtils = {
                                 createdAt: Date.now(),
                                 settings: newProfileSettings
                             };
-                            
+
                             const addProfileReq = profilesStore.add(defaultProfile);
-                            
+
                             addProfileReq.onsuccess = (addEvent) => {
                                 const newProfileId = addEvent.target.result;
                                 console.log(`[DB Migration] デフォルトプロファイルを生成しました (ID: ${newProfileId})`);
@@ -949,7 +949,7 @@ const dbUtils = {
                     }
                     transaction.oncomplete = () => {
                         console.log("[DB Migration] スキーマ更新完了。データ移行処理を開始します。");
-                        appLogic.migrateImageData(); 
+                        appLogic.migrateImageData();
                     };
                 }
 
@@ -997,11 +997,11 @@ const dbUtils = {
     async saveSetting(key, value) {
         await this.openDB();
         return new Promise((resolve, reject) => {
-             try {
+            try {
                 console.log(`[DEBUG] saveSetting: key='${key}' の保存トランザクションを開始します。`);
                 const transaction = state.db.transaction([SETTINGS_STORE], 'readwrite');
                 const store = transaction.objectStore(SETTINGS_STORE);
-                
+
                 store.put({ key, value });
 
                 transaction.oncomplete = () => {
@@ -1009,8 +1009,8 @@ const dbUtils = {
                     resolve();
                 };
                 transaction.onerror = (event) => {
-                     console.error(`[DEBUG] saveSetting: key='${key}' のトランザクションエラー:`, event.target.error);
-                     reject(event.target.error);
+                    console.error(`[DEBUG] saveSetting: key='${key}' のトランザクションエラー:`, event.target.error);
+                    reject(event.target.error);
                 };
             } catch (error) {
                 console.error(`[DEBUG] saveSetting: ストアアクセスエラー:`, error);
@@ -1021,13 +1021,13 @@ const dbUtils = {
 
     async saveChat(optionalTitle = null, chatObjectToSave = null, options = {}) {
         await this.openDB();
-    
+
         let messagesForStats = [];
         let chatDataToSave;
-    
+
         if (!chatObjectToSave) {
             if ((!state.currentMessages || state.currentMessages.length === 0) && !state.currentSystemPrompt) {
-                if(state.currentChatId) console.log(`saveChat: 既存チャット ${state.currentChatId} にメッセージもシステムプロンプトもないため保存せず`);
+                if (state.currentChatId) console.log(`saveChat: 既存チャット ${state.currentChatId} にメッセージもシステムプロンプトもないため保存せず`);
                 else console.log("saveChat: 新規チャットに保存するメッセージもシステムプロンプトもなし");
                 return state.currentChatId;
             }
@@ -1057,15 +1057,15 @@ const dbUtils = {
                 executedFunctions: msg.executedFunctions,
                 generated_images: msg.generated_images,
                 generated_videos: msg.generated_videos ? msg.generated_videos.map(video => ({
-                        base64Data: video.base64Data,
-                        prompt: video.prompt
-                    })) : undefined,
+                    base64Data: video.base64Data,
+                    prompt: video.prompt
+                })) : undefined,
                 isHidden: msg.isHidden,
                 isAutoTrigger: msg.isAutoTrigger
             }));
 
             messagesForStats = messagesToSave;
-    
+
             chatDataToSave = {
                 messages: messagesToSave,
                 systemPrompt: state.currentSystemPrompt,
@@ -1077,15 +1077,15 @@ const dbUtils = {
             messagesForStats = chatObjectToSave.messages || [];
             chatDataToSave = chatObjectToSave;
         }
-    
+
         const stats = await this._calculateChatStats(messagesForStats);
-    
+
         return new Promise((resolve, reject) => {
             try {
                 const transaction = state.db.transaction([CHATS_STORE], 'readwrite');
                 const store = transaction.objectStore(CHATS_STORE);
                 const now = Date.now();
-    
+
                 const processSave = (existingChatData = null) => {
                     let title;
                     if (optionalTitle !== null) {
@@ -1096,7 +1096,7 @@ const dbUtils = {
                         const firstUserMessage = (chatDataToSave.messages || []).find(m => m.role === 'user' && !m.isHidden);
                         title = firstUserMessage ? firstUserMessage.content.substring(0, 50) : "無題のチャット";
                     }
-    
+
                     const chatIdForOperation = existingChatData ? existingChatData.id : state.currentChatId;
                     const finalChatData = {
                         ...chatDataToSave,
@@ -1108,7 +1108,7 @@ const dbUtils = {
                     if (chatIdForOperation) {
                         finalChatData.id = chatIdForOperation;
                     }
-    
+
                     const putRequest = store.put(finalChatData);
                     putRequest.onsuccess = (event) => {
                         const savedId = event.target.result;
@@ -1127,7 +1127,7 @@ const dbUtils = {
                         console.error("チャット保存(put)エラー:", event.target.error);
                     };
                 };
-    
+
                 if (state.currentChatId && !chatObjectToSave) {
                     const getRequest = store.get(state.currentChatId);
                     getRequest.onsuccess = (event) => {
@@ -1146,7 +1146,7 @@ const dbUtils = {
                 } else {
                     processSave(chatObjectToSave);
                 }
-    
+
                 transaction.oncomplete = () => {
                     resolve(state.currentChatId);
                 };
@@ -1154,7 +1154,7 @@ const dbUtils = {
                     console.error("チャット保存トランザクション失敗:", event.target.error);
                     reject(new Error(`チャット保存トランザクション失敗: ${event.target.error.message}`));
                 };
-    
+
             } catch (error) {
                 console.error("チャット保存処理の開始に失敗:", error);
                 reject(error);
@@ -1264,12 +1264,12 @@ const dbUtils = {
             const indexName = sortBy === 'createdAt' ? CHAT_CREATEDAT_INDEX : CHAT_UPDATEDAT_INDEX;
             // インデックスが存在するか確認
             if (!store.indexNames.contains(indexName)) {
-                 console.error(`インデックス "${indexName}" が見つかりません。主キー順でフォールバックします。`);
-                 // フォールバック: 主キー順で取得して逆順にする
-                 const getAllRequest = store.getAll();
-                 getAllRequest.onsuccess = (event) => resolve(event.target.result.reverse()); // 新しいものが上に来るように
-                 getAllRequest.onerror = (event) => reject(`全チャット取得エラー(フォールバック): ${event.target.error}`);
-                 return;
+                console.error(`インデックス "${indexName}" が見つかりません。主キー順でフォールバックします。`);
+                // フォールバック: 主キー順で取得して逆順にする
+                const getAllRequest = store.getAll();
+                getAllRequest.onsuccess = (event) => resolve(event.target.result.reverse()); // 新しいものが上に来るように
+                getAllRequest.onerror = (event) => reject(`全チャット取得エラー(フォールバック): ${event.target.error}`);
+                return;
             }
             // インデックスを使ってカーソルを開く (降順)
             const index = store.index(indexName);
@@ -1292,7 +1292,7 @@ const dbUtils = {
     // 指定IDのチャットを削除
     async deleteChat(id) {
         await this.openDB();
-        
+
         // Step 1: 削除対象のチャットから画像IDを収集
         const chatToDelete = await this.getChat(id);
         const imageIdsToDelete = new Set();
@@ -1319,7 +1319,7 @@ const dbUtils = {
             if (finalImageIdsToDelete.length > 0) {
                 storeNames.push(IMAGE_STORE);
             }
-            
+
             const transaction = state.db.transaction(storeNames, 'readwrite');
             const chatStore = transaction.objectStore(CHATS_STORE);
 
@@ -1357,7 +1357,7 @@ const dbUtils = {
                 resolve();
                 return;
             }
-            
+
             console.log(`以下のストアをクリアします: ${storeNames.join(', ')}`);
             const transaction = state.db.transaction(storeNames, 'readwrite');
             let storesCleared = 0;
@@ -1516,12 +1516,12 @@ const dbUtils = {
     /**
      * [V2] メタデータを受け取り、アセットをDLしてからDBをクリア＆インポートする
      */
-     async clearAndImportData(data, localAssetsBeforeClear, downloadedAssets, requiredAssetIds) {
+    async clearAndImportData(data, localAssetsBeforeClear, downloadedAssets, requiredAssetIds) {
         console.log("[DB Import V2] 安全なデータインポート処理を開始します。");
         uiUtils.showProgressDialog('データベースを準備中...');
 
         const { profiles, chats, memories, assets, settings } = data;
-        
+
         const allAvailableAssets = new Map([...localAssetsBeforeClear, ...downloadedAssets]);
         console.log(`[DB Import V2] 利用可能なアセットの完全なマップを作成しました: ${allAvailableAssets.size}件`);
 
@@ -1576,7 +1576,7 @@ const dbUtils = {
                 });
             }
         });
-        
+
         const tempStoreNames = [
             `${PROFILES_STORE}_temp`, `${CHATS_STORE}_temp`, `${SETTINGS_STORE}_temp`,
             `${IMAGE_STORE}_temp`, 'image_assets_temp', 'memory_store_temp'
@@ -1613,7 +1613,7 @@ const dbUtils = {
                 const store = tempTx.objectStore(storeName);
                 (tempStores[storeName] || []).forEach(item => store.put(item));
             }
-            
+
             await new Promise((resolve, reject) => {
                 tempTx.oncomplete = resolve;
                 tempTx.onerror = () => reject(tempTx.error);
@@ -1622,7 +1622,7 @@ const dbUtils = {
 
             uiUtils.updateProgressMessage('データベースを更新中...');
             const mainTx = state.db.transaction([...mainStoreNames, ...tempStoreNames], 'readwrite');
-            
+
             const mainClearPromises = mainStoreNames.map(name => {
                 return new Promise((resolve, reject) => {
                     const request = mainTx.objectStore(name).clear();
@@ -1640,7 +1640,7 @@ const dbUtils = {
                     allTempItemsReq.result.forEach(item => mainStore.put(item));
                 };
             }
-            
+
             const tempClearPromises2 = tempStoreNames.map(name => {
                 return new Promise((resolve, reject) => {
                     const request = mainTx.objectStore(name).clear();
@@ -1715,41 +1715,71 @@ const uiUtils = {
         }
     },
 
-renderChatMessages() {
-    const renderStartTime = performance.now();
+    renderChatMessages() {
+        const renderStartTime = performance.now();
 
-    const container = elements.messageContainer;
-    
-    container.style.minHeight = `${container.scrollHeight}px`;
+        const container = elements.messageContainer;
 
-    if (state.imageUrlCache.size > 0) {
-        for (const url of state.imageUrlCache.values()) {
-            URL.revokeObjectURL(url);
+        container.style.minHeight = `${container.scrollHeight}px`;
+
+        if (state.imageUrlCache.size > 0) {
+            for (const url of state.imageUrlCache.values()) {
+                URL.revokeObjectURL(url);
+            }
+            state.imageUrlCache.clear();
         }
-        state.imageUrlCache.clear();
-    }
-    if (state.editingMessageIndex !== null) {
-        const messageElement = container.querySelector(`.message[data-index="${state.editingMessageIndex}"]`);
-        if (messageElement) appLogic.cancelEditMessage(state.editingMessageIndex, messageElement);
-        else state.editingMessageIndex = null;
-    }
+        if (state.editingMessageIndex !== null) {
+            const messageElement = container.querySelector(`.message[data-index="${state.editingMessageIndex}"]`);
+            if (messageElement) appLogic.cancelEditMessage(state.editingMessageIndex, messageElement);
+            else state.editingMessageIndex = null;
+        }
 
-    container.innerHTML = '';
-    const fragment = document.createDocumentFragment();
-    
-    // 新しいヘルパー関数で表示対象メッセージを取得
-    const visibleMessages = appLogic.getVisibleMessages();
+        container.innerHTML = '';
+        const fragment = document.createDocumentFragment();
 
-    // 要約マーカー表示ロジック
-    const summaryEndIndex = state.currentSummarizedContext?.summaryRange?.end;
-    let markerInserted = false;
+        // 新しいヘルパー関数で表示対象メッセージを取得
+        const visibleMessages = appLogic.getVisibleMessages();
 
-    visibleMessages.forEach(msg => {
-        const index = state.currentMessages.indexOf(msg);
-        if (index === -1 || msg.role === 'tool') return;
-        
-        // メッセージのインデックスが要約範囲の終端と一致したらマーカーを挿入
-        if (!markerInserted && summaryEndIndex !== undefined && index >= summaryEndIndex) {
+        // 要約マーカー表示ロジック
+        const summaryEndIndex = state.currentSummarizedContext?.summaryRange?.end;
+        let markerInserted = false;
+
+        visibleMessages.forEach(msg => {
+            const index = state.currentMessages.indexOf(msg);
+            if (index === -1 || msg.role === 'tool') return;
+
+            // メッセージのインデックスが要約範囲の終端と一致したらマーカーを挿入
+            if (!markerInserted && summaryEndIndex !== undefined && index >= summaryEndIndex) {
+                const markerDiv = document.createElement('div');
+                markerDiv.className = 'summary-marker';
+                const markerText = document.createElement('span');
+                markerText.className = 'summary-marker-text';
+                const summarizedDate = new Date(state.currentSummarizedContext.summarizedAt).toLocaleString('ja-JP');
+                markerText.textContent = `ここまで要約済み (${summarizedDate})`;
+                markerDiv.appendChild(markerText);
+                fragment.appendChild(markerDiv);
+                markerInserted = true;
+            }
+
+            let cascadeInfo = null;
+            if (msg.isCascaded && msg.siblingGroupId) {
+                const siblings = state.currentMessages.filter(m => m.siblingGroupId === msg.siblingGroupId && !m.isHidden);
+                const currentIndexInGroup = siblings.findIndex(m => m === msg);
+                cascadeInfo = {
+                    currentIndex: currentIndexInGroup + 1,
+                    total: siblings.length,
+                    siblingGroupId: msg.siblingGroupId
+                };
+            }
+
+            const messageElement = uiUtils.createMessageElement(msg.role, msg.content, index, false, cascadeInfo, msg.attachments);
+            if (messageElement) {
+                fragment.appendChild(messageElement);
+            }
+        });
+
+        // ループ後にマーカーが挿入されなかった場合（＝全履歴が要約対象だった場合）の処理
+        if (!markerInserted && summaryEndIndex !== undefined && state.currentMessages.length > 0 && state.currentMessages.length <= summaryEndIndex) {
             const markerDiv = document.createElement('div');
             markerDiv.className = 'summary-marker';
             const markerText = document.createElement('span');
@@ -1761,544 +1791,512 @@ renderChatMessages() {
             markerInserted = true;
         }
 
-        let cascadeInfo = null;
-        if (msg.isCascaded && msg.siblingGroupId) {
-            const siblings = state.currentMessages.filter(m => m.siblingGroupId === msg.siblingGroupId && !m.isHidden);
-            const currentIndexInGroup = siblings.findIndex(m => m === msg);
-            cascadeInfo = {
-                currentIndex: currentIndexInGroup + 1,
-                total: siblings.length,
-                siblingGroupId: msg.siblingGroupId
-            };
+        container.appendChild(fragment);
+
+        if (window.Prism) {
+            const highlightStartTime = performance.now();
+            Prism.highlightAll();
+            const highlightEndTime = performance.now();
         }
-        
-        const messageElement = uiUtils.createMessageElement(msg.role, msg.content, index, false, cascadeInfo, msg.attachments);
-        if (messageElement) {
-            fragment.appendChild(messageElement);
+
+        requestAnimationFrame(() => {
+            container.style.minHeight = '';
+        });
+
+        appLogic.updateSummarizeButtonState();
+        const renderEndTime = performance.now();
+    },
+
+    createMessageElement(role, content, index, isStreamingPlaceholder = false, cascadeInfo = null, attachments = null) {
+        const messageData = state.currentMessages[index];
+        if (!messageData) return null;
+
+        const summaryEndIndex = state.currentSummarizedContext?.summaryRange?.end;
+        const isSummarized = summaryEndIndex !== undefined && index < summaryEndIndex;
+
+        const messageDiv = document.createElement('div');
+        messageDiv.classList.add('message', role);
+        messageDiv.dataset.index = index;
+
+        if (role === 'model' && messageData && messageData.thoughtSummary) {
+            const thoughtDetails = document.createElement('details');
+            thoughtDetails.classList.add('thought-summary-details');
+            const thoughtSummaryElem = document.createElement('summary');
+            thoughtSummaryElem.textContent = '思考プロセス';
+            thoughtDetails.appendChild(thoughtSummaryElem);
+            const thoughtContentDiv = document.createElement('div');
+            thoughtContentDiv.classList.add('thought-summary-content');
+            if (isStreamingPlaceholder) {
+                thoughtContentDiv.id = `streaming-thought-summary-${index}`;
+            } else {
+                try {
+                    thoughtContentDiv.innerHTML = marked.parse(messageData.thoughtSummary || '');
+                } catch (e) {
+                    console.error("Thought Summary Markdownパースエラー:", e);
+                    thoughtContentDiv.textContent = messageData.thoughtSummary || '';
+                }
+            }
+            thoughtDetails.appendChild(thoughtContentDiv);
+            messageDiv.appendChild(thoughtDetails);
         }
-    });
-    
-    // ループ後にマーカーが挿入されなかった場合（＝全履歴が要約対象だった場合）の処理
-    if (!markerInserted && summaryEndIndex !== undefined && state.currentMessages.length > 0 && state.currentMessages.length <= summaryEndIndex) {
-        const markerDiv = document.createElement('div');
-        markerDiv.className = 'summary-marker';
-        const markerText = document.createElement('span');
-        markerText.className = 'summary-marker-text';
-        const summarizedDate = new Date(state.currentSummarizedContext.summarizedAt).toLocaleString('ja-JP');
-        markerText.textContent = `ここまで要約済み (${summarizedDate})`;
-        markerDiv.appendChild(markerText);
-        fragment.appendChild(markerDiv);
-        markerInserted = true;
-    }
 
-    container.appendChild(fragment);
-    
-    if (window.Prism) {
-        const highlightStartTime = performance.now();
-        Prism.highlightAll();
-        const highlightEndTime = performance.now();
-    }
-    
-    requestAnimationFrame(() => {
-        container.style.minHeight = '';
-    });
-    
-    appLogic.updateSummarizeButtonState();
-    const renderEndTime = performance.now();
-},
+        const contentDiv = document.createElement('div');
+        contentDiv.classList.add('message-content');
 
-createMessageElement(role, content, index, isStreamingPlaceholder = false, cascadeInfo = null, attachments = null) {
-    const messageData = state.currentMessages[index];
-    if (!messageData) return null;
-
-    const summaryEndIndex = state.currentSummarizedContext?.summaryRange?.end;
-    const isSummarized = summaryEndIndex !== undefined && index < summaryEndIndex;
-
-    const messageDiv = document.createElement('div');
-    messageDiv.classList.add('message', role);
-    messageDiv.dataset.index = index;
-    
-    if (role === 'model' && messageData && messageData.thoughtSummary) {
-        const thoughtDetails = document.createElement('details');
-        thoughtDetails.classList.add('thought-summary-details');
-        const thoughtSummaryElem = document.createElement('summary');
-        thoughtSummaryElem.textContent = '思考プロセス';
-        thoughtDetails.appendChild(thoughtSummaryElem);
-        const thoughtContentDiv = document.createElement('div');
-        thoughtContentDiv.classList.add('thought-summary-content');
         if (isStreamingPlaceholder) {
-            thoughtContentDiv.id = `streaming-thought-summary-${index}`;
-        } else {
-            try {
-                thoughtContentDiv.innerHTML = marked.parse(messageData.thoughtSummary || '');
-            } catch (e) {
-                console.error("Thought Summary Markdownパースエラー:", e);
-                thoughtContentDiv.textContent = messageData.thoughtSummary || '';
+            contentDiv.id = `streaming-content-${index}`;
+        }
+
+        if (role === 'user' && attachments && attachments.length > 0) {
+            const details = document.createElement('details');
+            details.classList.add('attachment-details');
+            details.open = false; // 最初から展開状態にする
+            const summary = document.createElement('summary');
+            summary.textContent = `添付ファイル (${attachments.length}件)`;
+            details.appendChild(summary);
+            const list = document.createElement('ul');
+            list.classList.add('attachment-list');
+
+            attachments.forEach(att => {
+                const listItem = document.createElement('li');
+
+                const mimeType = att.mimeType || '';
+                let previewElement;
+
+                if (mimeType.startsWith('image/')) {
+                    previewElement = document.createElement('img');
+                    previewElement.className = 'attachment-thumbnail';
+                    previewElement.alt = att.name;
+
+                    // 同期後のデータ(base64Data)からもサムネイルを生成できるようにする
+                    if (att.file instanceof Blob) {
+                        const objectURL = URL.createObjectURL(att.file);
+                        previewElement.src = objectURL;
+                        state.imageUrlCache.set(objectURL, true);
+                    } else if (att.base64Data) {
+                        // base64からBlobを生成してURLを作成
+                        base64ToBlob(att.base64Data, att.mimeType)
+                            .then(blob => {
+                                const objectURL = URL.createObjectURL(blob);
+                                previewElement.src = objectURL;
+                                state.imageUrlCache.set(objectURL, true);
+                            })
+                            .catch(err => {
+                                console.error('Base64からサムネイル用Blobへの変換に失敗:', err);
+                                previewElement.alt = 'プレビュー失敗';
+                            });
+                    }
+
+                } else if (mimeType.startsWith('video/')) {
+                    previewElement = document.createElement('video');
+                    previewElement.className = 'attachment-thumbnail';
+                    previewElement.muted = true;
+                    previewElement.playsInline = true;
+                    if (att.file instanceof Blob) {
+                        const objectURL = URL.createObjectURL(att.file);
+                        previewElement.src = objectURL;
+                        state.videoUrlCache.set(objectURL, true);
+                    } else if (att.base64Data) {
+                        base64ToBlob(att.base64Data, att.mimeType)
+                            .then(blob => {
+                                const objectURL = URL.createObjectURL(blob);
+                                previewElement.src = objectURL;
+                                state.videoUrlCache.set(objectURL, true);
+                            })
+                            .catch(err => console.error('Base64から動画用Blobへの変換に失敗:', err));
+                    }
+                } else {
+                    previewElement = document.createElement('span');
+                    previewElement.className = 'attachment-thumbnail material-symbols-outlined';
+                    previewElement.style.display = 'flex';
+                    previewElement.style.alignItems = 'center';
+                    previewElement.style.justifyContent = 'center';
+                    previewElement.textContent = 'description';
+                }
+
+                if (previewElement.tagName === 'IMG' || previewElement.tagName === 'VIDEO') {
+                    previewElement.onclick = () => {
+                        const modalOverlay = document.getElementById('image-modal-overlay');
+                        const modalImg = document.getElementById('image-modal-img'); // 正しいIDを参照
+
+                        // modalContentではなく、存在する要素を直接操作する
+                        if (modalOverlay && modalImg) {
+                            if (previewElement.tagName === 'IMG') {
+                                modalImg.src = previewElement.src;
+                                modalOverlay.classList.remove('hidden');
+                            } else {
+                                // 動画の場合は新しいタブで開くなどの代替案も考えられる
+                                console.warn("動画のモーダル表示は現在サポートされていません。");
+                            }
+                        } else {
+                            console.error("画像拡大用のモーダル要素が見つかりません。");
+                        }
+                    };
+                }
+
+                const filenameSpan = document.createElement('span');
+                filenameSpan.className = 'attachment-filename';
+                filenameSpan.textContent = att.name;
+                filenameSpan.title = `${att.name} (${att.mimeType})`;
+
+                listItem.appendChild(previewElement);
+                listItem.appendChild(filenameSpan);
+                list.appendChild(listItem);
+            });
+            details.appendChild(list);
+            contentDiv.appendChild(details);
+
+            if (content && content.trim() !== '') {
+                const pre = document.createElement('pre');
+                pre.textContent = content;
+                pre.style.marginTop = '8px';
+                contentDiv.appendChild(pre);
             }
         }
-        thoughtDetails.appendChild(thoughtContentDiv);
-        messageDiv.appendChild(thoughtDetails);
-    }
 
-    const contentDiv = document.createElement('div');
-    contentDiv.classList.add('message-content');
-    
-    if (isStreamingPlaceholder) {
-        contentDiv.id = `streaming-content-${index}`;
-    }
+        else {
+            try {
+                if (content && (role === 'model' || role === 'user')) {
+                    if (role === 'model' && !isStreamingPlaceholder && typeof marked !== 'undefined') {
+                        contentDiv.innerHTML = marked.parse(content || '');
+                    } else {
+                        const pre = document.createElement('pre'); pre.textContent = content; contentDiv.appendChild(pre);
+                    }
+                } else if (role === 'error') {
+                    const p = document.createElement('p'); p.textContent = content; contentDiv.appendChild(p);
+                }
+            } catch (e) {
+                console.error("Markdownパースエラー:", e);
+                const pre = document.createElement('pre'); pre.textContent = content; contentDiv.innerHTML = ''; contentDiv.appendChild(pre);
+            }
+        }
+        messageDiv.appendChild(contentDiv);
 
-    if (role === 'user' && attachments && attachments.length > 0) {
-        const details = document.createElement('details');
-        details.classList.add('attachment-details');
-        details.open = false; // 最初から展開状態にする
-        const summary = document.createElement('summary');
-        summary.textContent = `添付ファイル (${attachments.length}件)`;
-        details.appendChild(summary);
-        const list = document.createElement('ul');
-        list.classList.add('attachment-list');
-        
-        attachments.forEach(att => {
-            const listItem = document.createElement('li');
-            
-            const mimeType = att.mimeType || '';
-            let previewElement;
+        const imagePlaceholderRegex = /<p>\[IMAGE_HERE\]<\/p>|\[IMAGE_HERE\]/g;
+        if (role === 'model' && messageData && messageData.imageIds && messageData.imageIds.length > 0) {
+            let imageIndex = 0;
+            const replacedHtml = contentDiv.innerHTML.replace(imagePlaceholderRegex, () => {
+                if (imageIndex < messageData.imageIds.length) {
+                    const imageId = messageData.imageIds[imageIndex++];
+                    return `<img class="lazy-load-image" alt="生成画像（読み込み中...）" data-image-id="${imageId}">`;
+                }
+                return '';
+            });
+            contentDiv.innerHTML = replacedHtml;
 
-            if (mimeType.startsWith('image/')) {
-                previewElement = document.createElement('img');
-                previewElement.className = 'attachment-thumbnail';
-                previewElement.alt = att.name;
-                
-                // 同期後のデータ(base64Data)からもサムネイルを生成できるようにする
-                if (att.file instanceof Blob) {
-                    const objectURL = URL.createObjectURL(att.file);
-                    previewElement.src = objectURL;
-                    state.imageUrlCache.set(objectURL, true);
-                } else if (att.base64Data) {
-                    // base64からBlobを生成してURLを作成
-                    base64ToBlob(att.base64Data, att.mimeType)
+            if (imageIndex < messageData.imageIds.length) {
+                const fragment = document.createDocumentFragment();
+                for (let i = imageIndex; i < messageData.imageIds.length; i++) {
+                    const imageId = messageData.imageIds[i];
+                    const img = document.createElement('img');
+                    img.className = 'lazy-load-image';
+                    img.alt = '生成画像（読み込み中...）';
+                    img.dataset.imageId = imageId;
+                    fragment.appendChild(img);
+                }
+                contentDiv.appendChild(fragment);
+            }
+            requestAnimationFrame(() => {
+                const newImages = contentDiv.querySelectorAll('.lazy-load-image');
+                newImages.forEach(img => appLogic.imageObserver.observe(img));
+            });
+        }
+
+        if (role === 'model' && messageData && messageData.groundingMetadata &&
+            ((messageData.groundingMetadata.groundingChunks && messageData.groundingMetadata.groundingChunks.length > 0) ||
+                (messageData.groundingMetadata.webSearchQueries && messageData.groundingMetadata.webSearchQueries.length > 0))
+        ) {
+            try {
+                const details = document.createElement('details');
+                details.classList.add('citation-details');
+                const summary = document.createElement('summary');
+                summary.textContent = '引用元/検索クエリ';
+                details.appendChild(summary);
+                let detailsHasContent = false;
+                if (messageData.groundingMetadata.groundingChunks && messageData.groundingMetadata.groundingChunks.length > 0) {
+                    const citationList = document.createElement('ul');
+                    citationList.classList.add('citation-list');
+                    const citationMap = new Map();
+                    let displayIndexCounter = 1;
+                    if (messageData.groundingMetadata.groundingSupports) {
+                        messageData.groundingMetadata.groundingSupports.forEach(support => {
+                            if (support.groundingChunkIndices) {
+                                support.groundingChunkIndices.forEach(chunkIndex => {
+                                    if (!citationMap.has(chunkIndex) && chunkIndex >= 0 && chunkIndex < messageData.groundingMetadata.groundingChunks.length) {
+                                        const chunk = messageData.groundingMetadata.groundingChunks[chunkIndex];
+                                        if (chunk?.web?.uri) {
+                                            citationMap.set(chunkIndex, {
+                                                uri: chunk.web.uri,
+                                                title: chunk.web.title || 'タイトル不明',
+                                                displayIndex: displayIndexCounter++
+                                            });
+                                        }
+                                    }
+                                });
+                            }
+                        });
+                    }
+                    const sortedCitations = Array.from(citationMap.entries())
+                        .sort(([, a], [, b]) => a.displayIndex - b.displayIndex);
+                    sortedCitations.forEach(([chunkIndex, citationInfo]) => {
+                        const listItem = document.createElement('li');
+                        const link = document.createElement('a');
+                        link.href = citationInfo.uri;
+                        link.textContent = `[${citationInfo.displayIndex}] ${citationInfo.title}`;
+                        link.title = citationInfo.title;
+                        link.target = '_blank';
+                        link.rel = 'noopener noreferrer';
+                        listItem.appendChild(link);
+                        citationList.appendChild(listItem);
+                    });
+                    if (sortedCitations.length === 0) {
+                        messageData.groundingMetadata.groundingChunks.forEach((chunk, idx) => {
+                            if (chunk?.web?.uri) {
+                                const listItem = document.createElement('li');
+                                const link = document.createElement('a');
+                                link.href = chunk.web.uri;
+                                link.textContent = chunk.web.title || `ソース ${idx + 1}`;
+                                link.title = chunk.web.title || 'タイトル不明';
+                                link.target = '_blank';
+                                link.rel = 'noopener noreferrer';
+                                listItem.appendChild(link);
+                                citationList.appendChild(listItem);
+                            }
+                        });
+                    }
+                    if (citationList.hasChildNodes()) {
+                        details.appendChild(citationList);
+                        detailsHasContent = true;
+                    }
+                }
+                if (messageData.groundingMetadata.webSearchQueries && messageData.groundingMetadata.webSearchQueries.length > 0) {
+                    if (detailsHasContent) {
+                        const separator = document.createElement('hr');
+                        separator.style.marginTop = '10px';
+                        separator.style.marginBottom = '8px';
+                        separator.style.border = 'none';
+                        separator.style.borderTop = '1px dashed var(--border-tertiary)';
+                        details.appendChild(separator);
+                    }
+                    const queryHeader = document.createElement('div');
+                    queryHeader.textContent = '検索に使用されたクエリ:';
+                    queryHeader.style.fontWeight = '500';
+                    queryHeader.style.marginTop = detailsHasContent ? '0' : '8px';
+                    queryHeader.style.marginBottom = '4px';
+                    queryHeader.style.fontSize = '11px';
+                    queryHeader.style.color = 'var(--text-secondary)';
+                    details.appendChild(queryHeader);
+                    const queryList = document.createElement('ul');
+                    queryList.classList.add('search-query-list');
+                    queryList.style.listStyle = 'none';
+                    queryList.style.paddingLeft = '0';
+                    queryList.style.margin = '0';
+                    queryList.style.fontSize = '11px';
+                    queryList.style.color = 'var(--text-secondary)';
+                    messageData.groundingMetadata.webSearchQueries.forEach(query => {
+                        const queryItem = document.createElement('li');
+                        queryItem.textContent = `• ${query}`;
+                        queryItem.style.marginBottom = '3px';
+                        queryList.appendChild(queryItem);
+                    });
+                    details.appendChild(queryList);
+                    detailsHasContent = true;
+                }
+                if (detailsHasContent) {
+                    contentDiv.appendChild(details);
+                }
+            } catch (e) {
+                console.error(`引用元/検索クエリ表示の生成中にエラーが発生しました (index: ${index}):`, e);
+            }
+        }
+
+        if (role === 'model' && messageData && messageData.executedFunctions && messageData.executedFunctions.length > 0) {
+            const details = document.createElement('details');
+            details.classList.add('function-call-details');
+            const uniqueFunctions = [...new Set(messageData.executedFunctions)];
+            const summary = document.createElement('summary');
+            summary.innerHTML = `⚙️ ツール使用 (${uniqueFunctions.length}件)`;
+            details.appendChild(summary);
+            const list = document.createElement('ul');
+            list.classList.add('function-call-list');
+            uniqueFunctions.forEach(funcName => {
+                const listItem = document.createElement('li');
+                listItem.textContent = funcName;
+                list.appendChild(listItem);
+            });
+            details.appendChild(list);
+            if (contentDiv.innerHTML.trim() !== '') {
+                contentDiv.appendChild(details);
+            } else {
+                messageDiv.appendChild(details);
+            }
+        }
+
+        if (role === 'model' && messageData && messageData.search_web_results && messageData.search_web_results.length > 0) {
+            const details = document.createElement('details');
+            details.classList.add('function-call-details');
+            const summary = document.createElement('summary');
+            summary.innerHTML = `🌐 Web検索結果 (${messageData.search_web_results.length}件)`;
+            details.appendChild(summary);
+            const list = document.createElement('ul');
+            list.classList.add('function-call-list');
+            messageData.search_web_results.forEach(result => {
+                const listItem = document.createElement('li');
+                const link = document.createElement('a');
+                link.href = result.link;
+                link.textContent = result.title;
+                link.title = result.snippet;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                listItem.appendChild(link);
+                list.appendChild(listItem);
+            });
+            details.appendChild(list);
+            if (contentDiv.innerHTML.trim() !== '') {
+                contentDiv.appendChild(details);
+            } else {
+                messageDiv.appendChild(details);
+            }
+        }
+
+        if (role === 'model' && messageData && messageData.generated_videos && messageData.generated_videos.length > 0) {
+            const videoData = messageData.generated_videos[0];
+            if (videoData && (videoData.url || videoData.base64Data)) {
+                const video = document.createElement('video');
+                video.controls = true;
+                video.playsInline = true;
+                video.muted = true;
+                video.loop = true;
+                video.style.maxWidth = '100%';
+                video.style.borderRadius = 'var(--border-radius-md)';
+                video.style.display = 'block';
+
+                if (videoData.url) {
+                    video.src = videoData.url;
+                } else if (videoData.base64Data) {
+                    base64ToBlob(videoData.base64Data, 'video/mp4')
                         .then(blob => {
                             const objectURL = URL.createObjectURL(blob);
-                            previewElement.src = objectURL;
-                            state.imageUrlCache.set(objectURL, true);
+                            video.src = objectURL;
                         })
                         .catch(err => {
-                            console.error('Base64からサムネイル用Blobへの変換に失敗:', err);
-                            previewElement.alt = 'プレビュー失敗';
+                            console.error("Base64からの動画Blob生成に失敗:", err);
+                            video.remove();
                         });
                 }
 
-            } else if (mimeType.startsWith('video/')) {
-                previewElement = document.createElement('video');
-                previewElement.className = 'attachment-thumbnail';
-                previewElement.muted = true;
-                previewElement.playsInline = true;
-                if (att.file instanceof Blob) {
-                    const objectURL = URL.createObjectURL(att.file);
-                    previewElement.src = objectURL;
-                    state.videoUrlCache.set(objectURL, true);
-                } else if (att.base64Data) {
-                    base64ToBlob(att.base64Data, att.mimeType)
-                        .then(blob => {
-                            const objectURL = URL.createObjectURL(blob);
-                            previewElement.src = objectURL;
-                            state.videoUrlCache.set(objectURL, true);
-                        })
-                        .catch(err => console.error('Base64から動画用Blobへの変換に失敗:', err));
-                }
-            } else {
-                previewElement = document.createElement('span');
-                previewElement.className = 'attachment-thumbnail material-symbols-outlined';
-                previewElement.style.display = 'flex';
-                previewElement.style.alignItems = 'center';
-                previewElement.style.justifyContent = 'center';
-                previewElement.textContent = 'description';
-            }
-            
-            if (previewElement.tagName === 'IMG' || previewElement.tagName === 'VIDEO') {
-                previewElement.onclick = () => {
-                    const modalOverlay = document.getElementById('image-modal-overlay');
-                    const modalImg = document.getElementById('image-modal-img'); // 正しいIDを参照
-                    
-                    // modalContentではなく、存在する要素を直接操作する
-                    if (modalOverlay && modalImg) {
-                        if (previewElement.tagName === 'IMG') {
-                            modalImg.src = previewElement.src;
-                            modalOverlay.classList.remove('hidden');
-                        } else {
-                            // 動画の場合は新しいタブで開くなどの代替案も考えられる
-                            console.warn("動画のモーダル表示は現在サポートされていません。");
+                const placeholderRegex = /\[VIDEO_HERE\]/g;
+                if (placeholderRegex.test(contentDiv.innerHTML)) {
+                    let replaced = false;
+                    contentDiv.innerHTML = contentDiv.innerHTML.replace(placeholderRegex, (match) => {
+                        if (!replaced) {
+                            replaced = true;
+                            return video.outerHTML;
                         }
-                    } else {
-                        console.error("画像拡大用のモーダル要素が見つかりません。");
-                    }
-                };
-            }
-
-            const filenameSpan = document.createElement('span');
-            filenameSpan.className = 'attachment-filename';
-            filenameSpan.textContent = att.name;
-            filenameSpan.title = `${att.name} (${att.mimeType})`;
-
-            listItem.appendChild(previewElement);
-            listItem.appendChild(filenameSpan);
-            list.appendChild(listItem);
-        });
-        details.appendChild(list);
-        contentDiv.appendChild(details);
-
-        if (content && content.trim() !== '') {
-            const pre = document.createElement('pre');
-            pre.textContent = content;
-            pre.style.marginTop = '8px';
-            contentDiv.appendChild(pre);
-        }
-    } 
-
-    else {
-        try {
-            if (content && (role === 'model' || role === 'user')) {
-                 if (role === 'model' && !isStreamingPlaceholder && typeof marked !== 'undefined') {
-                    contentDiv.innerHTML = marked.parse(content || '');
-                } else {
-                    const pre = document.createElement('pre'); pre.textContent = content; contentDiv.appendChild(pre);
-                }
-            } else if (role === 'error') {
-                 const p = document.createElement('p'); p.textContent = content; contentDiv.appendChild(p);
-            }
-        } catch (e) {
-             console.error("Markdownパースエラー:", e);
-             const pre = document.createElement('pre'); pre.textContent = content; contentDiv.innerHTML = ''; contentDiv.appendChild(pre);
-        }
-    }
-    messageDiv.appendChild(contentDiv);
-            
-    const imagePlaceholderRegex = /<p>\[IMAGE_HERE\]<\/p>|\[IMAGE_HERE\]/g;
-    if (role === 'model' && messageData && messageData.imageIds && messageData.imageIds.length > 0) {
-        let imageIndex = 0;
-        const replacedHtml = contentDiv.innerHTML.replace(imagePlaceholderRegex, () => {
-            if (imageIndex < messageData.imageIds.length) {
-                const imageId = messageData.imageIds[imageIndex++];
-                return `<img class="lazy-load-image" alt="生成画像（読み込み中...）" data-image-id="${imageId}">`;
-            }
-            return '';
-        });
-        contentDiv.innerHTML = replacedHtml;
-
-        if (imageIndex < messageData.imageIds.length) {
-            const fragment = document.createDocumentFragment();
-            for (let i = imageIndex; i < messageData.imageIds.length; i++) {
-                const imageId = messageData.imageIds[i];
-                const img = document.createElement('img');
-                img.className = 'lazy-load-image';
-                img.alt = '生成画像（読み込み中...）';
-                img.dataset.imageId = imageId;
-                fragment.appendChild(img);
-            }
-            contentDiv.appendChild(fragment);
-        }
-        requestAnimationFrame(() => {
-            const newImages = contentDiv.querySelectorAll('.lazy-load-image');
-            newImages.forEach(img => appLogic.imageObserver.observe(img));
-        });
-    }
-    
-    if (role === 'model' && messageData && messageData.groundingMetadata &&
-        ( (messageData.groundingMetadata.groundingChunks && messageData.groundingMetadata.groundingChunks.length > 0) ||
-          (messageData.groundingMetadata.webSearchQueries && messageData.groundingMetadata.webSearchQueries.length > 0) )
-       )
-    {
-        try {
-            const details = document.createElement('details');
-            details.classList.add('citation-details');
-            const summary = document.createElement('summary');
-            summary.textContent = '引用元/検索クエリ';
-            details.appendChild(summary);
-            let detailsHasContent = false;
-            if (messageData.groundingMetadata.groundingChunks && messageData.groundingMetadata.groundingChunks.length > 0) {
-                const citationList = document.createElement('ul');
-                citationList.classList.add('citation-list');
-                const citationMap = new Map();
-                let displayIndexCounter = 1;
-                if (messageData.groundingMetadata.groundingSupports) {
-                    messageData.groundingMetadata.groundingSupports.forEach(support => {
-                        if (support.groundingChunkIndices) {
-                            support.groundingChunkIndices.forEach(chunkIndex => {
-                                if (!citationMap.has(chunkIndex) && chunkIndex >= 0 && chunkIndex < messageData.groundingMetadata.groundingChunks.length) {
-                                    const chunk = messageData.groundingMetadata.groundingChunks[chunkIndex];
-                                    if (chunk?.web?.uri) {
-                                        citationMap.set(chunkIndex, {
-                                            uri: chunk.web.uri,
-                                            title: chunk.web.title || 'タイトル不明',
-                                            displayIndex: displayIndexCounter++
-                                        });
-                                    }
-                                }
-                            });
-                        }
+                        return '';
                     });
                 }
-                const sortedCitations = Array.from(citationMap.entries())
-                                            .sort(([, a], [, b]) => a.displayIndex - b.displayIndex);
-                sortedCitations.forEach(([chunkIndex, citationInfo]) => {
-                    const listItem = document.createElement('li');
-                    const link = document.createElement('a');
-                    link.href = citationInfo.uri;
-                    link.textContent = `[${citationInfo.displayIndex}] ${citationInfo.title}`;
-                    link.title = citationInfo.title;
-                    link.target = '_blank';
-                    link.rel = 'noopener noreferrer';
-                    listItem.appendChild(link);
-                    citationList.appendChild(listItem);
-                });
-                if (sortedCitations.length === 0) {
-                     messageData.groundingMetadata.groundingChunks.forEach((chunk, idx) => {
-                         if (chunk?.web?.uri) {
-                             const listItem = document.createElement('li');
-                             const link = document.createElement('a');
-                             link.href = chunk.web.uri;
-                             link.textContent = chunk.web.title || `ソース ${idx + 1}`;
-                             link.title = chunk.web.title || 'タイトル不明';
-                             link.target = '_blank';
-                             link.rel = 'noopener noreferrer';
-                             listItem.appendChild(link);
-                             citationList.appendChild(listItem);
-                         }
-                     });
+            }
+        }
+
+        const editArea = document.createElement('div');
+        editArea.classList.add('message-edit-area', 'hidden');
+        messageDiv.appendChild(editArea);
+
+        if (role === 'model' && cascadeInfo && cascadeInfo.total > 1) {
+            const cascadeControlsDiv = document.createElement('div');
+            cascadeControlsDiv.classList.add('message-cascade-controls');
+            const prevButton = document.createElement('button');
+            prevButton.innerHTML = '<span class="material-symbols-outlined">chevron_left</span>';
+            prevButton.title = '前の応答';
+            prevButton.classList.add('cascade-prev-btn');
+            prevButton.disabled = cascadeInfo.currentIndex <= 1;
+            prevButton.onclick = () => appLogic.navigateCascade(index, 'prev');
+            cascadeControlsDiv.appendChild(prevButton);
+            const indicatorSpan = document.createElement('span');
+            indicatorSpan.classList.add('cascade-indicator');
+            indicatorSpan.textContent = `${cascadeInfo.currentIndex}/${cascadeInfo.total}`;
+            cascadeControlsDiv.appendChild(indicatorSpan);
+            const nextButton = document.createElement('button');
+            nextButton.innerHTML = '<span class="material-symbols-outlined">chevron_right</span>';
+            nextButton.title = '次の応答';
+            nextButton.classList.add('cascade-next-btn');
+            nextButton.disabled = cascadeInfo.currentIndex >= cascadeInfo.total;
+            nextButton.onclick = () => appLogic.navigateCascade(index, 'next');
+            cascadeControlsDiv.appendChild(nextButton);
+            const deleteCascadeButton = document.createElement('button');
+            deleteCascadeButton.innerHTML = '<span class="material-symbols-outlined">delete</span>';
+            deleteCascadeButton.title = 'この応答を削除';
+            deleteCascadeButton.classList.add('cascade-delete-btn');
+            deleteCascadeButton.onclick = () => appLogic.confirmDeleteCascadeResponse(index);
+            cascadeControlsDiv.appendChild(deleteCascadeButton);
+            messageDiv.appendChild(cascadeControlsDiv);
+        }
+
+        if (role !== 'error') {
+            const actionsDiv = document.createElement('div');
+            actionsDiv.classList.add('message-actions');
+
+            if (!isSummarized) {
+                const editButton = document.createElement('button');
+                editButton.innerHTML = '<span class="material-symbols-outlined">edit</span> 編集';
+                editButton.title = 'メッセージを編集';
+                editButton.classList.add('js-edit-btn');
+                editButton.onclick = () => appLogic.startEditMessage(index, messageDiv);
+                actionsDiv.appendChild(editButton);
+                const deleteButton = document.createElement('button');
+                deleteButton.innerHTML = '<span class="material-symbols-outlined">delete</span> 削除';
+                deleteButton.title = 'この会話ターンを削除';
+                deleteButton.classList.add('js-delete-btn');
+                deleteButton.onclick = () => appLogic.deleteMessage(index);
+                actionsDiv.appendChild(deleteButton);
+                if (role === 'user') {
+                    const retryButton = document.createElement('button');
+                    retryButton.innerHTML = '<span class="material-symbols-outlined">replay</span> 再生成';
+                    retryButton.title = 'このメッセージから再生成';
+                    retryButton.classList.add('js-retry-btn');
+                    retryButton.onclick = () => appLogic.retryFromMessage(index);
+                    actionsDiv.appendChild(retryButton);
                 }
-                if (citationList.hasChildNodes()) {
-                    details.appendChild(citationList);
-                    detailsHasContent = true;
+            }
+
+            if (role === 'model' && messageData?.usageMetadata &&
+                typeof messageData.usageMetadata.candidatesTokenCount === 'number' &&
+                typeof messageData.usageMetadata.totalTokenCount === 'number') {
+                const usage = messageData.usageMetadata;
+                const tokenSpan = document.createElement('span');
+                tokenSpan.classList.add('token-count-display');
+                let finalTotalTokenCount = usage.totalTokenCount;
+                if (typeof messageData.usageMetadata.thoughtsTokenCount === 'number') {
+                    finalTotalTokenCount -= messageData.usageMetadata.thoughtsTokenCount;
                 }
+                const formattedCandidates = usage.candidatesTokenCount.toLocaleString('en-US');
+                const formattedTotal = finalTotalTokenCount.toLocaleString('en-US');
+                tokenSpan.textContent = `${formattedCandidates} / ${formattedTotal}`;
+                tokenSpan.title = `Candidate Tokens / Total Tokens`;
+                actionsDiv.appendChild(tokenSpan);
             }
-            if (messageData.groundingMetadata.webSearchQueries && messageData.groundingMetadata.webSearchQueries.length > 0) {
-                if (detailsHasContent) {
-                    const separator = document.createElement('hr');
-                    separator.style.marginTop = '10px';
-                    separator.style.marginBottom = '8px';
-                    separator.style.border = 'none';
-                    separator.style.borderTop = '1px dashed var(--border-tertiary)'; 
-                    details.appendChild(separator);
+            if (role === 'model' && typeof messageData?.retryCount === 'number' && messageData.retryCount > 0) {
+                const retrySpan = document.createElement('span');
+                retrySpan.classList.add('token-count-display');
+                retrySpan.textContent = `(リトライ: ${messageData.retryCount}回)`;
+                retrySpan.title = `APIリクエストを${messageData.retryCount}回再試行した結果です`;
+                if (actionsDiv.querySelector('.token-count-display')) {
+                    retrySpan.style.marginLeft = '8px';
                 }
-                const queryHeader = document.createElement('div');
-                queryHeader.textContent = '検索に使用されたクエリ:';
-                queryHeader.style.fontWeight = '500';
-                queryHeader.style.marginTop = detailsHasContent ? '0' : '8px';
-                queryHeader.style.marginBottom = '4px';
-                queryHeader.style.fontSize = '11px';
-                queryHeader.style.color = 'var(--text-secondary)';
-                details.appendChild(queryHeader);
-                const queryList = document.createElement('ul');
-                queryList.classList.add('search-query-list');
-                queryList.style.listStyle = 'none';
-                queryList.style.paddingLeft = '0';
-                queryList.style.margin = '0';
-                queryList.style.fontSize = '11px';
-                queryList.style.color = 'var(--text-secondary)';
-                messageData.groundingMetadata.webSearchQueries.forEach(query => {
-                    const queryItem = document.createElement('li');
-                    queryItem.textContent = `• ${query}`;
-                    queryItem.style.marginBottom = '3px';
-                    queryList.appendChild(queryItem);
-                });
-                details.appendChild(queryList);
-                detailsHasContent = true;
-            }
-            if (detailsHasContent) {
-                contentDiv.appendChild(details);
-            }
-        } catch (e) {
-            console.error(`引用元/検索クエリ表示の生成中にエラーが発生しました (index: ${index}):`, e);
-        }
-    }
-    
-    if (role === 'model' && messageData && messageData.executedFunctions && messageData.executedFunctions.length > 0) {
-        const details = document.createElement('details');
-        details.classList.add('function-call-details');
-        const uniqueFunctions = [...new Set(messageData.executedFunctions)];
-        const summary = document.createElement('summary');
-        summary.innerHTML = `⚙️ ツール使用 (${uniqueFunctions.length}件)`;
-        details.appendChild(summary);
-        const list = document.createElement('ul');
-        list.classList.add('function-call-list');
-        uniqueFunctions.forEach(funcName => {
-            const listItem = document.createElement('li');
-            listItem.textContent = funcName;
-            list.appendChild(listItem);
-        });
-        details.appendChild(list);
-        if (contentDiv.innerHTML.trim() !== '') {
-            contentDiv.appendChild(details);
-        } else {
-            messageDiv.appendChild(details);
-        }
-    }
-
-    if (role === 'model' && messageData && messageData.search_web_results && messageData.search_web_results.length > 0) {
-        const details = document.createElement('details');
-        details.classList.add('function-call-details');
-        const summary = document.createElement('summary');
-        summary.innerHTML = `🌐 Web検索結果 (${messageData.search_web_results.length}件)`;
-        details.appendChild(summary);
-        const list = document.createElement('ul');
-        list.classList.add('function-call-list');
-        messageData.search_web_results.forEach(result => {
-            const listItem = document.createElement('li');
-            const link = document.createElement('a');
-            link.href = result.link;
-            link.textContent = result.title;
-            link.title = result.snippet;
-            link.target = '_blank';
-            link.rel = 'noopener noreferrer';
-            listItem.appendChild(link);
-            list.appendChild(listItem);
-        });
-        details.appendChild(list);
-        if (contentDiv.innerHTML.trim() !== '') {
-            contentDiv.appendChild(details);
-        } else {
-            messageDiv.appendChild(details);
-        }
-    }
-
-    if (role === 'model' && messageData && messageData.generated_videos && messageData.generated_videos.length > 0) {
-        const videoData = messageData.generated_videos[0];
-        if (videoData && (videoData.url || videoData.base64Data)) {
-            const video = document.createElement('video');
-            video.controls = true; 
-            video.playsInline = true; 
-            video.muted = true; 
-            video.loop = true; 
-            video.style.maxWidth = '100%';
-            video.style.borderRadius = 'var(--border-radius-md)';
-            video.style.display = 'block';
-
-            if (videoData.url) {
-                video.src = videoData.url;
-            } else if (videoData.base64Data) {
-                base64ToBlob(videoData.base64Data, 'video/mp4')
-                    .then(blob => {
-                        const objectURL = URL.createObjectURL(blob);
-                        video.src = objectURL;
-                    })
-                    .catch(err => {
-                        console.error("Base64からの動画Blob生成に失敗:", err);
-                        video.remove();
-                    });
+                actionsDiv.appendChild(retrySpan);
             }
 
-            const placeholderRegex = /\[VIDEO_HERE\]/g;
-            if (placeholderRegex.test(contentDiv.innerHTML)) {
-                let replaced = false;
-                contentDiv.innerHTML = contentDiv.innerHTML.replace(placeholderRegex, (match) => {
-                    if (!replaced) {
-                        replaced = true;
-                        return video.outerHTML;
-                    }
-                    return '';
-                });
-            }
-        }
-    }
-
-    const editArea = document.createElement('div');
-    editArea.classList.add('message-edit-area', 'hidden');
-    messageDiv.appendChild(editArea);
-
-    if (role === 'model' && cascadeInfo && cascadeInfo.total > 1) {
-        const cascadeControlsDiv = document.createElement('div');
-        cascadeControlsDiv.classList.add('message-cascade-controls');
-        const prevButton = document.createElement('button');
-        prevButton.innerHTML = '<span class="material-symbols-outlined">chevron_left</span>';
-        prevButton.title = '前の応答';
-        prevButton.classList.add('cascade-prev-btn');
-        prevButton.disabled = cascadeInfo.currentIndex <= 1;
-        prevButton.onclick = () => appLogic.navigateCascade(index, 'prev');
-        cascadeControlsDiv.appendChild(prevButton);
-        const indicatorSpan = document.createElement('span');
-        indicatorSpan.classList.add('cascade-indicator');
-        indicatorSpan.textContent = `${cascadeInfo.currentIndex}/${cascadeInfo.total}`;
-        cascadeControlsDiv.appendChild(indicatorSpan);
-        const nextButton = document.createElement('button');
-        nextButton.innerHTML = '<span class="material-symbols-outlined">chevron_right</span>';
-        nextButton.title = '次の応答';
-        nextButton.classList.add('cascade-next-btn');
-        nextButton.disabled = cascadeInfo.currentIndex >= cascadeInfo.total;
-        nextButton.onclick = () => appLogic.navigateCascade(index, 'next');
-        cascadeControlsDiv.appendChild(nextButton);
-        const deleteCascadeButton = document.createElement('button');
-        deleteCascadeButton.innerHTML = '<span class="material-symbols-outlined">delete</span>';
-        deleteCascadeButton.title = 'この応答を削除';
-        deleteCascadeButton.classList.add('cascade-delete-btn');
-        deleteCascadeButton.onclick = () => appLogic.confirmDeleteCascadeResponse(index);
-        cascadeControlsDiv.appendChild(deleteCascadeButton);
-        messageDiv.appendChild(cascadeControlsDiv);
-    }
-
-    if (role !== 'error') {
-        const actionsDiv = document.createElement('div');
-        actionsDiv.classList.add('message-actions');
-
-        if (!isSummarized) {
-            const editButton = document.createElement('button');
-            editButton.innerHTML = '<span class="material-symbols-outlined">edit</span> 編集'; 
-            editButton.title = 'メッセージを編集'; 
-            editButton.classList.add('js-edit-btn');
-            editButton.onclick = () => appLogic.startEditMessage(index, messageDiv);
-            actionsDiv.appendChild(editButton);
-            const deleteButton = document.createElement('button');
-            deleteButton.innerHTML = '<span class="material-symbols-outlined">delete</span> 削除'; 
-            deleteButton.title = 'この会話ターンを削除'; 
-            deleteButton.classList.add('js-delete-btn');
-            deleteButton.onclick = () => appLogic.deleteMessage(index);
-            actionsDiv.appendChild(deleteButton);
-            if (role === 'user') {
-                const retryButton = document.createElement('button');
-                retryButton.innerHTML = '<span class="material-symbols-outlined">replay</span> 再生成'; 
-                retryButton.title = 'このメッセージから再生成'; 
-                retryButton.classList.add('js-retry-btn');
-                retryButton.onclick = () => appLogic.retryFromMessage(index);
-                actionsDiv.appendChild(retryButton);
+            if (actionsDiv.hasChildNodes()) {
+                messageDiv.appendChild(actionsDiv);
             }
         }
 
-        if (role === 'model' && messageData?.usageMetadata &&
-            typeof messageData.usageMetadata.candidatesTokenCount === 'number' &&
-            typeof messageData.usageMetadata.totalTokenCount === 'number')
-        {
-            const usage = messageData.usageMetadata;
-            const tokenSpan = document.createElement('span');
-            tokenSpan.classList.add('token-count-display');
-            let finalTotalTokenCount = usage.totalTokenCount;
-            if (typeof messageData.usageMetadata.thoughtsTokenCount === 'number') {
-                finalTotalTokenCount -= messageData.usageMetadata.thoughtsTokenCount;
-            }
-            const formattedCandidates = usage.candidatesTokenCount.toLocaleString('en-US');
-            const formattedTotal = finalTotalTokenCount.toLocaleString('en-US');
-            tokenSpan.textContent = `${formattedCandidates} / ${formattedTotal}`;
-            tokenSpan.title = `Candidate Tokens / Total Tokens`;
-            actionsDiv.appendChild(tokenSpan);
+        if (isStreamingPlaceholder) {
+            messageDiv.id = `streaming-message-${index}`;
         }
-        if (role === 'model' && typeof messageData?.retryCount === 'number' && messageData.retryCount > 0) {
-            const retrySpan = document.createElement('span');
-            retrySpan.classList.add('token-count-display');
-            retrySpan.textContent = `(リトライ: ${messageData.retryCount}回)`;
-            retrySpan.title = `APIリクエストを${messageData.retryCount}回再試行した結果です`;
-            if (actionsDiv.querySelector('.token-count-display')) {
-                retrySpan.style.marginLeft = '8px';
-            }
-            actionsDiv.appendChild(retrySpan);
-        }
-        
-        if (actionsDiv.hasChildNodes()) {
-            messageDiv.appendChild(actionsDiv);
-        }
-    }
-
-    if (isStreamingPlaceholder) {
-        messageDiv.id = `streaming-message-${index}`;
-    }
-    return messageDiv;
-},
+        return messageDiv;
+    },
 
 
     // エラーメッセージを表示
@@ -2327,21 +2325,21 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
                     baseTitle = "チャット履歴";
                 }
             }
-            if(baseTitle) {
+            if (baseTitle) {
                 const displayBase = baseTitle.startsWith(IMPORT_PREFIX) ? baseTitle.substring(IMPORT_PREFIX.length) : baseTitle;
                 const truncated = displayBase.substring(0, CHAT_TITLE_LENGTH);
                 titleText = truncated + (displayBase.length > CHAT_TITLE_LENGTH ? '...' : '');
                 if (baseTitle.startsWith(IMPORT_PREFIX)) {
                     titleText = IMPORT_PREFIX + titleText;
                 }
-            } else if(state.currentMessages.length > 0) {
+            } else if (state.currentMessages.length > 0) {
                 titleText = 'チャット履歴';
             }
             if (titleText === '新規チャット' && state.currentMessages.length > 0) {
                 titleText = 'チャット履歴';
             }
         }
-        
+
         // コロンを削除
         const displayTitle = titleText;
         elements.chatTitle.textContent = displayTitle;
@@ -2496,25 +2494,25 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
             try {
                 state.backgroundImageUrl = URL.createObjectURL(blob);
                 const newUrl = `url("${state.backgroundImageUrl}")`;
-                
+
                 const chatScreen = elements.chatScreen;
                 const isAlreadyVisible = chatScreen.classList.contains('background-visible');
-    
+
                 const switchImageAndFadeIn = () => {
                     document.documentElement.style.setProperty('--chat-background-image', newUrl);
                     chatScreen.classList.add('background-visible');
                 };
-    
+
                 if (isAlreadyVisible) {
                     chatScreen.addEventListener('transitionend', switchImageAndFadeIn, { once: true });
                     chatScreen.classList.remove('background-visible');
                 } else {
                     switchImageAndFadeIn();
                 }
-    
+
                 console.log("背景画像をBlobから適用しました。");
             } catch (e) {
-    
+
                 console.error("背景画像のオブジェクトURL生成に失敗:", e);
                 elements.chatScreen.classList.remove('background-visible');
                 document.documentElement.style.removeProperty('--chat-background-image');
@@ -2524,8 +2522,8 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
             document.documentElement.style.removeProperty('--chat-background-image');
         }
         this.updateBackgroundSettingsUI(); // 設定画面のUIも更新
-    
-    
+
+
     },
 
     // ------------------------------------
@@ -2616,19 +2614,19 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
         elements.googleSearchEngineIdInput.value = state.settings.googleSearchEngineId || '';
         const opacityPercent = Math.round((state.settings.overlayOpacity ?? 0.65) * 100);
         if (elements.overlayOpacitySlider) elements.overlayOpacitySlider.value = opacityPercent;
-        if (elements.overlayOpacityValue)  elements.overlayOpacityValue.textContent = `${opacityPercent}%`;
+        if (elements.overlayOpacityValue) elements.overlayOpacityValue.textContent = `${opacityPercent}%`;
         const msgPercent = Math.round((state.settings.messageOpacity ?? 1) * 100);
         if (elements.messageOpacitySlider) elements.messageOpacitySlider.value = msgPercent;
-        if (elements.messageOpacityValue)  elements.messageOpacityValue.textContent = `${msgPercent}%`;
+        if (elements.messageOpacityValue) elements.messageOpacityValue.textContent = `${msgPercent}%`;
         document.documentElement.style.setProperty('--message-bubble-opacity', String(state.settings.messageOpacity ?? 1));
         document.getElementById('allow-prompt-ui-changes').checked = state.settings.allowPromptUiChanges;
         elements.forceFunctionCallingToggle.checked = state.settings.forceFunctionCalling;
         elements.autoScrollToggle.checked = state.settings.autoScroll;
-        elements.enableWideModeToggle.checked = state.settings.enableWideMode; 
+        elements.enableWideModeToggle.checked = state.settings.enableWideMode;
         elements.enableMemoryToggle.checked = state.settings.enableMemory;
         elements.memoryAutoSaveIntervalSelect.value = state.settings.memoryAutoSaveInterval;
         appLogic.toggleMemoryOptions(state.settings.enableMemory);
-        
+
         // ヘッダー自動非表示機能のUIを更新
         elements.headerAutoHideToggle.checked = state.settings.headerAutoHide;
         elements.summaryModelNameSelect.value = state.settings.summaryModelName || state.settings.modelName || 'gemini-2.5-flash';
@@ -2676,35 +2674,35 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
 
         // 更新対象のグループとそれに対応するセレクターの設定値
         const targetGroups = [
-            { 
-                groupId: 'user-defined-models-group', 
-                selectElement: elements.modelNameSelect, 
-                currentValue: state.settings.modelName 
+            {
+                groupId: 'user-defined-models-group',
+                selectElement: elements.modelNameSelect,
+                currentValue: state.settings.modelName
             },
-            { 
-                groupId: 'thought-translation-user-models', 
-                selectElement: elements.thoughtTranslationModelSelect, 
-                currentValue: state.settings.thoughtTranslationModel 
+            {
+                groupId: 'thought-translation-user-models',
+                selectElement: elements.thoughtTranslationModelSelect,
+                currentValue: state.settings.thoughtTranslationModel
             },
-            { 
-                groupId: 'proofreading-user-models', 
-                selectElement: elements.proofreadingModelNameSelect, 
-                currentValue: state.settings.proofreadingModelName 
+            {
+                groupId: 'proofreading-user-models',
+                selectElement: elements.proofreadingModelNameSelect,
+                currentValue: state.settings.proofreadingModelName
             },
-            { 
-                groupId: 'sd-qc-user-models', 
-                selectElement: elements.sdQcModelSelect, 
-                currentValue: state.settings.sdQcModel 
+            {
+                groupId: 'sd-qc-user-models',
+                selectElement: elements.sdQcModelSelect,
+                currentValue: state.settings.sdQcModel
             },
-            { 
-                groupId: 'sd-prompt-improve-user-models', 
-                selectElement: elements.sdPromptImproveModelSelect, 
-                currentValue: state.settings.sdPromptImproveModel 
+            {
+                groupId: 'sd-prompt-improve-user-models',
+                selectElement: elements.sdPromptImproveModelSelect,
+                currentValue: state.settings.sdPromptImproveModel
             },
-            { 
-                groupId: 'summary-user-models', 
-                selectElement: elements.summaryModelNameSelect, 
-                currentValue: state.settings.summaryModelName || state.settings.modelName 
+            {
+                groupId: 'summary-user-models',
+                selectElement: elements.summaryModelNameSelect,
+                currentValue: state.settings.summaryModelName || state.settings.modelName
             }
         ];
 
@@ -2712,24 +2710,24 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
         targetGroups.forEach(({ groupId, selectElement, currentValue }) => {
             const group = document.getElementById(groupId);
             if (!group) return; // グループが存在しない場合はスキップ
-            
+
             group.innerHTML = ''; // 一旦クリア
 
-        if (models.length > 0) {
-            group.disabled = false; // optgroupを有効化
-            models.forEach(modelId => {
-                const option = document.createElement('option');
-                option.value = modelId;
-                option.textContent = modelId;
-                group.appendChild(option);
-            });
-            // 現在選択中のモデルがユーザー指定モデルに含まれていれば、それを選択状態にする
+            if (models.length > 0) {
+                group.disabled = false; // optgroupを有効化
+                models.forEach(modelId => {
+                    const option = document.createElement('option');
+                    option.value = modelId;
+                    option.textContent = modelId;
+                    group.appendChild(option);
+                });
+                // 現在選択中のモデルがユーザー指定モデルに含まれていれば、それを選択状態にする
                 if (models.includes(currentValue) && selectElement) {
                     selectElement.value = currentValue;
+                }
+            } else {
+                group.disabled = true; // モデルがなければoptgroupを無効化
             }
-        } else {
-            group.disabled = true; // モデルがなければoptgroupを無効化
-        }
         });
     },
 
@@ -2776,90 +2774,90 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
     // 画面を表示 (スワイプアニメーション + inert対応 + 戻るボタン対応)
     showScreen(screenName, fromPopState = false) {
         return new Promise((resolve) => {
-          const startTime = performance.now();
-      
-          // --- 同一画面への重複遷移は無視 ---
-          if (screenName === state.currentScreen) {
-            resolve();
-            return;
-          }
-      
-          const chat = elements.chatScreen;
-          const historyEl = elements.historyScreen;
-          const settings = elements.settingsScreen;
-          const allScreens = [chat, historyEl, settings];
-      
-          const pos = {
-            chat: {
-              chat: 'translate3d(0,0,0)',
-              history: 'translate3d(-100%,0,0)',
-              settings: 'translate3d(100%,0,0)',
-            },
-            history: {
-              chat: 'translate3d(100%,0,0)',
-              history: 'translate3d(0,0,0)',
-              settings: 'translate3d(200%,0,0)',
-            },
-            settings: {
-              chat: 'translate3d(-100%,0,0)',
-              history: 'translate3d(-200%,0,0)',
-              settings: 'translate3d(0,0,0)',
-            },
-          };
-      
-          if (screenName === 'chat') {
-            chat.style.transform = pos.chat.chat;
-            historyEl.style.transform = pos.chat.history;
-            settings.style.transform = pos.chat.settings;
-          } else if (screenName === 'history') {
-            chat.style.transform = pos.history.chat;
-            historyEl.style.transform = pos.history.history;
-            settings.style.transform = pos.history.settings;
-            this.renderHistoryList();
-          } else if (screenName === 'settings') {
+            const startTime = performance.now();
 
-            chat.style.transform = pos.settings.chat;
-            historyEl.style.transform = pos.settings.history;
-            settings.style.transform = pos.settings.settings;
-          }
-      
-          void elements.appContainer.offsetHeight;
-      
-          let activeScreen = null;
-          if (screenName === 'chat') activeScreen = chat;
-          else if (screenName === 'history') activeScreen = historyEl;
-          else if (screenName === 'settings') activeScreen = settings;
-      
-          if (activeScreen) {
-            activeScreen.classList.add('active');
-            activeScreen.inert = false;
-          }
-          allScreens.forEach((s) => {
-            if (s !== activeScreen) {
-              s.classList.remove('active');
-              s.inert = true;
+            // --- 同一画面への重複遷移は無視 ---
+            if (screenName === state.currentScreen) {
+                resolve();
+                return;
             }
-          });
-      
-          if (!fromPopState) {
-            const entry = { screen: screenName };
-            if (screenName === 'chat' && state.__navSource === 'history-item') {
-              history.replaceState(entry, '', '#chat');
-            } else {
-              history.pushState(entry, '', `#${screenName}`);
+
+            const chat = elements.chatScreen;
+            const historyEl = elements.historyScreen;
+            const settings = elements.settingsScreen;
+            const allScreens = [chat, historyEl, settings];
+
+            const pos = {
+                chat: {
+                    chat: 'translate3d(0,0,0)',
+                    history: 'translate3d(-100%,0,0)',
+                    settings: 'translate3d(100%,0,0)',
+                },
+                history: {
+                    chat: 'translate3d(100%,0,0)',
+                    history: 'translate3d(0,0,0)',
+                    settings: 'translate3d(200%,0,0)',
+                },
+                settings: {
+                    chat: 'translate3d(-100%,0,0)',
+                    history: 'translate3d(-200%,0,0)',
+                    settings: 'translate3d(0,0,0)',
+                },
+            };
+
+            if (screenName === 'chat') {
+                chat.style.transform = pos.chat.chat;
+                historyEl.style.transform = pos.chat.history;
+                settings.style.transform = pos.chat.settings;
+            } else if (screenName === 'history') {
+                chat.style.transform = pos.history.chat;
+                historyEl.style.transform = pos.history.history;
+                settings.style.transform = pos.history.settings;
+                this.renderHistoryList();
+            } else if (screenName === 'settings') {
+
+                chat.style.transform = pos.settings.chat;
+                historyEl.style.transform = pos.settings.history;
+                settings.style.transform = pos.settings.settings;
             }
-          }
-      
-          let finished = false;
-          const finish = () => {
-            if (finished) return;
-            finished = true;
-            state.currentScreen = screenName;
-            const endTime = performance.now();
-            resolve();
-          };
-          requestAnimationFrame(() => requestAnimationFrame(finish));
-          setTimeout(finish, 600);
+
+            void elements.appContainer.offsetHeight;
+
+            let activeScreen = null;
+            if (screenName === 'chat') activeScreen = chat;
+            else if (screenName === 'history') activeScreen = historyEl;
+            else if (screenName === 'settings') activeScreen = settings;
+
+            if (activeScreen) {
+                activeScreen.classList.add('active');
+                activeScreen.inert = false;
+            }
+            allScreens.forEach((s) => {
+                if (s !== activeScreen) {
+                    s.classList.remove('active');
+                    s.inert = true;
+                }
+            });
+
+            if (!fromPopState) {
+                const entry = { screen: screenName };
+                if (screenName === 'chat' && state.__navSource === 'history-item') {
+                    history.replaceState(entry, '', '#chat');
+                } else {
+                    history.pushState(entry, '', `#${screenName}`);
+                }
+            }
+
+            let finished = false;
+            const finish = () => {
+                if (finished) return;
+                finished = true;
+                state.currentScreen = screenName;
+                const endTime = performance.now();
+                resolve();
+            };
+            requestAnimationFrame(() => requestAnimationFrame(finish));
+            setTimeout(finish, 600);
         });
     },
 
@@ -2896,7 +2894,7 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
         textarea.style.height = 'auto';
         const scrollHeight = textarea.scrollHeight;
         textarea.style.height = Math.min(scrollHeight, maxHeight) + 'px';
-        
+
         if (textarea === elements.userInput && !state.isSending) {
             elements.sendButton.disabled = textarea.value.trim() === '' && state.pendingAttachments.length === 0;
         }
@@ -2920,7 +2918,7 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
             }, { once: true });
 
             dialogElement.showModal();
-            
+
             if (focusElement) {
                 requestAnimationFrame(() => { focusElement.focus(); });
             }
@@ -2930,23 +2928,23 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
     // アラートダイアログ表示
     async showCustomAlert(message) {
         elements.alertMessage.textContent = message;
-         // ボタンのイベントリスナーが重複しないように複製して置き換え
-         const newOkBtn = elements.alertOkBtn.cloneNode(true);
-         elements.alertOkBtn.parentNode.replaceChild(newOkBtn, elements.alertOkBtn);
-         elements.alertOkBtn = newOkBtn;
+        // ボタンのイベントリスナーが重複しないように複製して置き換え
+        const newOkBtn = elements.alertOkBtn.cloneNode(true);
+        elements.alertOkBtn.parentNode.replaceChild(newOkBtn, elements.alertOkBtn);
+        elements.alertOkBtn = newOkBtn;
         elements.alertOkBtn.onclick = () => elements.alertDialog.close('ok');
         await this.showCustomDialog(elements.alertDialog, elements.alertOkBtn);
     },
     // 確認ダイアログ表示
     async showCustomConfirm(message) {
         elements.confirmMessage.textContent = message;
-         // ボタンのイベントリスナーが重複しないように複製して置き換え
-         const newOkBtn = elements.confirmOkBtn.cloneNode(true);
-         elements.confirmOkBtn.parentNode.replaceChild(newOkBtn, elements.confirmOkBtn);
-         elements.confirmOkBtn = newOkBtn;
-         const newCancelBtn = elements.confirmCancelBtn.cloneNode(true);
-         elements.confirmCancelBtn.parentNode.replaceChild(newCancelBtn, elements.confirmCancelBtn);
-         elements.confirmCancelBtn = newCancelBtn;
+        // ボタンのイベントリスナーが重複しないように複製して置き換え
+        const newOkBtn = elements.confirmOkBtn.cloneNode(true);
+        elements.confirmOkBtn.parentNode.replaceChild(newOkBtn, elements.confirmOkBtn);
+        elements.confirmOkBtn = newOkBtn;
+        const newCancelBtn = elements.confirmCancelBtn.cloneNode(true);
+        elements.confirmCancelBtn.parentNode.replaceChild(newCancelBtn, elements.confirmCancelBtn);
+        elements.confirmCancelBtn = newCancelBtn;
 
         elements.confirmOkBtn.onclick = () => elements.confirmDialog.close('ok');
         elements.confirmCancelBtn.onclick = () => elements.confirmDialog.close('cancel');
@@ -2957,16 +2955,16 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
     async showCustomPrompt(message, defaultValue = '') {
         elements.promptMessage.textContent = message;
         elements.promptInput.value = defaultValue;
-         // ボタンと入力欄のイベントリスナーが重複しないように複製して置き換え
-         const newOkBtn = elements.promptOkBtn.cloneNode(true);
-         elements.promptOkBtn.parentNode.replaceChild(newOkBtn, elements.promptOkBtn);
-         elements.promptOkBtn = newOkBtn;
-         const newCancelBtn = elements.promptCancelBtn.cloneNode(true);
-         elements.promptCancelBtn.parentNode.replaceChild(newCancelBtn, elements.promptCancelBtn);
-         elements.promptCancelBtn = newCancelBtn;
-         const newPromptInput = elements.promptInput.cloneNode(true);
-         elements.promptInput.parentNode.replaceChild(newPromptInput, elements.promptInput);
-         elements.promptInput = newPromptInput;
+        // ボタンと入力欄のイベントリスナーが重複しないように複製して置き換え
+        const newOkBtn = elements.promptOkBtn.cloneNode(true);
+        elements.promptOkBtn.parentNode.replaceChild(newOkBtn, elements.promptOkBtn);
+        elements.promptOkBtn = newOkBtn;
+        const newCancelBtn = elements.promptCancelBtn.cloneNode(true);
+        elements.promptCancelBtn.parentNode.replaceChild(newCancelBtn, elements.promptCancelBtn);
+        elements.promptCancelBtn = newCancelBtn;
+        const newPromptInput = elements.promptInput.cloneNode(true);
+        elements.promptInput.parentNode.replaceChild(newPromptInput, elements.promptInput);
+        elements.promptInput = newPromptInput;
 
         // EnterキーでOKボタンをクリックする処理
         const enterHandler = (event) => {
@@ -2985,7 +2983,7 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
             elements.promptInput.removeEventListener('keypress', enterHandler);
             elements.promptDialog.removeEventListener('close', closeHandler);
         };
-         elements.promptDialog.addEventListener('close', closeHandler);
+        elements.promptDialog.addEventListener('close', closeHandler);
 
         const result = await this.showCustomDialog(elements.promptDialog, elements.promptInput);
         return result; // 入力値またはnullを返す
@@ -3101,7 +3099,7 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
 
             const iconContainer = document.createElement('div');
             iconContainer.classList.add('profile-icon-container');
-            
+
             if (profile.icon) {
                 let url = state.profileIconUrls.get(profile.id);
                 if (!url) {
@@ -3131,13 +3129,13 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
 
             if (profile.settings?.modelName === 'gemini-2.5-pro') {
                 const usage = profile.apiUsage || { count: 0 };
-    
+
                 const countSpan = document.createElement('span');
                 countSpan.classList.add('profile-menu-api-count');
                 countSpan.textContent = `(本日: ${usage.count} 回)`;
                 modelLineDiv.appendChild(countSpan);
             }
-            
+
             textContainer.appendChild(modelLineDiv);
 
             menuItem.appendChild(iconContainer);
@@ -3148,7 +3146,7 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
                 appLogic.switchProfile(profile.id);
                 menus.forEach(m => m?.classList.add('hidden'));
             };
-            
+
             menus.forEach(menu => {
                 if (menu) {
                     const clonedItem = menuItem.cloneNode(true);
@@ -3157,7 +3155,7 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
                 }
             });
         });
-        
+
         console.log("[UI] プロファイルメニューを更新しました。");
     },
 
@@ -3165,13 +3163,13 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
     updateProfileCardUI() {
         if (!state.activeProfile) return;
         const profile = state.activeProfile;
-        
+
         // --- ヘッダーカード (チャット & 設定) ---
         const cards = [
             { name: elements.profileCardName, container: elements.profileCardIconContainer },
             { name: elements.profileCardNameSettings, container: elements.profileCardIconContainerSettings }
         ];
-        
+
         cards.forEach(card => {
             // アイコンコンテナが存在すれば、アイコンの更新は必ず実行する
             if (card.container) {
@@ -3211,15 +3209,15 @@ createMessageElement(role, content, index, isStreamingPlaceholder = false, casca
             elements.profileResetIconBtn.style.display = 'none';
         }
         elements.profileDisplayNameMain.textContent = profile.name;
-        
+
         const subText = `${profile.settings.modelName || '...'} / T: ${profile.settings.temperature ?? '...'}`;
         elements.profileDisplayNameSub.textContent = subText;
-        
+
         elements.profileDisplayStatus.classList.toggle('active', profile.id === state.activeProfileId);
 
         console.log("[UI] プロファイルカードUIを更新しました。");
     },
-    
+
 
     toggleProfileMenu(type) {
         console.log(`[Debug Toggle] toggleProfileMenuが呼び出されました。type: ${type}`);
@@ -3284,11 +3282,11 @@ const apiUtils = {
     // Gemini形式からOpenAI形式への変換
     convertGeminiToOpenAIFormat(messagesForApi) {
         const openAIMessages = [];
-        
+
         for (const geminiMsg of messagesForApi) {
             const role = geminiMsg.role === 'model' ? 'assistant' : (geminiMsg.role === 'tool' ? 'tool' : 'user');
             const parts = geminiMsg.parts || [];
-            
+
             if (role === 'tool') {
                 // ツールレスポンスの処理
                 for (const part of parts) {
@@ -3298,8 +3296,8 @@ const apiUtils = {
                         openAIMessages.push({
                             role: 'tool',
                             tool_call_id: toolCallId,
-                            content: typeof part.functionResponse.response === 'string' 
-                                ? part.functionResponse.response 
+                            content: typeof part.functionResponse.response === 'string'
+                                ? part.functionResponse.response
                                 : JSON.stringify(part.functionResponse.response)
                         });
                     }
@@ -3307,7 +3305,7 @@ const apiUtils = {
             } else {
                 const contentParts = [];
                 const toolCalls = [];
-                
+
                 for (const part of parts) {
                     if (part.text) {
                         contentParts.push({ type: 'text', text: part.text });
@@ -3327,16 +3325,16 @@ const apiUtils = {
                             type: 'function',
                             function: {
                                 name: part.functionCall.name,
-                                arguments: typeof part.functionCall.args === 'string' 
-                                    ? part.functionCall.args 
+                                arguments: typeof part.functionCall.args === 'string'
+                                    ? part.functionCall.args
                                     : JSON.stringify(part.functionCall.args || {})
                             }
                         });
                     }
                 }
-                
+
                 const message = { role };
-                
+
                 // コンテンツの設定
                 if (contentParts.length > 0) {
                     if (contentParts.length === 1 && contentParts[0].type === 'text') {
@@ -3355,18 +3353,18 @@ const apiUtils = {
                     // tool_callsのみでcontentがない場合は空文字列を設定（Z.ai API互換性のため）
                     message.content = '';
                 }
-                
+
                 // tool_callsの設定（contentと独立）
                 if (toolCalls.length > 0) {
                     message.tool_calls = toolCalls;
                 }
-                
+
                 if (message.content !== undefined || message.tool_calls) {
                     openAIMessages.push(message);
                 }
             }
         }
-        
+
         // デバッグ用にtoolメッセージとassistantメッセージのtool_callsを確認
         const toolMessages = openAIMessages.filter(m => m.role === 'tool');
         const assistantMessagesWithTools = openAIMessages.filter(m => m.role === 'assistant' && m.tool_calls);
@@ -3397,7 +3395,7 @@ const apiUtils = {
                 }
             }
         }
-        
+
         return openAIMessages;
     },
 
@@ -3405,12 +3403,12 @@ const apiUtils = {
     convertOpenAIToGeminiFormat(openAIResponse) {
         // OpenAI形式のレスポンスをGemini形式に変換
         const candidates = [];
-        
+
         if (openAIResponse.choices && openAIResponse.choices.length > 0) {
             for (const choice of openAIResponse.choices) {
                 const parts = [];
                 const message = choice.message;
-                
+
                 if (message.content) {
                     if (typeof message.content === 'string') {
                         parts.push({ text: message.content });
@@ -3425,7 +3423,7 @@ const apiUtils = {
                         }
                     }
                 }
-                
+
                 if (message.tool_calls && message.tool_calls.length > 0) {
                     for (const toolCall of message.tool_calls) {
                         const callArgs = toolCall?.function?.arguments;
@@ -3439,7 +3437,7 @@ const apiUtils = {
                         });
                     }
                 }
-                
+
                 if (parts.length > 0) {
                     candidates.push({
                         content: { parts },
@@ -3449,14 +3447,14 @@ const apiUtils = {
                 }
             }
         }
-        
+
         // usageMetadataの変換
         const usageMetadata = openAIResponse.usage ? {
             promptTokenCount: openAIResponse.usage.prompt_tokens,
             candidatesTokenCount: openAIResponse.usage.completion_tokens,
             totalTokenCount: openAIResponse.usage.total_tokens
         } : undefined;
-        
+
         return {
             candidates,
             usageMetadata
@@ -3535,99 +3533,111 @@ const apiUtils = {
     convertGeminiToConverseFormat(messagesForApi) {
         const converseMessages = [];
         let pendingToolResults = [];  // 連続するtoolメッセージを一時保存
-        
-        for (let i = 0; i < messagesForApi.length; i++) {
-            const geminiMsg = messagesForApi[i];
-            
-            // まずロールを判定（デフォルト）
-            let role = geminiMsg.role === 'model' ? 'assistant' : geminiMsg.role;
-            const content = [];
-            
-            // functionResponseが含まれているかチェック
-            let hasFunctionResponse = false;
-            
-            if (geminiMsg.parts) {
-                for (const part of geminiMsg.parts) {
-                    if (part.text) {
-                        content.push({ text: part.text });
-                    } else if (part.inlineData) {
-                        // Base64画像データをバイナリに変換
-                        const base64Data = part.inlineData.data;
-                        const format = part.inlineData.mimeType.split('/')[1];
-                        content.push({
-                            image: {
-                                format: format,
-                                source: { 
-                                    bytes: Uint8Array.from(atob(base64Data), c => c.charCodeAt(0))
-                                }
+
+        try {
+            for (let i = 0; i < messagesForApi.length; i++) {
+                const geminiMsg = messagesForApi[i];
+
+                try {
+                    // まずロールを判定（デフォルト）
+                    let role = geminiMsg.role === 'model' ? 'assistant' : geminiMsg.role;
+                    const content = [];
+
+                    // functionResponseが含まれているかチェック
+                    let hasFunctionResponse = false;
+
+                    if (geminiMsg.parts) {
+                        for (const part of geminiMsg.parts) {
+                            if (part.text) {
+                                content.push({ text: part.text });
+                            } else if (part.inlineData) {
+                                // Base64画像データはそのまま文字列として送信
+                                // Bedrock APIはbase64文字列も受け入れる
+                                const base64Data = part.inlineData.data;
+                                const format = part.inlineData.mimeType.split('/')[1];
+                                content.push({
+                                    image: {
+                                        format: format,
+                                        source: {
+                                            bytes: base64Data  // base64文字列のまま送信
+                                        }
+                                    }
+                                });
+                            } else if (part.functionCall) {
+                                // Tool use形式に変換
+                                content.push({
+                                    toolUse: {
+                                        toolUseId: part.functionCall._toolCallId || `tool_${Date.now()}_${Math.random()}`,
+                                        name: part.functionCall.name,
+                                        input: part.functionCall.args || {}
+                                    }
+                                });
+                            } else if (part.functionResponse) {
+                                // Tool result形式に変換
+                                hasFunctionResponse = true;
+                                const responseContent = typeof part.functionResponse.response === 'string'
+                                    ? part.functionResponse.response
+                                    : JSON.stringify(part.functionResponse.response);
+
+                                // toolUseIdは元のtoolCallIdを使用（なければ関数名をフォールバック）
+                                const toolUseId = part.functionResponse._toolCallId || part.functionResponse.name;
+
+                                content.push({
+                                    toolResult: {
+                                        toolUseId: toolUseId,
+                                        content: [{ text: responseContent }]
+                                    }
+                                });
                             }
-                        });
-                    } else if (part.functionCall) {
-                        // Tool use形式に変換
-                        content.push({
-                            toolUse: {
-                                toolUseId: part.functionCall._toolCallId || `tool_${Date.now()}_${Math.random()}`,
-                                name: part.functionCall.name,
-                                input: part.functionCall.args || {}
-                            }
-                        });
-                    } else if (part.functionResponse) {
-                        // Tool result形式に変換
-                        hasFunctionResponse = true;
-                        const responseContent = typeof part.functionResponse.response === 'string' 
-                            ? part.functionResponse.response 
-                            : JSON.stringify(part.functionResponse.response);
-                        
-                        // toolUseIdは元のtoolCallIdを使用（なければ関数名をフォールバック）
-                        const toolUseId = part.functionResponse._toolCallId || part.functionResponse.name;
-                        
-                        content.push({
-                            toolResult: {
-                                toolUseId: toolUseId,
-                                content: [{ text: responseContent }]
-                            }
-                        });
+                        }
                     }
+
+                    // role: "tool" の場合は、連続するtoolメッセージを集める
+                    if (geminiMsg.role === 'tool' || hasFunctionResponse) {
+                        pendingToolResults.push(...content);
+
+                        // 次のメッセージがtool以外の場合、または最後のメッセージの場合
+                        const nextMsg = messagesForApi[i + 1];
+                        const isLastMessage = i === messagesForApi.length - 1;
+                        const nextIsNotTool = !nextMsg || (nextMsg.role !== 'tool' && !nextMsg.parts?.some(p => p.functionResponse));
+
+                        if (isLastMessage || nextIsNotTool) {
+                            // 溜まっているtoolResultsを1つの"user"メッセージとして追加
+                            if (pendingToolResults.length > 0) {
+                                converseMessages.push({
+                                    role: 'user',
+                                    content: pendingToolResults
+                                });
+                                pendingToolResults = [];
+                            }
+                        }
+                    } else {
+                        // tool以外のメッセージはそのまま追加
+                        if (content.length > 0) {
+                            converseMessages.push({ role, content });
+                        }
+                    }
+                } catch (partError) {
+                    console.error(`[Bedrock] メッセージ${i}の変換中にエラー:`, partError);
+                    console.error(`[Bedrock] 問題のメッセージ:`, JSON.stringify(geminiMsg, null, 2));
+                    throw partError;
                 }
             }
-            
-            // role: "tool" の場合は、連続するtoolメッセージを集める
-            if (geminiMsg.role === 'tool' || hasFunctionResponse) {
-                pendingToolResults.push(...content);
-                
-                // 次のメッセージがtool以外の場合、または最後のメッセージの場合
-                const nextMsg = messagesForApi[i + 1];
-                const isLastMessage = i === messagesForApi.length - 1;
-                const nextIsNotTool = !nextMsg || (nextMsg.role !== 'tool' && !nextMsg.parts?.some(p => p.functionResponse));
-                
-                if (isLastMessage || nextIsNotTool) {
-                    // 溜まっているtoolResultsを1つの"user"メッセージとして追加
-                    if (pendingToolResults.length > 0) {
-                        converseMessages.push({
-                            role: 'user',
-                            content: pendingToolResults
-                        });
-                        pendingToolResults = [];
-                    }
-                }
-            } else {
-                // tool以外のメッセージはそのまま追加
-                if (content.length > 0) {
-                    converseMessages.push({ role, content });
-                }
-            }
+        } catch (error) {
+            console.error('[Bedrock] convertGeminiToConverseFormat でエラー:', error);
+            throw new Error(`メッセージ変換エラー: ${error.message}`);
         }
-        
+
         return converseMessages;
     },
 
     // Bedrock Converse形式からGemini形式への変換
     convertConverseToGeminiFormat(converseResponse) {
         const parts = [];
-        
+
         if (converseResponse.output && converseResponse.output.message) {
             const message = converseResponse.output.message;
-            
+
             for (const contentItem of message.content || []) {
                 if (contentItem.text) {
                     parts.push({ text: contentItem.text });
@@ -3642,7 +3652,7 @@ const apiUtils = {
                 }
             }
         }
-        
+
         // finishReasonのマッピング
         let finishReason = 'STOP';
         if (converseResponse.stopReason) {
@@ -3655,7 +3665,7 @@ const apiUtils = {
             };
             finishReason = reasonMap[converseResponse.stopReason] || 'STOP';
         }
-        
+
         return {
             candidates: [{
                 content: {
@@ -3703,13 +3713,13 @@ const apiUtils = {
         };
 
         const bedrockTools = [];
-        
+
         for (const geminiTool of geminiTools) {
             if (geminiTool.function_declarations && Array.isArray(geminiTool.function_declarations)) {
                 for (const funcDecl of geminiTool.function_declarations) {
                     // parametersを正規化（型名を小文字に変換）
                     const normalizedParameters = normalizeJsonSchema(funcDecl.parameters || {});
-                    
+
                     bedrockTools.push({
                         toolSpec: {
                             name: funcDecl.name,
@@ -3722,7 +3732,7 @@ const apiUtils = {
                 }
             }
         }
-        
+
         return bedrockTools;
     },
 
@@ -3738,7 +3748,7 @@ const apiUtils = {
         if (!apiKey) {
             throw new Error("Gemini APIキーが設定されていません。");
         }
-        
+
         // signalが渡されていない場合のみstate.abortControllerを作成
         if (!signal) {
             state.abortController = new AbortController();
@@ -3748,7 +3758,7 @@ const apiUtils = {
         const model = state.settings.modelName || DEFAULT_MODEL;
 
         if (model === 'gemini-2.5-pro') {
-            await appLogic._updateApiUsageCount(state.activeProfileId); 
+            await appLogic._updateApiUsageCount(state.activeProfileId);
         }
 
         const isImageGenModel = model === 'gemini-2.5-flash-image-preview';
@@ -3756,9 +3766,9 @@ const apiUtils = {
         const endpointMethod = 'generateContent?';
 
         const endpoint = `${GEMINI_API_BASE_URL}${model}:${endpointMethod}key=${apiKey}`;
-        
+
         const finalGenerationConfig = { ...generationConfig };
-        
+
         if (isImageGenModel) {
             finalGenerationConfig.responseModalities = ['IMAGE', 'TEXT'];
             delete finalGenerationConfig.thinkingConfig;
@@ -3771,15 +3781,15 @@ const apiUtils = {
         } else {
             if (state.settings.thinkingBudget !== null || state.settings.includeThoughts) {
                 generationConfig.thinkingConfig = {};
-                if(state.settings.thinkingBudget !== null) generationConfig.thinkingConfig.thinkingBudget = state.settings.thinkingBudget;
-                if(state.settings.includeThoughts) generationConfig.thinkingConfig.includeThoughts = true;
+                if (state.settings.thinkingBudget !== null) generationConfig.thinkingConfig.thinkingBudget = state.settings.thinkingBudget;
+                if (state.settings.includeThoughts) generationConfig.thinkingConfig.includeThoughts = true;
             }
         }
 
         const requestBody = {
             contents: messagesForApi,
             ...(Object.keys(finalGenerationConfig).length > 0 && { generationConfig: finalGenerationConfig }),
-            safetySettings : [
+            safetySettings: [
                 { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
                 { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
                 { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
@@ -3803,12 +3813,12 @@ const apiUtils = {
             if (state.settings.geminiEnableFunctionCalling) {
                 finalTools = window.functionDeclarations || [];
                 console.log("Function Calling を有効にしてAPIを呼び出します。");
-            } 
+            }
             else if (state.settings.geminiEnableGrounding) {
                 finalTools.push({ "google_search": {} });
                 console.log("グラウンディング (Google Search) を有効にしてAPIを呼び出します。");
             }
-            
+
             if (finalTools.length > 0) {
                 requestBody.tools = finalTools;
             }
@@ -3879,7 +3889,7 @@ const apiUtils = {
      * @param {string} translationModelName - 翻訳に使用するモデル名
      * @returns {Promise<string>} 翻訳された日本語テキスト。失敗した場合は元の英語テキストを返す。
      */
-     async translateText(textToTranslate, translationModelName) {
+    async translateText(textToTranslate, translationModelName) {
         if (!textToTranslate || textToTranslate.trim() === '') {
             return textToTranslate;
         }
@@ -3893,7 +3903,7 @@ const apiUtils = {
         }
 
         console.log("--- 思考プロセスの翻訳処理開始 ---");
-        
+
         const modelToUse = translationModelName || 'gemini-2.5-flash-lite';
         const apiKey = state.settings.apiKey;
         if (!apiKey) {
@@ -3902,7 +3912,7 @@ const apiUtils = {
         }
 
         const endpoint = `${GEMINI_API_BASE_URL}${modelToUse}:generateContent`;
-        
+
         const systemInstruction = {
             parts: [{ text: "You are a professional translator. Translate the given English text into natural Japanese. Do not add any extra comments or explanations. Just output the translated Japanese text." }]
         };
@@ -3938,7 +3948,7 @@ const apiUtils = {
         for (let attempt = 0; attempt <= maxTranslationRetries; attempt++) {
             let abortListener = null;
             let timeoutId = null;
-            
+
             try {
                 if (state.abortController?.signal.aborted) {
                     throw new Error("リクエストがキャンセルされました。");
@@ -3953,7 +3963,7 @@ const apiUtils = {
                         const maxDelay = state.settings.maxBackoffDelaySeconds * 1000;
                         delay = Math.min(exponentialDelay, maxDelay);
                     }
-                    uiUtils.setLoadingIndicatorText(`翻訳エラー 再試行(${attempt}回目)... ${Math.round(delay/1000)}秒待機`);
+                    uiUtils.setLoadingIndicatorText(`翻訳エラー 再試行(${attempt}回目)... ${Math.round(delay / 1000)}秒待機`);
                     console.log(`翻訳APIリトライ ${attempt}: ${delay}ms待機...`);
                     await interruptibleSleep(delay, state.abortController.signal);
                 }
@@ -3971,7 +3981,7 @@ const apiUtils = {
 
                 const timeoutController = new AbortController();
                 timeoutId = setTimeout(() => timeoutController.abort(), 15000);
-                
+
                 // state.abortControllerの中断イベントを監視し、timeoutControllerにも伝播
                 if (state.abortController && !state.abortController.signal.aborted) {
                     abortListener = () => {
@@ -3987,19 +3997,19 @@ const apiUtils = {
                     body: JSON.stringify(requestBody),
                     signal: timeoutController.signal
                 });
-                
+
                 // リスナーのクリーンアップ
                 if (abortListener && state.abortController) {
                     state.abortController.signal.removeEventListener('abort', abortListener);
                     abortListener = null;
                 }
-                
+
                 clearTimeout(timeoutId);
                 timeoutId = null;
 
                 if (!response.ok) {
                     let errorBody = await response.text();
-                    try { errorBody = JSON.parse(errorBody); } catch(e) { /* ignore */ }
+                    try { errorBody = JSON.parse(errorBody); } catch (e) { /* ignore */ }
                     console.error(`翻訳APIエラー (${response.status})`, errorBody);
                     const error = new Error(`翻訳APIエラー (${response.status})`);
                     error.status = response.status;
@@ -4013,7 +4023,7 @@ const apiUtils = {
                     return translatedText;
                 } else {
                     console.warn("翻訳APIの応答形式が不正、またはコンテンツが空です。", responseData);
-                    if(responseData.promptFeedback) {
+                    if (responseData.promptFeedback) {
                         console.warn("翻訳がブロックされた可能性があります:", responseData.promptFeedback);
                     }
                     throw new Error("翻訳APIの応答形式が不正です。");
@@ -4028,7 +4038,7 @@ const apiUtils = {
                     state.abortController.signal.removeEventListener('abort', abortListener);
                     abortListener = null;
                 }
-                
+
                 lastError = error;
                 if (error.name === 'AbortError' || error.name === 'TimeoutError') {
                     if (state.abortController?.signal.aborted) {
@@ -4103,7 +4113,7 @@ const apiUtils = {
         if (state.settings.geminiEnableFunctionCalling && window.functionDeclarations) {
             // Gemini形式のfunction declarationsをOpenAI形式に変換
             const openAITools = [];
-            
+
             for (const geminiTool of window.functionDeclarations) {
                 if (geminiTool.function_declarations && Array.isArray(geminiTool.function_declarations)) {
                     // Gemini形式: { function_declarations: [{ name, description, parameters }] }
@@ -4140,7 +4150,7 @@ const apiUtils = {
             }
             return value;
         }, 2));
-        
+
         // メッセージ構造の詳細をログ出力（デバッグ用）
         if (requestBody.messages && requestBody.messages.length > 0) {
             const recentMessages = requestBody.messages.slice(-6);
@@ -4170,7 +4180,7 @@ const apiUtils = {
                 console.log(`  [${idx}]`, JSON.stringify(info));
             });
         }
-        
+
         console.log("ターゲットエンドポイント:", ZAI_API_BASE_URL);
 
         try {
@@ -4212,7 +4222,7 @@ const apiUtils = {
 
             // レスポンスを取得してGemini形式に変換
             const openAIResponse = await response.json();
-            
+
             // デバッグ用：Z.ai APIからのレスポンス構造を確認
             if (openAIResponse.choices && openAIResponse.choices[0]) {
                 const choice = openAIResponse.choices[0];
@@ -4230,7 +4240,7 @@ const apiUtils = {
                     }
                 }
             }
-            
+
             const geminiFormatResponse = this.convertOpenAIToGeminiFormat(openAIResponse);
 
             // Responseオブジェクトのように扱えるようにラップ
@@ -4303,7 +4313,7 @@ const apiUtils = {
         if (state.settings.geminiEnableFunctionCalling && window.functionDeclarations) {
             // Gemini形式のfunction declarationsをOpenAI形式に変換
             const openAITools = [];
-            
+
             for (const geminiTool of window.functionDeclarations) {
                 if (geminiTool.function_declarations && Array.isArray(geminiTool.function_declarations)) {
                     // Gemini形式: { function_declarations: [{ name, description, parameters }] }
@@ -4340,7 +4350,7 @@ const apiUtils = {
             }
             return value;
         }, 2));
-        
+
         // メッセージ構造の詳細をログ出力（デバッグ用）
         if (requestBody.messages && requestBody.messages.length > 0) {
             const recentMessages = requestBody.messages.slice(-6);
@@ -4370,7 +4380,7 @@ const apiUtils = {
                 console.log(`  [${idx}]`, JSON.stringify(info));
             });
         }
-        
+
         console.log("ターゲットエンドポイント:", OPENROUTER_API_BASE_URL);
 
         try {
@@ -4398,7 +4408,7 @@ const apiUtils = {
                 try {
                     errorData = await response.json();
                     console.error("APIエラーレスポンスボディ:", errorData);
-                    
+
                     // 詳細なエラー情報をログ出力
                     if (errorData.error) {
                         console.error("[OpenRouter] エラー詳細:", JSON.stringify(errorData.error, null, 2));
@@ -4409,7 +4419,7 @@ const apiUtils = {
                             console.error("[OpenRouter] エラーコード:", errorData.error.code);
                         }
                     }
-                    
+
                     if (errorData.error && errorData.error.message) {
                         errorMsg = `APIエラー (${response.status}): ${errorData.error.message}`;
                         // OpenRouter特有の追加情報があれば追加
@@ -4430,7 +4440,7 @@ const apiUtils = {
 
             // レスポンスを取得してGemini形式に変換
             const openAIResponse = await response.json();
-            
+
             // デバッグ用：OpenRouter APIからのレスポンス構造を確認
             if (openAIResponse.choices && openAIResponse.choices[0]) {
                 const choice = openAIResponse.choices[0];
@@ -4448,7 +4458,7 @@ const apiUtils = {
                     }
                 }
             }
-            
+
             const geminiFormatResponse = this.convertOpenAIToGeminiFormat(openAIResponse);
 
             // Responseオブジェクトのように扱えるようにラップ
@@ -4469,11 +4479,11 @@ const apiUtils = {
     // Amazon Bedrock APIを呼び出す
     async callBedrockApi(messagesForApi, generationConfig, systemInstruction, tools = null, forceCalling = false, signal = null) {
         console.log(`[Debug] callBedrockApi: Amazon Bedrock APIをプロキシ経由で呼び出します。`);
-        
+
         const accessKey = state.settings.bedrockAccessKey;
         const secretKey = state.settings.bedrockSecretKey;
         const region = state.settings.bedrockRegion || DEFAULT_BEDROCK_REGION;
-        
+
         // デバッグ情報を出力
         console.log(`[Bedrock Debug] Access Key存在: ${!!accessKey}, Secret Key存在: ${!!secretKey}, Region: ${region}`);
         console.log(`[Bedrock Debug] state.settings:`, {
@@ -4481,7 +4491,7 @@ const apiUtils = {
             bedrockSecretKey: secretKey ? '設定済み' : 'なし',
             bedrockRegion: region
         });
-        
+
         if (!accessKey || !secretKey) {
             console.error('[Bedrock Debug] 認証情報が不足しています。elements確認:', {
                 bedrockAccessKeyInput: elements.bedrockAccessKeyInput,
@@ -4502,8 +4512,16 @@ const apiUtils = {
 
         try {
             // Gemini形式からBedrock Converse形式へ変換
+            console.log(`[Bedrock Debug] 変換前のメッセージ数: ${messagesForApi.length}`);
             const converseMessages = this.convertGeminiToConverseFormat(messagesForApi);
-            
+            console.log(`[Bedrock Debug] 変換成功。変換後のメッセージ数: ${converseMessages.length}`);
+
+            // 各メッセージの内容を簡易表示
+            converseMessages.forEach((msg, idx) => {
+                const contentTypes = msg.content?.map(c => Object.keys(c)[0]).join(', ') || '空';
+                console.log(`[Bedrock Debug] メッセージ${idx}: role=${msg.role}, content類=[${contentTypes}]`);
+            });
+
             // デバッグ: 変換後のメッセージ数とtoolResult数を確認
             console.log(`[Bedrock] 変換後のメッセージ数: ${converseMessages.length}`);
             converseMessages.forEach((msg, idx) => {
@@ -4512,7 +4530,7 @@ const apiUtils = {
                     console.log(`[Bedrock] メッセージ${idx} (role: ${msg.role}): ${toolResults.length}個のtoolResultを含む`);
                 }
             });
-            
+
             // システムプロンプトの処理
             let systemPrompts = [];
             if (systemInstruction && systemInstruction.parts && systemInstruction.parts.length > 0) {
@@ -4538,14 +4556,14 @@ const apiUtils = {
             if (generationConfig.maxOutputTokens) {
                 requestBody.inferenceConfig.maxTokens = generationConfig.maxOutputTokens;
             }
-            
+
             // Claude Sonnet 4.5では temperature と topP を同時に指定できないため、temperatureのみ使用
             const isClaudeSonnet45 = modelId.includes('claude-sonnet-4-5');
-            
+
             if (generationConfig.temperature !== undefined && generationConfig.temperature !== null) {
                 requestBody.inferenceConfig.temperature = generationConfig.temperature;
             }
-            
+
             // Claude Sonnet 4.5以外の場合のみtopPを設定
             if (!isClaudeSonnet45 && generationConfig.topP !== undefined && generationConfig.topP !== null) {
                 requestBody.inferenceConfig.topP = generationConfig.topP;
@@ -4560,16 +4578,21 @@ const apiUtils = {
                     requestBody.toolConfig = {
                         tools: bedrockTools
                     };
-                    
+
                     if (forceCalling) {
                         requestBody.toolConfig.toolChoice = { any: {} };
                     } else {
                         requestBody.toolConfig.toolChoice = { auto: {} };
                     }
-                    
+
                     console.log(`Amazon Bedrock APIに ${bedrockTools.length} 個のFunction Callingツールを設定しました。`);
                 }
             }
+
+            // ペイロードサイズを確認
+            const payloadString = JSON.stringify(requestBody);
+            const payloadSizeKB = (payloadString.length / 1024).toFixed(2);
+            console.log(`[Bedrock Debug] ペイロードサイズ: ${payloadSizeKB} KB`);
 
             console.log("Amazon Bedrockへの送信データ:", JSON.stringify(requestBody, (key, value) => {
                 if (key === 'bytes' && value instanceof Uint8Array) {
@@ -4618,6 +4641,13 @@ const apiUtils = {
 
         } catch (error) {
             console.error("Amazon Bedrock API呼び出しエラー:", error);
+            console.error("[Bedrock Debug] エラースタック:", error.stack);
+
+            // 変換エラーの可能性をチェック
+            if (error.name === 'TypeError' || error.message.includes('JSON')) {
+                console.error('[Bedrock Debug] JSON変換エラーの可能性があります。messagesForApiの内容を確認してください。');
+            }
+
             throw new Error(`Bedrock APIエラー: ${error.message}`);
         }
     },
@@ -4625,7 +4655,7 @@ const apiUtils = {
     // プロバイダーに応じて適切なAPIを呼び出すラッパー関数
     async callApi(messagesForApi, generationConfig, systemInstruction, tools = null, forceCalling = false, signal = null) {
         const provider = state.settings.apiProvider || 'gemini';
-        
+
         if (provider === 'zai') {
             return await this.callZaiApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling, signal);
         } else if (provider === 'openrouter') {
@@ -4660,7 +4690,7 @@ function updateCurrentSystemPrompt() {
 /**
  * タブ間通信のためのBroadcastChannelを設定する
  */
- function setupBroadcastChannel() {
+function setupBroadcastChannel() {
     if ('BroadcastChannel' in window) {
         try {
             broadcastChannel = new BroadcastChannel('gemini-pwa-sync-channel');
@@ -4681,7 +4711,7 @@ function updateCurrentSystemPrompt() {
                     state.sync.lastSyncId = newSyncId;
                     state.sync.isDirty = false;
                     state.sync.lastError = null;
-                    
+
                     // DBにも保存
                     await dbUtils.saveSetting('lastSyncId', newSyncId);
                     await dbUtils.saveSetting('syncIsDirty', false);
@@ -4706,13 +4736,13 @@ const appLogic = {
 
     timerManager: {
         timers: {}, // { timer_name: { timerId: 123, endTime: 167... } }
-        
+
         start(name, minutes) {
             if (this.timers[name]) {
                 clearTimeout(this.timers[name].timerId);
                 console.log(`タイマー「${name}」は上書きされました。`);
             }
-            
+
             const durationMs = minutes * 60 * 1000;
             const endTime = Date.now() + durationMs;
 
@@ -4725,7 +4755,7 @@ const appLogic = {
             }, durationMs);
 
             this.timers[name] = { timerId, endTime };
-            
+
             const message = `タイマー「${name}」を${minutes}分で開始しました。`;
             console.log(`[Timer] ${message}`);
             return { success: true, message: message };
@@ -4758,10 +4788,10 @@ const appLogic = {
         },
     },
 
-        /**
-     * タイマー時間切れ時にAIに応答を促す関数
-     * @param {string} timerName - 時間切れになったタイマーの名前
-     */
+    /**
+ * タイマー時間切れ時にAIに応答を促す関数
+ * @param {string} timerName - 時間切れになったタイマーの名前
+ */
     async triggerTimerExpiredResponse(timerName) {
         // 現在送信中の場合は何もしない
         if (state.isSending) {
@@ -4777,9 +4807,9 @@ const appLogic = {
 例えば、「そういえば、約束の時間だね」「時間切れだ！イベントが発生する」のように、会話を続けてください。
 このシステムメモ自体は応答に含めないでください。`;
 
-        const userMessage = { 
-            role: 'user', 
-            content: systemInstructionForTimer, 
+        const userMessage = {
+            role: 'user',
+            content: systemInstructionForTimer,
             timestamp: Date.now(),
             attachments: [],
             isHidden: true,
@@ -4788,7 +4818,7 @@ const appLogic = {
 
         // 履歴にこの内部メッセージを追加
         state.currentMessages.push(userMessage);
-        
+
         // UIにもメッセージ要素を追加するが、即座に非表示にする
         const messageIndex = state.currentMessages.length - 1;
         uiUtils.appendMessage(userMessage.role, userMessage.content, messageIndex);
@@ -4841,7 +4871,7 @@ const appLogic = {
                 await dbUtils.saveSetting('activeProfileId', state.activeProfileId);
                 console.log(`[Profile] アクティブなプロファイルが無効でした。最初のプロファイル (ID: ${state.activeProfileId}) をアクティブに設定しました。`);
             }
-            
+
             console.log(`[Profile] ${state.profiles.length}件のプロファイルを読み込みました。アクティブID: ${state.activeProfileId}`);
             this.applyActiveProfile();
             uiUtils.updateProfileSwitcherUI();
@@ -4856,10 +4886,10 @@ const appLogic = {
         state.activeProfile = state.profiles.find(p => p.id === state.activeProfileId);
         if (state.activeProfile) {
             console.log(`[Profile] プロファイル「${state.activeProfile.name}」(ID: ${state.activeProfile.id}) を適用します。`);
-            
+
             // 1. アプリの最新のデフォルト設定をベースにする
             const newSettings = { ...window.state.settings };
-            
+
             // 2. ロードしたプロファイルの設定で上書きする
             const loadedProfileSettings = state.activeProfile.settings || {};
             Object.assign(newSettings, loadedProfileSettings);
@@ -4867,7 +4897,7 @@ const appLogic = {
             // 3. state.settings を更新する
             state.settings = newSettings;
 
-            uiUtils.applySettingsToUI(); 
+            uiUtils.applySettingsToUI();
             uiUtils.updateProfileCardUI();
 
             // 4. プロファイル適用後にデバッグロガーを初期化/再設定する
@@ -4881,11 +4911,11 @@ const appLogic = {
     async switchProfile(newProfileId) {
         newProfileId = Number(newProfileId);
         if (newProfileId === state.activeProfileId) return;
-        
+
         console.log(`[Profile] プロファイルを ID: ${newProfileId} に切り替えます。`);
         await dbUtils.saveSetting('activeProfileId', newProfileId);
         state.activeProfileId = newProfileId;
-        
+
         // プロファイル設定の適用とUI更新のみを行う
         this.applyActiveProfile();
         uiUtils.updateProfileSwitcherUI();
@@ -4913,10 +4943,10 @@ const appLogic = {
             const newId = await dbUtils.addProfile(newProfile);
             const newlyAddedProfile = await dbUtils.getProfile(newId);
             state.profiles.push(newlyAddedProfile); // stateを更新
-            
+
             await dbUtils.saveSetting('activeProfileId', newId); // activeProfileIdを更新
             state.activeProfileId = newId;
-            
+
             this.markAsDirtyAndSchedulePush(true);
             this.applyActiveProfile();
             uiUtils.updateProfileSwitcherUI();
@@ -4932,7 +4962,7 @@ const appLogic = {
             await uiUtils.showCustomAlert("更新対象のプロファイルが選択されていません。");
             return;
         }
-        
+
         const updatedProfile = { ...state.activeProfile };
 
         try {
@@ -4945,7 +4975,7 @@ const appLogic = {
             // activeProfile は既に更新されているので再代入は不要
 
             this.markAsDirtyAndSchedulePush(true);
-            
+
             console.log(`[Profile] プロファイル「${updatedProfile.name}」を更新しました。`);
             this.applyActiveProfile(); // UIに再適用
             uiUtils.updateProfileSwitcherUI();
@@ -4954,7 +4984,7 @@ const appLogic = {
             await uiUtils.showCustomAlert(`プロファイルの更新に失敗しました: ${error.message}`);
         }
     },
-    
+
     async deleteCurrentProfile() {
         if (!state.activeProfile) return;
         if (state.profiles.length <= 1) {
@@ -4969,7 +4999,7 @@ const appLogic = {
             const idToDelete = state.activeProfileId;
             await dbUtils.deleteProfile(idToDelete);
             this.markAsDirtyAndSchedulePush(true);
-            
+
             // stateからも削除
             state.profiles = state.profiles.filter(p => p.id !== idToDelete);
             // アイコンURLキャッシュも削除
@@ -4982,7 +5012,7 @@ const appLogic = {
             const newActiveId = state.profiles[0].id;
             await dbUtils.saveSetting('activeProfileId', newActiveId);
             state.activeProfileId = newActiveId;
-            
+
             this.applyActiveProfile();
             uiUtils.updateProfileSwitcherUI();
             await uiUtils.showCustomAlert("プロファイルを削除しました。");
@@ -5041,7 +5071,7 @@ const appLogic = {
         const stringKeys = ['apiProvider', 'apiKey', 'zaiApiKey', 'openrouterApiKey', 'bedrockAccessKey', 'bedrockSecretKey', 'bedrockRegion', 'modelName', 'dummyUser', 'dummyModel', 'additionalModels', 'historySortOrder', 'fontFamily', 'proofreadingModelName', 'proofreadingSystemInstruction', 'googleSearchApiKey', 'googleSearchEngineId', 'headerColor', 'thoughtTranslationModel', 'summaryModelName', 'summarySystemPrompt'];
         const numberKeys = ['temperature', 'maxTokens', 'topK', 'topP', 'thinkingBudget', 'maxRetries', 'maxBackoffDelaySeconds', 'overlayOpacity', 'messageOpacity'];
         const booleanKeys = ['enterToSend', 'darkMode', 'geminiEnableGrounding', 'geminiEnableFunctionCalling', 'enableSwipeNavigation', 'enableProofreading', 'enableAutoRetry', 'useFixedRetryDelay', 'reverseDummyOrder', 'concatDummyModel', 'includeThoughts', 'enableThoughtTranslation', 'applyDummyToProofread', 'applyDummyToTranslate', 'forceFunctionCalling', 'autoScroll', 'enableWideMode', 'enableSummaryButton'];
-        
+
         settings.systemPrompt = elements.systemPromptDefaultTextarea.value.trim();
         settings.fixedRetryDelaySeconds = parseFloat(elements.fixedRetryDelayInput.value) || null;
         settings.hideSystemPromptInChat = elements.hideSystemPromptToggle.checked;
@@ -5065,7 +5095,7 @@ const appLogic = {
                 if (element) settings[key] = element.value.trim();
             }
         });
-        
+
         numberKeys.forEach(key => {
             let element;
             if (key === 'overlayOpacity' || key === 'messageOpacity') {
@@ -5073,7 +5103,7 @@ const appLogic = {
             } else {
                 element = elements[key + 'Input'];
             }
-            
+
             if (element) {
                 const value = (key === 'overlayOpacity' || key === 'messageOpacity') ? parseFloat(element.value) / 100 : parseFloat(element.value);
                 settings[key] = isNaN(value) ? null : value;
@@ -5122,7 +5152,7 @@ const appLogic = {
 
             const headMessages = messagesForApi.slice(0, headCount);
             const tailMessages = messagesForApi.slice(Math.max(headCount, messagesForApi.length - tailCount));
-            
+
             const summaryMessage = {
                 role: 'user',
                 content: `【これまでの会話の要約】\n${summaryText}`,
@@ -5130,7 +5160,7 @@ const appLogic = {
                 isHidden: true, // UIには表示されない内部的なメッセージ
                 attachments: []
             };
-            
+
             historyToProcess = [...headMessages, summaryMessage, ...tailMessages];
             console.log(`[API Prep] 履歴を圧縮しました: Head(${headMessages.length}) + Summary(1) + Tail(${tailMessages.length}) = ${historyToProcess.length}件`);
 
@@ -5157,7 +5187,7 @@ const appLogic = {
                 historyToProcess.push({ role: 'model', content: state.settings.dummyModel, attachments: [] });
             }
         }
-        
+
         return historyToProcess.map(msg => {
             const parts = [];
             let contentText = msg.content || '';
@@ -5182,12 +5212,12 @@ const appLogic = {
             }
             if (msg.role === 'tool') {
                 if (msg.name && msg.response) {
-                    parts.push({ 
-                        functionResponse: { 
-                            name: msg.name, 
+                    parts.push({
+                        functionResponse: {
+                            name: msg.name,
                             response: msg.response,
                             _toolCallId: msg._toolCallId || msg.tool_call_id  // 元のtoolCallIdを保存
-                        } 
+                        }
                     });
                 }
             }
@@ -5204,7 +5234,7 @@ const appLogic = {
      * @param {Blob} blob - 保存対象の画像Blob
      * @returns {Promise<string>} 保存された画像のユニークID
      */
-     async saveImageBlob(blob) {
+    async saveImageBlob(blob) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = (e) => {
@@ -5221,7 +5251,7 @@ const appLogic = {
                             console.warn("WebPへの変換に失敗しました。元の形式で保存します。");
                             webpBlob = blob;
                         }
-                        
+
                         const imageId = `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
                         const imageData = {
                             id: imageId,
@@ -5363,12 +5393,12 @@ const appLogic = {
         return visibleMessages;
     },
 
-    _updateApiUsageCount: async function(profileId) {
+    _updateApiUsageCount: async function (profileId) {
         if (!profileId) return;
-    
+
         const profileToUpdate = state.profiles.find(p => p.id === profileId);
         if (!profileToUpdate) return;
-    
+
         const now = new Date();
         const getPacificDate = (date) => {
             const options = { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' };
@@ -5376,19 +5406,19 @@ const appLogic = {
             return formatter.format(date);
         };
         const todayPacific = getPacificDate(now);
-    
+
         // プロファイルにapiUsageオブジェクトがなければ初期化
         if (!profileToUpdate.apiUsage || profileToUpdate.apiUsage.date !== todayPacific) {
             profileToUpdate.apiUsage = { date: todayPacific, count: 0 };
         }
-    
+
         profileToUpdate.apiUsage.count++;
-    
+
         try {
             // 更新されたプロファイル情報をDBに保存
             await dbUtils.updateProfile(profileToUpdate);
             console.log(`[API Count] Profile ${profileId} の使用回数を更新しました。 Count for ${todayPacific}: ${profileToUpdate.apiUsage.count}`);
-            
+
             // UIを更新
             this.updateApiUsageUI();
             uiUtils.updateProfileSwitcherUI();
@@ -5397,10 +5427,10 @@ const appLogic = {
         }
     },
 
-    
-    _checkAndResetApiUsage: async function() {
+
+    _checkAndResetApiUsage: async function () {
         console.log("[API Count] 全プロファイルのAPI使用回数リセットチェックを開始します...");
-        
+
         const now = new Date();
         const getPacificDate = (date) => {
             const options = { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' };
@@ -5408,15 +5438,15 @@ const appLogic = {
             return formatter.format(date);
         };
         const todayPacific = getPacificDate(now);
-    
+
         let profilesWereUpdated = false;
-    
+
         for (const profile of state.profiles) {
             if (profile.apiUsage && profile.apiUsage.date !== todayPacific) {
                 console.log(`[API Count] プロファイル「${profile.name}」(ID: ${profile.id}) の日付が古いため (${profile.apiUsage.date})、使用回数をリセットします。`);
                 // apiUsageオブジェクトごと削除する
                 delete profile.apiUsage;
-                
+
                 try {
                     // 更新されたプロファイルをDBに保存
                     await dbUtils.updateProfile(profile);
@@ -5426,11 +5456,11 @@ const appLogic = {
                 }
             }
         }
-    
+
         if (profilesWereUpdated) {
             console.log("[API Count] 1つ以上のプロファイルが更新されたため、UIを再描画します。");
             // state.activeProfileも更新されている可能性があるので再適用
-            this.applyActiveProfile(); 
+            this.applyActiveProfile();
             uiUtils.updateProfileSwitcherUI();
         } else {
             console.log("[API Count] リセットが必要なプロファイルはありませんでした。");
@@ -5438,18 +5468,18 @@ const appLogic = {
     },
 
 
-    updateApiUsageUI: function() {
+    updateApiUsageUI: function () {
         const profile = state.activeProfile;
         const usageContainer = document.getElementById('api-usage-container');
         const usageText = document.getElementById('api-usage-text');
-        
+
         if (!usageContainer || !usageText || !profile) {
-            if(usageContainer) usageContainer.classList.add('hidden');
+            if (usageContainer) usageContainer.classList.add('hidden');
             return;
         }
-    
+
         const usage = profile.apiUsage || { count: 0 };
-    
+
         if (state.settings.modelName === 'gemini-2.5-pro' && state.settings.apiProvider === 'gemini') {
             usageText.textContent = `gemini-2.5-pro 本日の使用回数: ${usage.count} 回 (日本時間16/17時リセット)`;
             usageContainer.classList.remove('hidden');
@@ -5464,7 +5494,7 @@ const appLogic = {
         const isZai = provider === 'zai';
         const isOpenRouter = provider === 'openrouter';
         const isBedrock = provider === 'bedrock';
-        
+
         // APIキー入力欄の表示/非表示
         if (elements.geminiApiKeyContainer) {
             elements.geminiApiKeyContainer.classList.toggle('hidden', !isGemini);
@@ -5478,7 +5508,7 @@ const appLogic = {
         if (elements.bedrockApiKeyContainer) {
             elements.bedrockApiKeyContainer.classList.toggle('hidden', !isBedrock);
         }
-        
+
         // モデル選択UIの表示/非表示（OpenRouterはテキスト入力、その他はセレクトボックス）
         if (elements.modelNameLabel) {
             elements.modelNameLabel.classList.toggle('hidden', isOpenRouter);
@@ -5489,7 +5519,7 @@ const appLogic = {
         if (elements.openrouterModelInputContainer) {
             elements.openrouterModelInputContainer.classList.toggle('hidden', !isOpenRouter);
         }
-        
+
         // デバッグモード専用プロバイダーのチェック
         const isDebugOnlyProvider = isZai || isOpenRouter || isBedrock;
         if (!state.settings.debugMode && isDebugOnlyProvider) {
@@ -5505,7 +5535,7 @@ const appLogic = {
             this.updateModelOptions('gemini');
             uiUtils.showCustomAlert("デバッグモードを無効にしたため、APIプロバイダーをGeminiに戻しました。");
         }
-        
+
         // プロバイダー固有の設定項目の表示/非表示
         // Gemini専用機能（グラウンディング、Function Callingなど）の表示制御は後で実装
     },
@@ -5524,14 +5554,14 @@ const appLogic = {
             this.updateApiUsageUI();
             return;
         }
-        
+
         const modelSelect = elements.modelNameSelect;
         if (!modelSelect) return;
-        
+
         // 既存のオプションをクリア（ユーザー指定モデルグループを除く）
         const userDefinedGroup = elements.userDefinedModelsGroup;
         const currentValue = modelSelect.value;
-        
+
         // すべてのoptgroupとoptionを削除（ユーザー指定グループを除く）
         const optgroups = Array.from(modelSelect.querySelectorAll('optgroup'));
         optgroups.forEach(group => {
@@ -5539,10 +5569,10 @@ const appLogic = {
                 group.remove();
             }
         });
-        
+
         const options = Array.from(modelSelect.querySelectorAll('option:not([data-user-defined])'));
         options.forEach(option => option.remove());
-        
+
         // プロバイダーに応じたモデルリストを追加
         let models;
         if (provider === 'zai') {
@@ -5552,9 +5582,9 @@ const appLogic = {
         } else {
             models = GEMINI_MODELS;
         }
-        
+
         const groups = {};
-        
+
         models.forEach(model => {
             if (model.group) {
                 // グループ化されたモデル
@@ -5576,12 +5606,12 @@ const appLogic = {
                 modelSelect.appendChild(option);
             }
         });
-        
+
         // ユーザー指定モデルグループを最後に追加
         if (userDefinedGroup && userDefinedGroup.parentNode !== modelSelect) {
             modelSelect.appendChild(userDefinedGroup);
         }
-        
+
         // 現在の値が新しいリストに含まれているか確認
         const availableValues = models.map(m => m.value);
         if (availableValues.includes(currentValue)) {
@@ -5601,7 +5631,7 @@ const appLogic = {
             modelSelect.value = defaultModel;
             state.settings.modelName = defaultModel;
         }
-        
+
         // モデル警告メッセージを更新
         uiUtils.updateModelWarningMessage();
         this.updateApiUsageUI();
@@ -5629,7 +5659,7 @@ const appLogic = {
             }).join('\n');
             sections.push(`## キャラクター記憶 (manage_character_memory)\n${content}`);
         }
-        
+
         // 2. シーン
         if (memory.scene_stack && memory.scene_stack.length > 0) {
             const currentScene = memory.scene_stack[memory.scene_stack.length - 1];
@@ -5663,7 +5693,7 @@ const appLogic = {
             }).join('\n');
             sections.push(`## 所持品 (manage_inventory)\n${content}`);
         }
-        
+
         // 6. 口調
         if (memory.style_profiles && Object.keys(memory.style_profiles).length > 0) {
             let content = Object.entries(memory.style_profiles).map(([charName, profile]) => {
@@ -5675,7 +5705,7 @@ const appLogic = {
 
         // 7. フラグと短期記憶 (既知の構造化データキーを除外して抽出)
         const knownKeys = new Set(['scene_stack', 'game_day', 'inventories', 'style_profiles']);
-        const flagAndMemoryKeys = Object.keys(memory).filter(key => 
+        const flagAndMemoryKeys = Object.keys(memory).filter(key =>
             !key.startsWith('character_') && !knownKeys.has(key)
         );
 
@@ -5701,7 +5731,7 @@ const appLogic = {
 
         setupBroadcastChannel();
         let versionNoticeData = null;
-    
+
         // --- ステップ0: バージョンアップ通知 ---
         try {
             const pendingNoticeRaw = sessionStorage.getItem(VERSION_NOTICE_SESSION_KEY);
@@ -5730,7 +5760,7 @@ const appLogic = {
                 if (shouldShowNotice) {
                     const newFeatures = VERSION_HISTORY[currentVersion];
                     let message = `アプリがバージョン ${currentVersion} にアップデートされました。`;
-    
+
                     if (newFeatures && newFeatures.length > 0) {
                         message += "\n\n主な更新内容:\n- " + newFeatures.join("\n- ");
                     }
@@ -5751,7 +5781,7 @@ const appLogic = {
         // --- ステップ1: 最初にDB接続を一度だけ確立する ---
         try {
             if (isSyncReload) uiUtils.updateProgressMessage('データベースを準備中...');
-    
+
             await dbUtils.openDB();
         } catch (dbError) {
             console.error("初期化中のDBオープンに失敗:", dbError);
@@ -5766,13 +5796,13 @@ const appLogic = {
             }
             return;
         }
-    
+
         // --- 孤児画像データのクリーンアップ処理 (一度だけ実行) ---
         try {
             const cleanupFlag = await dbUtils.getSetting('imageStoreCleanup_v1_complete');
             if (!cleanupFlag || !cleanupFlag.value) {
                 console.log("[Cleanup] 孤児画像データのクリーンアップ処理を開始します...");
-                
+
                 // 1. 全チャットから有効な画像IDをすべて収集
                 const allChats = await dbUtils.getAllChats();
                 const activeImageIds = new Set();
@@ -5782,7 +5812,7 @@ const appLogic = {
                     });
                 });
                 console.log(`[Cleanup] ${activeImageIds.size}件の有効な画像IDを検出しました。`);
-    
+
                 // 2. image_storeに存在するすべての画像IDを取得
                 const allStoredImageIds = await new Promise((resolve, reject) => {
                     const store = dbUtils._getStore(IMAGE_STORE);
@@ -5791,7 +5821,7 @@ const appLogic = {
                     request.onerror = (e) => reject(e.target.error);
                 });
                 console.log(`[Cleanup] image_storeには ${allStoredImageIds.size}件の画像が存在します。`);
-    
+
                 // 3. 孤児IDを特定 (存在するIDのうち、有効でないもの)
                 const orphanImageIds = [];
                 allStoredImageIds.forEach(storedId => {
@@ -5799,14 +5829,14 @@ const appLogic = {
                         orphanImageIds.push(storedId);
                     }
                 });
-    
+
                 // 4. 孤児データを削除
                 if (orphanImageIds.length > 0) {
                     console.log(`[Cleanup] ${orphanImageIds.length}件の孤児画像を削除します。`, orphanImageIds);
                     const tx = state.db.transaction(IMAGE_STORE, 'readwrite');
                     const store = tx.objectStore(IMAGE_STORE);
                     orphanImageIds.forEach(id => store.delete(id));
-                    
+
                     await new Promise((resolve, reject) => {
                         tx.oncomplete = resolve;
                         tx.onerror = () => reject(tx.error);
@@ -5815,7 +5845,7 @@ const appLogic = {
                 } else {
                     console.log("[Cleanup] 孤児画像は見つかりませんでした。");
                 }
-    
+
                 // 5. 処理完了フラグを立てる
                 await dbUtils.saveSetting('imageStoreCleanup_v1_complete', true);
                 console.log("[Cleanup] クリーンアップ処理が正常に完了しました。");
@@ -5826,37 +5856,37 @@ const appLogic = {
             console.error("[Cleanup] 孤児画像データのクリーンアップ中にエラーが発生しました:", error);
             // このエラーはアプリの起動を妨げない
         }
-    
+
         // --- ステップ2: Dropbox OAuthコールバック処理 ---
         const handleAuthCallback = async () => {
             console.log("[SYNC_DEBUG] handleAuthCallback: 開始");
             const urlParams = new URLSearchParams(window.location.search);
             const authCode = urlParams.get('code');
-    
+
             if (authCode) {
                 const newUrl = window.location.origin + window.location.pathname;
                 window.history.replaceState({}, document.title, newUrl);
-    
+
                 uiUtils.showProgressDialog('Dropboxと連携中...');
                 try {
                     const REDIRECT_URI = window.location.origin + window.location.pathname;
                     const codeVerifier = sessionStorage.getItem('dropboxCodeVerifier');
-    
+
                     if (!codeVerifier) {
                         throw new Error("認証セッションが見つかりません。もう一度お試しください。");
                     }
-    
+
                     await window.dropboxApi.getAccessToken(authCode, REDIRECT_URI, codeVerifier);
-                    
+
                     console.log("Dropbox連携に成功し、トークンを保存しました。");
-    
+
                     await this.updateDropboxUIState();
-                    
+
                     console.log("[SYNC_DEBUG] handleAuthCallback: 初回連携のため、handlePull(true)を呼び出します。");
                     await this.handlePull(true);
-    
+
                     console.log("[SYNC_DEBUG] handleAuthCallback: handlePullが完了しました。");
-    
+
                 } catch (error) {
                     console.error("Dropboxのトークン取得に失敗:", error);
                     uiUtils.hideProgressDialog();
@@ -5866,11 +5896,11 @@ const appLogic = {
                 }
             }
         };
-        
+
         await handleAuthCallback();
-    
+
         // --- ステップ3: メイン初期化処理 ---
-        
+
         // ライブラリと基本設定
         if (typeof marked !== 'undefined') {
             const renderer = new marked.Renderer();
@@ -5885,17 +5915,17 @@ const appLogic = {
         }
         elements.appVersionSpan.textContent = APP_VERSION;
         window.addEventListener('beforeinstallprompt', (e) => e.preventDefault());
-        
+
         // デバッグ用ヘルパー
         window.debug = {
             getState: () => console.log(state),
             getMemory: () => console.log(state.currentPersistentMemory),
             getChat: async (id) => console.log(await dbUtils.getChat(id || state.currentChatId))
         };
-        
+
         // Service Worker登録
         registerServiceWorker();
-        
+
         // Observerの初期化
         this.imageObserver = new IntersectionObserver(async (entries, observer) => {
             for (const entry of entries) {
@@ -5919,7 +5949,7 @@ const appLogic = {
                 }
             }
         }, { rootMargin: '200px' });
-    
+
         const mutationObserver = new MutationObserver((mutationsList) => {
             for (const mutation of mutationsList) {
                 if (mutation.type === 'childList') {
@@ -5939,7 +5969,7 @@ const appLogic = {
             }
         });
         mutationObserver.observe(elements.messageContainer, { childList: true, subtree: true });
-    
+
         try {
             // --- ステップ4: データ読み込みとUI更新 ---
             if (isSyncReload) uiUtils.updateProgressMessage('各種設定を読み込み中...');
@@ -5951,7 +5981,7 @@ const appLogic = {
             this.updateApiUsageUI();
             await this.initializeSyncState();
             await this.updateDropboxUIState();
-    
+
             const tokenData = await dbUtils.getSetting('dropboxTokens');
             let recoveryFlowExecuted = false; // リカバリーフローが実行されたかどうかのフラグ
             if (tokenData && tokenData.value) {
@@ -5960,7 +5990,7 @@ const appLogic = {
                     recoveryFlowExecuted = true;
                     console.warn(`[Sync Recovery] 同期ロックファイルを検出。中断された操作: ${lockData.operation}`);
                     this.updateSyncStatusUI('syncing', `中断された${lockData.operation === 'push' ? '同期' : '復元'}を再開中...`);
-    
+
                     if (lockData.operation === 'push') {
                         // isDirtyフラグを強制的に立ててからPushを実行
                         state.sync.isDirty = true;
@@ -5983,7 +6013,7 @@ const appLogic = {
                     }
                 }
             }
-    
+
             // 起動時にPull処理を実行 (OAuthコールバックがなく、リカバリーフローも実行されなかった場合)
             if (!new URLSearchParams(window.location.search).has('code') && !recoveryFlowExecuted) {
                 console.log("[SYNC_DEBUG] initializeApp: 通常起動のため、handlePull(false)を呼び出します。");
@@ -5991,9 +6021,9 @@ const appLogic = {
             } else {
                 console.log("[SYNC_DEBUG] initializeApp: OAuthコールバックまたは復旧フローが実行されたため、通常のPullはスキップします。");
             }
-    
+
             await this.updateDropboxUIState();
-    
+
             const profiles = await dbUtils.getAllProfiles();
             if (profiles.length === 0) {
                 const oldSettingsArray = await new Promise((resolve, reject) => {
@@ -6002,7 +6032,7 @@ const appLogic = {
                     request.onsuccess = () => resolve(request.result.filter(s => s.key !== 'dropboxTokens'));
                     request.onerror = (e) => reject(e.target.error);
                 });
-    
+
                 if (oldSettingsArray.length > 0) {
                     console.log("[Migration] プロファイルが存在せず、古い設定データが見つかったため移行処理を実行します。");
                     const oldSettingsObject = {};
@@ -6021,16 +6051,16 @@ const appLogic = {
                     await this.loadProfiles();
                 }
             }
-    
+
             if (isSyncReload) uiUtils.updateProgressMessage('チャット履歴を読み込み中...');
-    
+
             const chats = await dbUtils.getAllChats(state.settings.historySortOrder);
             if (chats && chats.length > 0) {
                 await this.loadChat(chats[0].id);
             } else {
                 this.startNewChat();
             }
-    
+
         } catch (error) {
             console.error("初期化中のデータ処理で失敗:", error);
             const shouldReload = await uiUtils.showCustomConfirm(
@@ -6050,7 +6080,7 @@ const appLogic = {
             uiUtils.showScreen('chat', true);
             history.replaceState({ screen: 'chat' }, '', '#chat');
             state.currentScreen = 'chat';
-            
+
             updateMessageMaxWidthVar();
             this.setupEventListeners();
             this.updateZoomState();
@@ -6060,7 +6090,7 @@ const appLogic = {
             this.toggleSummaryButtonVisibility();
             this.scrollToBottom();
             this.applyFloatingPanelBehavior();
-            
+
             // finallyブロックで必ずダイアログを閉じる
             uiUtils.hideProgressDialog();
             sessionStorage.removeItem('isSyncReload');
@@ -6084,7 +6114,7 @@ const appLogic = {
         }
     },
 
-    
+
     // 復旧ダイアログを表示するヘルパー関数
     async showRecoveryDialog() {
         const pullConfirm = await uiUtils.showCustomConfirm(
@@ -6107,7 +6137,7 @@ const appLogic = {
         }
 
         return 'cancel';
-    },    
+    },
 
     /**
      * 同期関連の初期化処理
@@ -6122,7 +6152,7 @@ const appLogic = {
         state.sync.lastSyncId = lastSyncIdSetting ? lastSyncIdSetting.value : null;
         state.sync.isDirty = isDirtySetting ? isDirtySetting.value : false;
         state.sync.lastError = lastErrorSetting ? lastErrorSetting.value : null;
-        
+
         console.log(`[Sync] 同期状態を初期化しました。lastSyncId: ${state.sync.lastSyncId}, isDirty: ${state.sync.isDirty}, lastError:`, state.sync.lastError);
     },
 
@@ -6219,7 +6249,7 @@ const appLogic = {
      * [V2 Core Push] 実際にアップロード処理を行うコア関数
      * @private
      */
-     async _doPush(isManual = false) {
+    async _doPush(isManual = false) {
         console.log(`[SYNC_DEBUG] _doPush: 開始。isManual = ${isManual}`);
 
         if (state.sync.isSyncing) {
@@ -6245,7 +6275,7 @@ const appLogic = {
             // --- Step 1: 競合検知 ---
             updateProgress('クラウドの状態を確認中...');
             const cloudMetadataString = await window.dropboxApi.downloadMetadata();
-            
+
             if (cloudMetadataString) {
                 const cloudData = JSON.parse(cloudMetadataString);
                 if (cloudData.syncId !== state.sync.lastSyncId) {
@@ -6273,7 +6303,7 @@ const appLogic = {
 
             // --- Step 2: データ準備 ---
             await window.dropboxApi.ensureAssetsFolderExists();
-            
+
             updateProgress('ローカルデータを準備中...');
             const { metadataJson, localAssets } = await this._prepareExportData();
             const localAssetIds = new Set(localAssets.keys());
@@ -6284,7 +6314,7 @@ const appLogic = {
             const assetsToUploadArray = Array.from(localAssets.entries())
                 .filter(([assetId]) => !cloudAssetIds.has(assetId))
                 .map(([assetId, asset]) => ({ assetId, asset }));
-                
+
             const assetsToDelete = Array.from(cloudAssetIds).filter(id => !localAssetIds.has(id));
 
             // --- Step 3: アセットのアップロード（バッチ処理） ---
@@ -6330,7 +6360,7 @@ const appLogic = {
                     sourceTabId: state.tabId
                 });
             }
-            
+
             this.updateSyncStatusUI('idle');
             await this.updateDropboxUIState();
             console.log(`[Sync Core Push V2] Push成功。新しいsyncId: ${parsedMetadata.syncId}`);
@@ -6381,7 +6411,7 @@ const appLogic = {
     /**
      * [V2 Pull] Dropboxからデータをダウンロードして同期する
      */
-     async handlePull(isManual = false) {
+    async handlePull(isManual = false) {
         console.log(`[SYNC_DEBUG] handlePull: 開始。isManual = ${isManual}`);
 
         if (state.sync.isSyncing) {
@@ -6417,8 +6447,8 @@ const appLogic = {
                         console.log("[SYNC_DEBUG] handlePull: isManual=trueのため、updateProgressMessageを呼び出します。");
                         uiUtils.updateProgressMessage('初回データをクラウドに保存中...');
                     }
-                    
-                    state.sync.isSyncing = false; 
+
+                    state.sync.isSyncing = false;
 
                     await window.dropboxApi.deleteLockFile();
                     console.log(`[SYNC_DEBUG] handlePull: _doPushを呼び出します。isManual = ${isManual}`);
@@ -6465,7 +6495,7 @@ const appLogic = {
                 state.sync.lastSyncId = importResult.syncId;
                 state.sync.isDirty = false;
                 state.sync.lastError = null;
-                
+
                 const syncTimestamp = new Date(importResult.exportedAt).getTime();
                 await Promise.all([
                     dbUtils.saveSetting('lastSyncId', importResult.syncId),
@@ -6529,15 +6559,15 @@ const appLogic = {
             window.addEventListener('popstate', this.handlePopState.bind(this));
             this._popstateBound = true;
         }
-    
+
         this._setupEventListenersCallCount++;
-    
+
         // --- 画面遷移 ---
         elements.gotoHistoryBtn.addEventListener('click', () => uiUtils.showScreen('history'));
         elements.gotoSettingsBtn.addEventListener('click', () => uiUtils.showScreen('settings'));
         elements.backToChatFromHistoryBtn.addEventListener('click', () => uiUtils.showScreen('chat'));
         elements.backToChatFromSettingsBtn.addEventListener('click', () => uiUtils.showScreen('chat'));
-    
+
         // --- チャット関連 ---
         elements.newChatBtn.addEventListener('click', () => this.confirmStartNewChat());
         elements.sendButton.addEventListener('click', () => {
@@ -6559,7 +6589,7 @@ const appLogic = {
                 if (!elements.sendButton.disabled) this.handleSend();
             }
         });
-    
+
         // --- システムプロンプト ---
         elements.systemPromptDetails.addEventListener('toggle', (event) => {
             if (event.target.open) {
@@ -6570,7 +6600,7 @@ const appLogic = {
         });
         elements.saveSystemPromptBtn.addEventListener('click', () => this.saveCurrentSystemPrompt());
         elements.cancelSystemPromptBtn.addEventListener('click', () => this.cancelEditSystemPrompt());
-    
+
         // --- プロファイルメニューの表示/非表示 ---
         elements.profileCardHeader.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -6580,20 +6610,20 @@ const appLogic = {
             e.stopPropagation();
             uiUtils.toggleProfileMenu('settings');
         });
-    
+
         document.addEventListener('click', (e) => {
             const target = e.target;
             const isHeaderCardClicked = elements.profileCardHeader.contains(target);
             const isSettingsCardClicked = elements.profileCardHeaderSettings.contains(target);
             const isHeaderMenuClicked = elements.headerProfileMenu.contains(target);
             const isSettingsMenuClicked = elements.headerProfileMenuSettings.contains(target);
-    
+
             if (!isHeaderCardClicked && !isSettingsCardClicked && !isHeaderMenuClicked && !isSettingsMenuClicked) {
                 elements.headerProfileMenu.classList.add('hidden');
                 elements.headerProfileMenuSettings.classList.add('hidden');
             }
         });
-    
+
         // --- プロファイル編集 ---
         elements.profileEditNameBtn.addEventListener('click', () => this.editCurrentProfileName());
         elements.profileIconInput.addEventListener('change', (e) => {
@@ -6644,14 +6674,14 @@ const appLogic = {
             const newStatus = state.sync.isDirty ? 'dirty' : 'idle';
             this.updateSyncStatusUI(newStatus);
         });
-    
+
         // --- 設定項目（即時保存） ---
         const setupInstantSave = (element, key, eventType = 'change', onUpdate = null, getValue = null) => { // getValue関数を追加
             if (element) {
                 element.addEventListener(eventType, async () => {
                     if (!state.activeProfile) return;
                     let value;
-                    
+
                     // getValue関数が提供されている場合はそれを使用
                     if (getValue) {
                         value = getValue();
@@ -6677,13 +6707,13 @@ const appLogic = {
                                 break;
                         }
                     }
-                    
+
                     state.settings[key] = value;
                     state.activeProfile.settings[key] = value;
-                    
+
                     await dbUtils.updateProfile(state.activeProfile);
                     appLogic.markAsDirtyAndSchedulePush('structural');
-                    
+
                     if (onUpdate) {
                         onUpdate(value);
                     }
@@ -6694,10 +6724,10 @@ const appLogic = {
         };
 
 
-        
+
         const settingsMap = {
-            apiProvider: { 
-                element: elements.apiProviderSelect, 
+            apiProvider: {
+                element: elements.apiProviderSelect,
                 event: 'change',
                 onUpdate: (value) => {
                     const isDebugOnlyProvider = value === 'zai' || value === 'openrouter' || value === 'bedrock';
@@ -6728,9 +6758,9 @@ const appLogic = {
             bedrockAccessKey: { element: elements.bedrockAccessKeyInput, event: 'input' },
             bedrockSecretKey: { element: elements.bedrockSecretKeyInput, event: 'input' },
             bedrockRegion: { element: elements.bedrockRegionSelect, event: 'change' },
-            modelName: { 
-                element: elements.modelNameSelect, 
-                event: 'change', 
+            modelName: {
+                element: elements.modelNameSelect,
+                event: 'change',
                 onUpdate: () => {
                     uiUtils.updateModelWarningMessage();
                     this.updateApiUsageUI(); // onUpdateに統合
@@ -6763,36 +6793,38 @@ const appLogic = {
             enterToSend: { element: elements.enterToSendCheckbox, event: 'change' },
             historySortOrder: { element: elements.historySortOrderSelect, event: 'change' },
             darkMode: { element: elements.darkModeToggle, event: 'change', onUpdate: () => uiUtils.applyDarkMode() },
-            debugMode: { element: elements.debugModeToggle, event: 'change', onUpdate: (value) => {
-                DebugLogger.init();
-                this.toggleDebugLogButtonVisibility(value);
+            debugMode: {
+                element: elements.debugModeToggle, event: 'change', onUpdate: (value) => {
+                    DebugLogger.init();
+                    this.toggleDebugLogButtonVisibility(value);
 
-                if (elements.apiProviderRow) {
-                    elements.apiProviderRow.classList.toggle('hidden', !value);
-                }
+                    if (elements.apiProviderRow) {
+                        elements.apiProviderRow.classList.toggle('hidden', !value);
+                    }
 
-                const isDebugOnlyProvider = state.settings.apiProvider === 'zai' || state.settings.apiProvider === 'openrouter' || state.settings.apiProvider === 'bedrock';
-                if (!value && isDebugOnlyProvider) {
-                    const fallbackProvider = 'gemini';
-                    state.settings.apiProvider = fallbackProvider;
-                    if (state.activeProfile && state.activeProfile.settings) {
-                        state.activeProfile.settings.apiProvider = fallbackProvider;
-                        dbUtils.updateProfile(state.activeProfile)
-                            .then(() => this.markAsDirtyAndSchedulePush('structural'))
-                            .catch(error => console.error("[Settings] デバッグモードOFF時のAPIプロバイダー更新に失敗しました:", error));
+                    const isDebugOnlyProvider = state.settings.apiProvider === 'zai' || state.settings.apiProvider === 'openrouter' || state.settings.apiProvider === 'bedrock';
+                    if (!value && isDebugOnlyProvider) {
+                        const fallbackProvider = 'gemini';
+                        state.settings.apiProvider = fallbackProvider;
+                        if (state.activeProfile && state.activeProfile.settings) {
+                            state.activeProfile.settings.apiProvider = fallbackProvider;
+                            dbUtils.updateProfile(state.activeProfile)
+                                .then(() => this.markAsDirtyAndSchedulePush('structural'))
+                                .catch(error => console.error("[Settings] デバッグモードOFF時のAPIプロバイダー更新に失敗しました:", error));
+                        }
+                        if (elements.apiProviderSelect) {
+                            elements.apiProviderSelect.value = fallbackProvider;
+                        }
+                        this.updateProviderUI(fallbackProvider);
+                        this.updateModelOptions(fallbackProvider);
+                        uiUtils.showCustomAlert("デバッグモードを無効にしたため、APIプロバイダーをGeminiに戻しました。");
+                    } else if (value) {
+                        const provider = state.settings.apiProvider || 'gemini';
+                        this.updateProviderUI(provider);
+                        this.updateModelOptions(provider);
                     }
-                    if (elements.apiProviderSelect) {
-                        elements.apiProviderSelect.value = fallbackProvider;
-                    }
-                    this.updateProviderUI(fallbackProvider);
-                    this.updateModelOptions(fallbackProvider);
-                    uiUtils.showCustomAlert("デバッグモードを無効にしたため、APIプロバイダーをGeminiに戻しました。");
-                } else if (value) {
-                    const provider = state.settings.apiProvider || 'gemini';
-                    this.updateProviderUI(provider);
-                    this.updateModelOptions(provider);
                 }
-            }},
+            },
             fontFamily: { element: elements.fontFamilyInput, event: 'input', onUpdate: () => uiUtils.applyFontFamily() },
             hideSystemPromptInChat: { element: elements.hideSystemPromptToggle, event: 'change', onUpdate: () => uiUtils.toggleSystemPromptVisibility() },
             geminiEnableGrounding: { element: elements.geminiEnableGroundingToggle, event: 'change' },
@@ -6828,12 +6860,12 @@ const appLogic = {
             sdApiUrl: { element: elements.sdApiUrlInput, event: 'input' },
             sdApiUser: { element: elements.sdApiUserInput, event: 'input' },
             sdApiPassword: { element: elements.sdApiPasswordInput, event: 'input' },
-            sdEnableQualityChecker: { 
-                element: elements.sdEnableQualityCheckerCheckbox, 
-                event: 'change', 
+            sdEnableQualityChecker: {
+                element: elements.sdEnableQualityCheckerCheckbox,
+                event: 'change',
                 onUpdate: (value) => {
                     elements.sdQualityCheckerOptionsDiv.classList.toggle('hidden', !value);
-                } 
+                }
             },
             sdQcModel: { element: elements.sdQcModelSelect, event: 'change' },
             sdQcPrompt: { element: elements.sdQcPromptTextarea, event: 'input' },
@@ -6841,12 +6873,12 @@ const appLogic = {
             sdPromptImproveModel: { element: elements.sdPromptImproveModelSelect, event: 'change' },
             sdPromptImproveSystemPrompt: { element: elements.sdPromptImproveSystemPromptTextarea, event: 'input' }
         };
-    
+
         for (const key in settingsMap) {
             const { element, event, onUpdate, getValue } = settingsMap[key];
             setupInstantSave(element, key, event, onUpdate, getValue);
         }
-    
+
         // --- OpenRouterモデル名テキストボックスのイベントリスナー ---
         if (elements.openrouterModelInput) {
             elements.openrouterModelInput.addEventListener('input', async () => {
@@ -6858,14 +6890,14 @@ const appLogic = {
                 appLogic.markAsDirtyAndSchedulePush('structural');
             });
         }
-    
+
         // --- 追加モデルのblurイベントリスナー（モデル一覧の即時更新用） ---
         if (elements.additionalModelsTextarea) {
             elements.additionalModelsTextarea.addEventListener('blur', () => {
                 uiUtils.updateUserModelOptions();
             });
         }
-    
+
         // --- メモリ機能の個別イベントリスナー ---
         elements.memoryToggleBtn.addEventListener('click', () => this.toggleChatMemory());
         elements.manageMemoryBtn.addEventListener('click', () => this.openMemoryManagementDialog());
@@ -6894,24 +6926,24 @@ const appLogic = {
             if (file) this.handleHistoryImport(file);
             event.target.value = null;
         });
-    
+
         elements.includeThoughtsToggle.addEventListener('change', () => {
             const isEnabled = elements.includeThoughtsToggle.checked;
             elements.thoughtTranslationOptionsDiv.classList.toggle('hidden', !isEnabled);
         });
-        
+
         elements.enableApiTimeoutCheckbox.addEventListener('change', () => {
             uiUtils.updateApiTimeoutOptionsVisibility();
         });
-        
+
         elements.updateAppBtn.addEventListener('click', () => this.updateApp());
         elements.clearDataBtn.addEventListener('click', () => this.confirmClearAllData());
-    
+
         elements.enableProofreadingCheckbox.addEventListener('change', () => {
             const isEnabled = elements.enableProofreadingCheckbox.checked;
             elements.proofreadingOptionsDiv.classList.toggle('hidden', !isEnabled);
         });
-    
+
         elements.uploadBackgroundBtn.addEventListener('click', () => elements.backgroundImageInput.click());
         elements.backgroundImageInput.addEventListener('change', (event) => {
             const file = event.target.files[0];
@@ -6919,26 +6951,26 @@ const appLogic = {
             event.target.value = null;
         });
         elements.deleteBackgroundBtn.addEventListener('click', () => this.confirmDeleteBackgroundImage());
-        
+
         elements.resetHeaderColorBtn.addEventListener('click', () => {
             state.settings.headerColor = '';
             elements.headerColorInput.value = state.settings.darkMode ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
             const event = new Event('input', { bubbles: true });
             elements.headerColorInput.dispatchEvent(event);
         });
-        
+
         elements.messageContainer.addEventListener('click', (event) => {
             if (event.target.tagName === 'IMG' && event.target.closest('.message-content')) {
                 const modalOverlay = document.getElementById('image-modal-overlay');
                 const modalImg = document.getElementById('image-modal-img');
-                
+
                 if (modalOverlay && modalImg) {
                     modalImg.src = event.target.src;
                     modalOverlay.classList.remove('hidden');
                 }
             }
         });
-    
+
         document.body.addEventListener('click', (event) => {
             if (!elements.messageContainer.contains(event.target)) {
                 const currentlyShown = elements.messageContainer.querySelector('.message.show-actions');
@@ -6946,17 +6978,17 @@ const appLogic = {
                     currentlyShown.classList.remove('show-actions');
                 }
             }
-        }, true); 
-    
+        }, true);
+
         if ('visualViewport' in window) {
             window.visualViewport.addEventListener('resize', this.updateZoomState.bind(this));
             window.visualViewport.addEventListener('scroll', this.updateZoomState.bind(this));
         } else {
             console.warn("VisualViewport API is not supported in this browser.");
         }
-        
+
         elements.attachFileBtn.addEventListener('click', () => uiUtils.showFileUploadDialog());
-    
+
         elements.selectFilesBtn.addEventListener('click', () => {
             const fileInput = document.createElement('input');
             fileInput.type = 'file';
@@ -6985,9 +7017,9 @@ const appLogic = {
                 this.createRipple(e, button);
             }
         });
-    
+
         const chatScreen = elements.chatScreen;
-    
+
         chatScreen.addEventListener('dragover', (event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -6995,7 +7027,7 @@ const appLogic = {
                 chatScreen.classList.add('drag-over');
             }
         });
-    
+
         chatScreen.addEventListener('dragleave', (event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -7003,14 +7035,14 @@ const appLogic = {
                 chatScreen.classList.remove('drag-over');
             }
         });
-    
+
         chatScreen.addEventListener('drop', (event) => {
             event.preventDefault();
             event.stopPropagation();
             chatScreen.classList.remove('drag-over');
-    
+
             if (state.isSending) return;
-    
+
             const files = event.dataTransfer.files;
             if (files && files.length > 0) {
                 console.log(`${files.length}個のファイルがドロップされました。`);
@@ -7018,25 +7050,25 @@ const appLogic = {
                 uiUtils.showFileUploadDialog();
             }
         });
-    
+
         const fileUploadDialog = elements.fileUploadDialog;
-    
+
         fileUploadDialog.addEventListener('dragover', (event) => {
             event.preventDefault();
             event.stopPropagation();
         });
-    
+
         fileUploadDialog.addEventListener('dragleave', (event) => {
             event.preventDefault();
             event.stopPropagation();
         });
-    
+
         fileUploadDialog.addEventListener('drop', (event) => {
             event.preventDefault();
             event.stopPropagation();
-    
+
             if (state.isSending) return;
-    
+
             const files = event.dataTransfer.files;
             if (files && files.length > 0) {
                 console.log(`${files.length}個のファイルがダイアログにドロップされました。`);
@@ -7044,15 +7076,15 @@ const appLogic = {
                 uiUtils.updateSelectedFilesUI();
             }
         });
-    
+
         const modalOverlay = document.getElementById('image-modal-overlay');
         const modalCloseBtn = document.getElementById('image-modal-close');
-        
+
         if (modalOverlay && modalCloseBtn) {
             modalCloseBtn.addEventListener('click', () => {
                 modalOverlay.classList.add('hidden');
             });
-            
+
             modalOverlay.addEventListener('click', (event) => {
                 if (event.target === modalOverlay) {
                     modalOverlay.classList.add('hidden');
@@ -7067,7 +7099,7 @@ const appLogic = {
             elements.fixedRetryDelayContainer.classList.toggle('hidden', !useFixed);
             elements.maxBackoffDelayContainer.classList.toggle('hidden', useFixed);
         });
-    
+
         elements.modelNameSelect.addEventListener('change', () => {
             uiUtils.updateModelWarningMessage();
         });
@@ -7083,7 +7115,7 @@ const appLogic = {
                     cache.clear();
                 }
             };
-            
+
             revokeUrls(state.profileIconUrls, 'アイコン');
             revokeUrls(state.videoUrlCache, '動画');
             revokeUrls(state.imageUrlCache, 'チャット画像');
@@ -7147,7 +7179,7 @@ const appLogic = {
 
         elements.floatingActionPanel.addEventListener('mouseenter', () => clearTimeout(state.panelFadeOutTimer));
         elements.floatingActionPanel.addEventListener('mouseleave', () => this.showActionPanel());
-        
+
         elements.scrollToTopBtn.addEventListener('click', () => this.scrollToTop());
         elements.scrollToBottomBtn.addEventListener('click', () => this.scrollToBottom(true));
 
@@ -7195,22 +7227,22 @@ const appLogic = {
                 uiUtils.showCustomAlert("現在、別の同期処理が実行中です。");
                 return;
             }
-        
+
             const tokenData = await dbUtils.getSetting('dropboxTokens');
             if (!tokenData || !tokenData.value) {
                 // このケースはUI上起こらないはずだが、念のため
                 return;
             }
-            
+
             // --- 新しい手動同期ロジック ---
             state.sync.isSyncing = true;
             this.updateSyncStatusUI('syncing', 'クラウドの状態を確認中...');
             uiUtils.showProgressDialog('クラウドの状態を確認中...');
-        
+
             try {
                 // Step 1: クラウドのメタデータを取得
                 const cloudMetadataString = await window.dropboxApi.downloadMetadata();
-        
+
                 // クラウドにデータがない場合 -> 初回Pushの可能性
                 if (!cloudMetadataString) {
                     console.log("[Manual Sync] クラウドにデータがありません。Push処理を実行します。");
@@ -7219,13 +7251,13 @@ const appLogic = {
                     await this._doPush(true); // isManual=trueで実行
                     return;
                 }
-        
+
                 const cloudData = JSON.parse(cloudMetadataString);
                 const cloudSyncId = cloudData.syncId;
                 const localSyncId = state.sync.lastSyncId;
-        
+
                 console.log(`[Manual Sync] Cloud syncId: ${cloudSyncId}, Local syncId: ${localSyncId}`);
-        
+
                 // Step 2: syncIdを比較
                 // syncIdが異なる -> 他のデバイスが更新した可能性 -> Pullを実行
                 if (cloudSyncId !== localSyncId) {
@@ -7235,22 +7267,22 @@ const appLogic = {
                     await this.handlePull(true);
                     return;
                 }
-        
+
                 // Step 3: syncIdが一致する場合 -> アセットの不整合やローカルの変更をチェック
                 console.log("[Manual Sync] syncIdは一致しています。アセットの整合性を確認します。");
                 uiUtils.updateProgressMessage('アセットの整合性を確認中...');
-        
+
                 const { localAssets } = await this._prepareExportData();
                 const cloudAssetsList = await window.dropboxApi.listAssets();
-                
+
                 const localAssetCount = localAssets.size;
                 const cloudAssetCount = cloudAssetsList.length;
-        
+
                 console.log(`[Manual Sync] Local asset count: ${localAssetCount}, Cloud asset count: ${cloudAssetCount}`);
-        
+
                 // アセット数が異なるか、ローカルに変更がある(isDirty)場合 -> Pushで調整
                 if (localAssetCount !== cloudAssetCount || state.sync.isDirty) {
-                     if (state.sync.isDirty) {
+                    if (state.sync.isDirty) {
                         console.log("[Manual Sync] ローカルに変更（isDirty=true）があるため、Push処理を実行します。");
                         uiUtils.updateProgressMessage('ローカルの変更を同期中...');
                     } else {
@@ -7261,13 +7293,13 @@ const appLogic = {
                     await this._doPush(true);
                     return;
                 }
-        
+
                 // Step 4: syncIdもアセット数も一致 -> 本当に差分なし
                 console.log("[Manual Sync] syncIdとアセット数が一致しており、差分はありません。");
                 this.updateSyncStatusUI('idle');
                 uiUtils.hideProgressDialog();
                 await uiUtils.showCustomAlert("データは既に最新の状態です。");
-        
+
             } catch (error) {
                 const errorMessage = error.message || '不明なエラーが発生しました。';
                 this.updateSyncStatusUI('error', errorMessage);
@@ -7437,26 +7469,26 @@ const appLogic = {
                 this._checkAndResetApiUsage();
             }
         });
-        
+
         // --- デバッグログ関連 ---
         elements.debugLogBtn.addEventListener('click', () => this.openLogDialog());
         elements.closeLogDialogBtn.addEventListener('click', () => elements.debugLogDialog.close());
         elements.clearLogsBtn.addEventListener('click', () => this.clearLogs());
         elements.copyLogsBtn.addEventListener('click', () => this.copyLogsToClipboard());
-            
+
     },
 
 
     // popstateイベントハンドラ (戻るボタン/ジェスチャー)
     handlePopState(event) {
-    const targetScreen = event.state?.screen || 'chat';
-    if (targetScreen === state.currentScreen) {
-      console.log(`[popstate] same screen -> ignore: ${targetScreen}`);
-      return;
-    }
-    console.log(`popstate event fired: Navigating to screen '${targetScreen}' from history state.`);
-    // showScreenを呼び出す (fromPopState = true を渡して履歴操作を抑制)
-    uiUtils.showScreen(targetScreen, true);
+        const targetScreen = event.state?.screen || 'chat';
+        if (targetScreen === state.currentScreen) {
+            console.log(`[popstate] same screen -> ignore: ${targetScreen}`);
+            return;
+        }
+        console.log(`popstate event fired: Navigating to screen '${targetScreen}' from history state.`);
+        // showScreenを呼び出す (fromPopState = true を渡して履歴操作を抑制)
+        uiUtils.showScreen(targetScreen, true);
     },
 
     // ズーム状態を更新
@@ -7477,7 +7509,7 @@ const appLogic = {
     // --- スワイプ処理 (ズーム対応) ---
     handleTouchStart(event) {
         if (!state.settings.enableSwipeNavigation) return;
-        
+
         // マルチタッチ(ピンチ操作など)やズーム中はスワイプ開始点を記録しない
         if (event.touches.length > 1 || state.isZoomed) {
             state.touchStartX = 0; // 開始点をリセットしてスワイプ判定を無効化
@@ -7494,7 +7526,7 @@ const appLogic = {
 
     handleTouchMove(event) {
         if (!state.settings.enableSwipeNavigation) return;
-        
+
         // 開始点がない、マルチタッチ、ズーム中は処理しない
         if (!state.touchStartX || event.touches.length > 1 || state.isZoomed) {
             return;
@@ -7522,24 +7554,24 @@ const appLogic = {
     },
 
     handleTouchEnd(event) {
-         if (!state.settings.enableSwipeNavigation) {
-             this.resetSwipeState(); // 状態はリセットしておく
-             return;
-         }
+        if (!state.settings.enableSwipeNavigation) {
+            this.resetSwipeState(); // 状態はリセットしておく
+            return;
+        }
 
-         // ズーム状態を最終確認 (touchendまでに変わる可能性もあるため)
-         this.updateZoomState();
-         if (state.isZoomed) {
-             console.log("Zoomed state detected on touchend, skipping swipe navigation.");
-             this.resetSwipeState();
-             return;
-         }
+        // ズーム状態を最終確認 (touchendまでに変わる可能性もあるため)
+        this.updateZoomState();
+        if (state.isZoomed) {
+            console.log("Zoomed state detected on touchend, skipping swipe navigation.");
+            this.resetSwipeState();
+            return;
+        }
 
-         // スワイプ中でない、または開始点がない場合はリセットして終了
-         if (!state.isSwiping || !state.touchStartX) {
-             this.resetSwipeState();
-             return;
-         }
+        // スワイプ中でない、または開始点がない場合はリセットして終了
+        if (!state.isSwiping || !state.touchStartX) {
+            this.resetSwipeState();
+            return;
+        }
 
         const diffX = state.touchStartX - state.touchEndX;
         const diffY = state.touchStartY - state.touchEndY; // 縦移動量も一応計算
@@ -7596,7 +7628,7 @@ const appLogic = {
             state.pendingAttachments = [];
             uiUtils.updateAttachmentBadgeVisibility();
         }
-        
+
         try {
             // 現在のチャットに保存すべき内容があれば保存する
             if ((state.currentMessages.length > 0 || state.currentSystemPrompt) && state.currentChatId) {
@@ -7618,7 +7650,7 @@ const appLogic = {
         state.pendingCascadeResponses = null; // 保留中のカスケードデータをクリア
         state.currentChatId = null;
         state.currentMessages = [];
-        state.currentSystemPrompt = state.settings.systemPrompt || ''; 
+        state.currentSystemPrompt = state.settings.systemPrompt || '';
         state.pendingAttachments = [];
         state.currentPersistentMemory = {};
         state.currentSummarizedContext = null;
@@ -7672,14 +7704,14 @@ const appLogic = {
             const dbGetStartTime = performance.now();
             const chat = await dbUtils.getChat(id);
             const dbGetEndTime = performance.now();
-            
+
             if (chat) {
                 state.currentChatId = chat.id;
                 state.currentMessages = chat.messages?.map(msg => ({
                     ...msg,
                     attachments: msg.attachments || []
                 })) || [];
-                
+
                 state.currentPersistentMemory = chat.persistentMemory || {};
                 state.currentSummarizedContext = chat.summarizedContext || null;
                 // チャットごとのメモリ有効状態を読み込む (未定義ならtrue)
@@ -7701,17 +7733,17 @@ const appLogic = {
                         needsSave = true;
                     }
                 });
-                
+
                 state.currentSystemPrompt = chat.systemPrompt !== undefined ? chat.systemPrompt : state.settings.systemPrompt;
                 state.pendingAttachments = [];
-                
+
                 uiUtils.updateChatTitle(chat.title);
                 uiUtils.updateSystemPromptUI();
-                
+
                 const renderStartTime = performance.now();
                 uiUtils.renderChatMessages();
                 const renderEndTime = performance.now();
-                
+
                 this.scrollToBottom();
 
                 elements.userInput.value = '';
@@ -7824,10 +7856,10 @@ const appLogic = {
         if (!state.activeProfile) {
             return uiUtils.showCustomAlert("エクスポートするプロファイルが選択されていません。");
         }
-        
+
         // stateのデータを汚染しないようにディープコピーする
         const profileToExport = JSON.parse(JSON.stringify(state.activeProfile));
-        
+
         // アイコンBlobがあればBase64に変換して埋め込む
         if (state.activeProfile.icon instanceof Blob) {
             try {
@@ -7872,7 +7904,7 @@ const appLogic = {
                 }
 
                 let newProfile = { ...importedData };
-                
+
                 if (newProfile.icon && newProfile.icon.data) {
                     try {
                         newProfile.icon = await this.base64ToBlob(newProfile.icon.data, newProfile.icon.mimeType);
@@ -7914,7 +7946,7 @@ const appLogic = {
     async exportChat(chatId, chatTitle) {
         const confirmed = await uiUtils.showCustomConfirm(`チャット「${chatTitle || 'この履歴'}」をテキスト出力しますか？`);
         if (!confirmed) return;
-    
+
         uiUtils.showProgressDialog('エクスポート準備中...');
         try {
             let chatToExport;
@@ -7932,12 +7964,12 @@ const appLogic = {
             } else {
                 chatToExport = await dbUtils.getChat(chatId);
             }
-    
+
             if (!chatToExport || ((!chatToExport.messages || chatToExport.messages.length === 0) && !chatToExport.systemPrompt)) {
                 await uiUtils.showCustomAlert("チャットデータが空です。");
                 return;
             }
-    
+
             let exportText = '';
             const imageDataBlock = {};
             const attachmentDataBlock = {};
@@ -7988,7 +8020,7 @@ const appLogic = {
                     uiUtils.updateProgressMessage(`画像データを収集中... (${processedCount} / ${allImageIds.size})`);
                 }
             }
-    
+
             uiUtils.updateProgressMessage('テキストデータを生成中...');
             if (chatToExport.persistentMemory && Object.keys(chatToExport.persistentMemory).length > 0) {
                 try {
@@ -7999,7 +8031,7 @@ const appLogic = {
                     console.error("persistentMemoryのJSON化に失敗しました:", e);
                 }
             }
-    
+
             if (chatToExport.systemPrompt) {
                 exportText += `<|#|system|#|>\n${chatToExport.systemPrompt}\n<|#|/system|#|>\n\n`;
             }
@@ -8012,7 +8044,7 @@ const appLogic = {
                     console.error("summarizedContextのJSON化に失敗しました:", e);
                 }
             }
-    
+
             if (chatToExport.messages) {
                 chatToExport.messages.forEach(msg => {
                     if (msg.role === 'user' || msg.role === 'model') {
@@ -8044,7 +8076,7 @@ const appLogic = {
             if (Object.keys(attachmentDataBlock).length > 0) {
                 exportText += `<|#|attachmentdata|#|>\n${JSON.stringify(attachmentDataBlock, null, 2)}\n<|#|/attachmentdata|#|>\n`;
             }
-    
+
             uiUtils.updateProgressMessage('ファイルをダウンロード中...');
             const blob = new Blob([exportText.trim()], { type: 'text/plain;charset=utf-8' });
             const url = URL.createObjectURL(blob);
@@ -8066,8 +8098,8 @@ const appLogic = {
 
     // チャット削除の確認と実行 (メッセージペア全体)
     async confirmDeleteChat(id, title) {
-         const confirmed = await uiUtils.showCustomConfirm(`「${title || 'この履歴'}」を削除しますか？`);
-         if (confirmed) {
+        const confirmed = await uiUtils.showCustomConfirm(`「${title || 'この履歴'}」を削除しますか？`);
+        if (confirmed) {
             const isDeletingCurrent = state.currentChatId === id;
             const currentScreenBeforeDelete = state.currentScreen;
 
@@ -8121,7 +8153,7 @@ const appLogic = {
                 titleElement.title = finalTitle; // ホバータイトルも更新
                 // 更新日時も更新表示
                 const dateElement = titleElement.closest('.history-item')?.querySelector('.updated-date');
-                if(dateElement) dateElement.textContent = `更新: ${uiUtils.formatDate(Date.now())}`;
+                if (dateElement) dateElement.textContent = `更新: ${uiUtils.formatDate(Date.now())}`;
                 // 現在表示中のチャットのタイトルが変更されたら、ヘッダーも更新
                 if (state.currentChatId === chatId) {
                     uiUtils.updateChatTitle(finalTitle);
@@ -8137,13 +8169,13 @@ const appLogic = {
 
     async proofreadText(textToProofread) {
         console.log("--- 校正処理開始 ---");
-        const { 
-            proofreadingModelName, 
-            proofreadingSystemInstruction, 
-            apiKey, 
-            temperature, 
-            maxTokens, 
-            topK, 
+        const {
+            proofreadingModelName,
+            proofreadingSystemInstruction,
+            apiKey,
+            temperature,
+            maxTokens,
+            topK,
             topP,
             enableAutoRetry,
             maxRetries
@@ -8201,8 +8233,8 @@ const appLogic = {
                         const maxDelay = state.settings.maxBackoffDelaySeconds * 1000;
                         delay = Math.min(exponentialDelay, maxDelay);
                     }
-                    
-                    uiUtils.setLoadingIndicatorText(`校正エラー 再試行(${attempt}回目)... ${Math.round(delay/1000)}秒待機`);
+
+                    uiUtils.setLoadingIndicatorText(`校正エラー 再試行(${attempt}回目)... ${Math.round(delay / 1000)}秒待機`);
                     console.log(`校正APIリトライ ${attempt}: ${delay}ms待機...`);
                     await interruptibleSleep(delay, state.abortController.signal);
                 }
@@ -8269,7 +8301,7 @@ const appLogic = {
         throw lastError;
     },
 
-    
+
     /**
      * @private API通信と応答解析、ループ処理に責務を特化した内部関数。
      * stateの変更やUIの更新は一切行わない。
@@ -8278,7 +8310,7 @@ const appLogic = {
      * @param {object} systemInstruction - システムプロンプト。
      * @returns {Promise<Array>} 生成された新しいメッセージオブジェクトの配列。
     */
-     async _internalHandleSend(messagesForApi, generationConfig, systemInstruction) {
+    async _internalHandleSend(messagesForApi, generationConfig, systemInstruction) {
         let loopCount = 0;
         // Z.ai API(OpenAI互換)は1回のレスポンスで1つのtool_callしか返さないため、
         // Gemini APIよりも多くのループが必要
@@ -8318,19 +8350,19 @@ const appLogic = {
                 console.log("[_internalHandleSend] ツール呼び出しがないため、ループを終了します。");
                 break;
             }
-            
+
             const historyForFunctions = state.currentMessages.slice(0, -1);
             const responseTextForQc = result.content || '';
-            
+
             const toolResults = [];
             let containsTerminalAction = false;
-            
+
             for (const toolCall of result.toolCalls) {
                 const functionName = toolCall.functionCall.name;
                 const functionArgs = toolCall.functionCall.args;
-                
+
                 console.log(`[Function Calling] 実行: ${functionName}`, functionArgs);
-                
+
                 if (functionName === 'generate_image_stable_diffusion') {
                     uiUtils.setLoadingIndicatorText('SDで画像生成中...');
                 } else if (functionName === 'run_quality_checker') {
@@ -8355,7 +8387,7 @@ const appLogic = {
                     containsTerminalAction = true;
                     console.log(`[Function Calling] 終端アクション (${functionName}) を検出しました。`);
                 } else if (['generate_image', 'generate_video', 'edit_image', 'display_layered_image'].includes(functionName)) {
-                    containsTerminalAction = true; 
+                    containsTerminalAction = true;
                     console.log(`[Function Calling] 終端アクション (${functionName}) を検出しました。`);
                 }
 
@@ -8368,24 +8400,24 @@ const appLogic = {
                     delete responseForAI._internal_ui_action;
                 }
 
-                const toolResponseMessage = { 
-                    role: 'tool', 
-                    name: functionName, 
-                    response: responseForAI, 
+                const toolResponseMessage = {
+                    role: 'tool',
+                    name: functionName,
+                    response: responseForAI,
                     timestamp: Date.now(),
                     _toolCallId: toolCall.functionCall._toolCallId  // OpenAI互換APIのtool_call_idを保持
                 };
-                
-                if(toolResult._internal_ui_action){
+
+                if (toolResult._internal_ui_action) {
                     toolResponseMessage._internal_ui_action = toolResult._internal_ui_action;
                 }
 
                 toolResults.push(toolResponseMessage);
                 modelMessage.executedFunctions.push(functionName);
             }
-            
+
             finalTurnResults.push(...toolResults);
-            
+
             if (containsTerminalAction) {
                 console.log("終端アクションが検出されたため、Function Callingループを終了します。");
                 if (!result.content) {
@@ -8397,15 +8429,15 @@ const appLogic = {
                         ...result.toolCalls.map(tc => ({ functionCall: tc.functionCall }))
                     ];
                     const modelMessageForApi = { role: 'model', parts: partsForApi };
-                    const toolResultsForApi = toolResults.map(tr => ({ 
-                        role: 'tool', 
-                        parts: [{ 
-                            functionResponse: { 
-                                name: tr.name, 
+                    const toolResultsForApi = toolResults.map(tr => ({
+                        role: 'tool',
+                        parts: [{
+                            functionResponse: {
+                                name: tr.name,
                                 response: tr.response,
                                 _toolCallId: tr._toolCallId  // OpenAI互換APIのtool_call_idを引き継ぐ
-                            } 
-                        }] 
+                            }
+                        }]
                     }));
                     currentTurnHistory.push(modelMessageForApi, ...toolResultsForApi);
 
@@ -8413,49 +8445,49 @@ const appLogic = {
                     if (state.settings.apiProvider === 'bedrock') {
                         const delayMs = 6500; // 6.5秒の遅延（レート制限: 毎分10リクエスト = 6秒間隔 + 余裕0.5秒）
                         console.log(`[Bedrock] レート制限回避のため ${delayMs}ms 待機します...`);
-                        uiUtils.setLoadingIndicatorText(`レート制限回避のため ${delayMs/1000}秒待機中...`);
+                        uiUtils.setLoadingIndicatorText(`レート制限回避のため ${delayMs / 1000}秒待機中...`);
                         await interruptibleSleep(delayMs, state.abortController.signal);
                     }
 
-                    const textResult = await this.callApiWithRetry({ 
+                    const textResult = await this.callApiWithRetry({
                         messagesForApi: currentTurnHistory,
                         generationConfig,
                         systemInstruction,
                         tools: null,
                         isFirstCall: false
                     });
-                    
+
                     modelMessage.content = textResult.content || '';
                 }
                 break;
             }
 
-                const partsForApi = [
-                    ...(result.thoughtParts || []),
-                    ...result.toolCalls.map(tc => ({ functionCall: tc.functionCall }))
-                ];
+            const partsForApi = [
+                ...(result.thoughtParts || []),
+                ...result.toolCalls.map(tc => ({ functionCall: tc.functionCall }))
+            ];
 
-                const modelMessageForApi = { role: 'model', parts: partsForApi };
-                const toolResultsForApi = toolResults.map(tr => ({
-                    role: 'tool',
-                    parts: [{
-                        functionResponse: {
-                            name: tr.name,
-                            response: tr.response,
-                            _toolCallId: tr._toolCallId  // OpenAI互換APIのtool_call_idを引き継ぐ
-                        }
-                    }]
-                }));
-                currentTurnHistory.push(modelMessageForApi, ...toolResultsForApi);
-            
+            const modelMessageForApi = { role: 'model', parts: partsForApi };
+            const toolResultsForApi = toolResults.map(tr => ({
+                role: 'tool',
+                parts: [{
+                    functionResponse: {
+                        name: tr.name,
+                        response: tr.response,
+                        _toolCallId: tr._toolCallId  // OpenAI互換APIのtool_call_idを引き継ぐ
+                    }
+                }]
+            }));
+            currentTurnHistory.push(modelMessageForApi, ...toolResultsForApi);
+
             // Bedrock使用時はレート制限回避のため遅延を入れる
             if (state.settings.apiProvider === 'bedrock') {
                 const delayMs = 6500; // 6.5秒の遅延（レート制限: 毎分10リクエスト = 6秒間隔 + 余裕0.5秒）
                 console.log(`[Bedrock] レート制限回避のため ${delayMs}ms 待機します...`);
-                uiUtils.setLoadingIndicatorText(`レート制限回避のため ${delayMs/1000}秒待機中...`);
+                uiUtils.setLoadingIndicatorText(`レート制限回避のため ${delayMs / 1000}秒待機中...`);
                 await interruptibleSleep(delayMs, state.abortController.signal);
             }
-            
+
             uiUtils.setLoadingIndicatorText('応答生成中...');
         }
 
@@ -8468,7 +8500,7 @@ const appLogic = {
             };
             finalTurnResults.push(finalErrorMessage);
         }
-        
+
         // 後処理（翻訳や校正）
         const finalModelMessages = finalTurnResults.filter(m => m.role === 'model');
         if (finalModelMessages.length > 0) {
@@ -8502,7 +8534,7 @@ const appLogic = {
                 }
             }
         }
-        
+
         return finalTurnResults;
     },
 
@@ -8513,10 +8545,10 @@ const appLogic = {
     /**
      * @private _internalHandleSendから返されたメッセージ配列を単一のオブジェクトに集約する。
      */
-     _aggregateMessages(messages) {
+    _aggregateMessages(messages) {
         // 最後に content を持つ model メッセージを探す。なければ、最後の model メッセージを探す。
-        const primaryModelMessage = [...messages].reverse().find(m => m.role === 'model' && m.content) 
-                                 || [...messages].reverse().find(m => m.role === 'model');
+        const primaryModelMessage = [...messages].reverse().find(m => m.role === 'model' && m.content)
+            || [...messages].reverse().find(m => m.role === 'model');
 
         // プライマリメッセージが見つからない場合は、空のオブジェクトを返す（安全対策）
         if (!primaryModelMessage) {
@@ -8540,7 +8572,7 @@ const appLogic = {
                     finalAggregatedMessage.executedFunctions.push(...msg.executedFunctions);
                 }
             }
-            
+
             // ツール応答からUIアクション（画像IDなど）をマージ
             if (msg.role === 'tool' && msg._internal_ui_action) {
                 const actions = Array.isArray(msg._internal_ui_action) ? msg._internal_ui_action : [msg._internal_ui_action];
@@ -8565,7 +8597,7 @@ const appLogic = {
         return finalAggregatedMessage;
     },
 
-    
+
     async handleSend() {
         state.pendingCascadeResponses = null; // 保留中のカスケードデータをクリア
         if (state.isSending) { return; }
@@ -8578,13 +8610,13 @@ const appLogic = {
 
         uiUtils.setSendingState(true);
         uiUtils.setLoadingIndicatorText('応答生成中...');
-        
+
         const userMessage = { role: 'user', content: text, timestamp: Date.now(), attachments: attachmentsToSend };
         state.currentMessages.push(userMessage);
         uiUtils.appendMessage(userMessage.role, userMessage.content, state.currentMessages.length - 1, false, null, userMessage.attachments);
-        
+
         const baseHistory = state.currentMessages.filter(msg => !msg.isCascaded || msg.isSelected);
-        
+
         const modelMessage = { role: 'model', content: '', timestamp: Date.now() };
         state.currentMessages.push(modelMessage);
         const modelMessageIndex = state.currentMessages.length - 1;
@@ -8598,9 +8630,9 @@ const appLogic = {
         if (state.settings.autoScroll) {
             this.scrollToBottom();
         }
-        
+
         await dbUtils.saveChat(null, null, { skipPush: true });
-        
+
         try {
             const generationConfig = {};
             if (state.settings.temperature !== null) generationConfig.temperature = state.settings.temperature;
@@ -8609,8 +8641,8 @@ const appLogic = {
             if (state.settings.topP !== null) generationConfig.topP = state.settings.topP;
             if (state.settings.thinkingBudget !== null || state.settings.includeThoughts) {
                 generationConfig.thinkingConfig = {};
-                if(state.settings.thinkingBudget !== null) generationConfig.thinkingConfig.thinkingBudget = state.settings.thinkingBudget;
-                if(state.settings.includeThoughts) generationConfig.thinkingConfig.includeThoughts = true;
+                if (state.settings.thinkingBudget !== null) generationConfig.thinkingConfig.thinkingBudget = state.settings.thinkingBudget;
+                if (state.settings.includeThoughts) generationConfig.thinkingConfig.includeThoughts = true;
             }
 
             const summaryText = this._buildSummaryForPrompt();
@@ -8632,7 +8664,7 @@ const appLogic = {
 
             const historyForApi = this._prepareApiHistory(baseHistory);
             const newMessages = await this._internalHandleSend(historyForApi, generationConfig, systemInstruction);
-            
+
             const finalAggregatedMessage = this._aggregateMessages(newMessages);
             state.currentMessages[modelMessageIndex] = finalAggregatedMessage;
 
@@ -8653,19 +8685,19 @@ const appLogic = {
             }
             // -------------------------
 
-        } catch(error) {
+        } catch (error) {
             console.error("--- handleSend: 最終catchブロックでエラー捕捉 ---", error);
             const errorMessage = (error.name !== 'AbortError') ? (error.message || "不明なエラーが発生しました。") : "リクエストがキャンセルされました。";
-            
+
             state.currentMessages[modelMessageIndex] = { role: 'error', content: errorMessage, timestamp: Date.now() };
             uiUtils.renderChatMessages(() => uiUtils.scrollToBottom());
-            
+
             // エラー発生時もDBに保存
             await dbUtils.saveChat(null, null, { skipPush: true });
         } finally {
             uiUtils.setSendingState(false);
             state.abortController = null;
-            
+
             // 処理が完了したこのタイミングで、安全に同期処理をトリガーする
             this.markAsDirtyAndSchedulePush('message');
 
@@ -8678,7 +8710,7 @@ const appLogic = {
     },
 
 
-    
+
     // APIリクエストを中断
     abortRequest() {
         if (state.abortController) {
@@ -8696,7 +8728,7 @@ const appLogic = {
             return;
         }
         console.log("履歴インポート開始:", file.name);
-        
+
         elements.progressMessage.textContent = '履歴ファイルを解析中...';
         elements.progressDialog.showModal();
 
@@ -8711,7 +8743,7 @@ const appLogic = {
             }
             try {
                 const { messages: importedMessages, systemPrompt: importedSystemPrompt, persistentMemory: importedMemory, summarizedContext: importedSummary, imageData: importedImageData } = this.parseImportedHistory(textContent);
-                
+
                 if (importedMessages.length === 0 && !importedSystemPrompt && (!importedMemory || Object.keys(importedMemory).length === 0)) {
                     elements.progressDialog.close();
                     await uiUtils.showCustomAlert("ファイルから有効なメッセージ、システムプロンプト、またはメタデータを読み込めませんでした。形式を確認してください。");
@@ -8720,7 +8752,7 @@ const appLogic = {
 
                 const imageIdMap = new Map();
                 if (importedImageData && Object.keys(importedImageData).length > 0) {
-                   
+
                     elements.progressMessage.textContent = `画像を復元中... (0 / ${Object.keys(importedImageData).length})`;
                     let restoredCount = 0;
                     const totalImages = Object.keys(importedImageData).length;
@@ -8857,15 +8889,15 @@ const appLogic = {
             // パースしたブロックを元のテキストから削除
             remainingText = remainingText.replace(dataMatch[0], '');
         }
-    
+
         const blockRegex = /<\|#\|(system|user|model)\|#\|([^>]*)>([\s\S]*?)<\|#\|\/\1\|#\|>/g;
         let match;
-    
+
         while ((match = blockRegex.exec(remainingText)) !== null) {
             const role = match[1];
             const attributesString = match[2].trim();
             const content = match[3].trim();
-    
+
             if (role === 'system' && content) {
                 systemPrompt = content;
             } else if ((role === 'user' || role === 'model')) {
@@ -8942,14 +8974,14 @@ const appLogic = {
             uiUtils.applyBackgroundImage();
         }
     },
-     // 背景画像削除の確認
-     async confirmDeleteBackgroundImage() {
-         const confirmed = await uiUtils.showCustomConfirm("背景画像を削除しますか？");
-         if (confirmed) {
-             await this.handleBackgroundImageDelete();
-         }
-     },
-     // 背景画像削除処理
+    // 背景画像削除の確認
+    async confirmDeleteBackgroundImage() {
+        const confirmed = await uiUtils.showCustomConfirm("背景画像を削除しますか？");
+        if (confirmed) {
+            await this.handleBackgroundImageDelete();
+        }
+    },
+    // 背景画像削除処理
     async handleBackgroundImageDelete() {
         try {
             uiUtils.revokeExistingObjectUrl();
@@ -8961,13 +8993,13 @@ const appLogic = {
             document.documentElement.style.removeProperty('--chat-background-image');
             uiUtils.updateBackgroundSettingsUI();
         } catch (error) {
-    
-    
-           console.error("背景画像削除エラー:", error);
-           await uiUtils.showCustomAlert(`背景画像の削除中にエラーが発生しました: ${error}`);
+
+
+            console.error("背景画像削除エラー:", error);
+            await uiUtils.showCustomAlert(`背景画像の削除中にエラーが発生しました: ${error}`);
         }
     },
-     // -------------------------------
+    // -------------------------------
 
     // アプリを更新 (キャッシュクリア)
     async updateApp() {
@@ -8975,13 +9007,13 @@ const appLogic = {
             await uiUtils.showCustomAlert("お使いのブラウザはService Workerをサポートしていません。");
             return;
         }
-        
+
         const confirmed = await uiUtils.showCustomConfirm("アプリのキャッシュをクリアして最新版を再取得しますか？ (ページがリロードされます)");
         if (!confirmed) return;
 
         try {
             const registration = await navigator.serviceWorker.ready;
-            
+
             if (registration && registration.active) {
                 // Service Workerにキャッシュクリアを指示します。
                 // リロード処理は、sw.jsからの完了メッセージを 'message' リスナーが受け取って実行します。
@@ -9018,7 +9050,7 @@ const appLogic = {
 
     async executeToolCalls(toolCalls, historyForFunctions, responseTextForQc = '') {
         const messagesForFunction = (historyForFunctions || []).map(c => c.originalMessage || c);
-        
+
         // ダミープロンプトの数を計算
         const dummyUserCount = state.settings.dummyUser ? 1 : 0;
         const dummyModelCount = state.settings.dummyModel ? 1 : 0;
@@ -9032,16 +9064,16 @@ const appLogic = {
             dummy_prompt_count: dummyPromptCount // 計算したダミーの数を追加
         };
 
-    
+
         const toolResults = [];
         let containsTerminalAction = false;
         let aggregatedSearchResults = [];
         let internalUiActions = [];
-    
+
         for (const toolCall of toolCalls) {
             const functionName = toolCall.functionCall.name;
             const functionArgs = toolCall.functionCall.args;
-            
+
             console.log(`[Function Calling] 実行: ${functionName}`, functionArgs);
 
             // 終端アクションとなる関数かをここで判定する
@@ -9049,7 +9081,7 @@ const appLogic = {
                 containsTerminalAction = true;
                 console.log(`[Function Calling] 終端アクション (${functionName}) を検出しました。`);
             }
-    
+
             let result;
             if (window.functionCallingTools && typeof window.functionCallingTools[functionName] === 'function') {
                 try {
@@ -9078,14 +9110,14 @@ const appLogic = {
                 if (result._internal_ui_action.type === 'display_layered_image') {
                     containsTerminalAction = true;
                 }
-                
+
                 delete responseForAI._internal_ui_action;
             }
 
-            toolResults.push({ 
-                role: 'tool', 
-                name: functionName, 
-                response: responseForAI, 
+            toolResults.push({
+                role: 'tool',
+                name: functionName,
+                response: responseForAI,
                 timestamp: Date.now(),
                 _toolCallId: toolCall.functionCall._toolCallId  // Bedrock API用にtoolCallIdを保持
             });
@@ -9094,15 +9126,15 @@ const appLogic = {
                 break;
             }
         }
-    
+
         if (chat.persistentMemory) {
             state.currentPersistentMemory = chat.persistentMemory;
         }
         await dbUtils.saveChat();
-    
+
         state.currentScene = state.currentPersistentMemory?.scene_stack?.slice(-1)[0] || null;
         state.currentStyleProfiles = state.currentPersistentMemory?.style_profiles || {};
-    
+
         return { toolResults, containsTerminalAction, search_results: aggregatedSearchResults, internalUiActions };
     },
 
@@ -9209,8 +9241,8 @@ const appLogic = {
         editArea.appendChild(actionsDiv);
 
         messageElement.classList.add('editing');
-        if(contentDiv) contentDiv.classList.add('hidden');
-        if(cascadeControls) cascadeControls.classList.add('hidden');
+        if (contentDiv) contentDiv.classList.add('hidden');
+        if (cascadeControls) cascadeControls.classList.add('hidden');
         editArea.classList.remove('hidden');
 
         uiUtils.adjustTextareaHeight(textarea, 400); // 編集開始時に一度だけ高さを調整
@@ -9293,7 +9325,7 @@ const appLogic = {
                 }
                 contentDiv.appendChild(fragment);
             }
-            
+
             // 新しく追加された画像をIntersectionObserverの監視対象に追加
             requestAnimationFrame(() => {
                 const newImages = contentDiv.querySelectorAll('.lazy-load-image[data-image-id]');
@@ -9345,7 +9377,7 @@ const appLogic = {
                 details.appendChild(list);
                 detailsFragment.appendChild(details);
             }
-            
+
             // 生成したメタ情報を適切な場所に追加
             if (contentDiv.innerHTML.trim() !== '') {
                 contentDiv.appendChild(detailsFragment);
@@ -9386,15 +9418,15 @@ const appLogic = {
 
     // メッセージ編集をキャンセル
     cancelEditMessage(index, messageElement = null) {
-          if (!messageElement) {
-              messageElement = elements.messageContainer.querySelector(`.message[data-index="${index}"]`);
-          }
-          if (messageElement) {
-              this.finishEditing(messageElement);
-          } else if (state.editingMessageIndex === index) {
-              state.editingMessageIndex = null;
-              console.log("編集キャンセル: 要素が見つかりませんでしたがインデックスをリセット:", index);
-          }
+        if (!messageElement) {
+            messageElement = elements.messageContainer.querySelector(`.message[data-index="${index}"]`);
+        }
+        if (messageElement) {
+            this.finishEditing(messageElement);
+        } else if (state.editingMessageIndex === index) {
+            state.editingMessageIndex = null;
+            console.log("編集キャンセル: 要素が見つかりませんでしたがインデックスをリセット:", index);
+        }
     },
     // 編集UIを終了する共通処理
     finishEditing(messageElement) {
@@ -9406,9 +9438,9 @@ const appLogic = {
         messageElement.style.removeProperty('width');
 
         messageElement.classList.remove('editing');
-        if(contentDiv) contentDiv.classList.remove('hidden');
-        if(cascadeControls) cascadeControls.classList.remove('hidden');
-        if(editArea) {
+        if (contentDiv) contentDiv.classList.remove('hidden');
+        if (cascadeControls) cascadeControls.classList.remove('hidden');
+        if (editArea) {
             editArea.classList.add('hidden');
             editArea.innerHTML = '';
         }
@@ -9436,8 +9468,8 @@ const appLogic = {
             return;
         }
         if (index < 0 || index >= state.currentMessages.length) {
-             console.error("削除対象のインデックスが無効:", index);
-             return;
+            console.error("削除対象のインデックスが無効:", index);
+            return;
         }
 
         const messageToDelete = state.currentMessages[index];
@@ -9488,56 +9520,56 @@ const appLogic = {
 
             try {
                 uiUtils.renderChatMessages();
-    
+
                 let newTitleForSave = null;
                 const currentChatData = state.currentChatId ? await dbUtils.getChat(state.currentChatId) : null;
-    
+
                 if (requiresTitleUpdate) {
                     const newFirstUserMessage = newFirstUserMsgIndex !== -1 ? state.currentMessages[newFirstUserMsgIndex] : null;
                     newTitleForSave = newFirstUserMessage ? newFirstUserMessage.content.substring(0, 50) : "無題のチャット";
                 } else if (currentChatData) {
                     newTitleForSave = currentChatData.title;
                 }
-    
+
                 await dbUtils.saveChat(newTitleForSave);
-    
+
                 if (requiresTitleUpdate) {
                     uiUtils.updateChatTitle(newTitleForSave);
                 }
-    
+
                 if (state.currentMessages.length === 0 && !state.currentSystemPrompt && state.currentChatId) {
                     console.log("チャットが空になったためリセットします。");
                     this.startNewChat();
                 }
-                
+
                 if (state.settings.autoScroll) {
                     requestAnimationFrame(() => {
                         this.scrollToBottom();
                     });
                 }
-    
+
             } catch (error) {
                 console.error("メッセージ削除後のチャット保存/取得エラー:", error);
                 await uiUtils.showCustomAlert("メッセージ削除後のチャット保存に失敗しました。");
             }
-    
+
         } else {
-             console.log("削除キャンセル");
+            console.log("削除キャンセル");
         }
     },
 
     async retryFromMessage(index) {
         if (state.isSending) { await uiUtils.showCustomAlert("送信中です。"); return; }
-        
+
         const userMessage = state.currentMessages[index];
         if (!userMessage || userMessage.role !== 'user') return;
-    
+
         const messageContentPreview = userMessage.content.substring(0, 30) + "...";
         const confirmed = await uiUtils.showCustomConfirm(`「${messageContentPreview}」から再生成しますか？\n(これより未来の会話履歴は削除され、既存の応答は別候補として保持されます)`);
-    
+
         if (confirmed) {
             uiUtils.setSendingState(true);
-    
+
             let originalResponses = [];
             // 保留中のカスケード応答があれば、それを使用する
             if (state.pendingCascadeResponses) {
@@ -9555,41 +9587,41 @@ const appLogic = {
                     originalResponses.push(firstModelResponse);
                 }
             }
-    
+
             // 次の再生成に備えて、元の応答をstateに待避させる
             state.pendingCascadeResponses = originalResponses;
-            
+
             // UI上から古い応答を削除し、stateもユーザープロンプトまでの状態に戻す
             state.currentMessages.splice(index + 1);
             uiUtils.renderChatMessages();
-    
+
             let modelMessage;
-    
+
             try {
                 const baseHistory = state.currentMessages.filter(msg => !msg.isCascaded || msg.isSelected);
                 const historyForApi = this._prepareApiHistory(baseHistory);
-    
+
                 modelMessage = { role: 'model', content: '', timestamp: Date.now() };
                 state.currentMessages.push(modelMessage);
                 const modelMessageIndex = state.currentMessages.length - 1;
                 uiUtils.appendMessage(modelMessage.role, modelMessage.content, modelMessageIndex, true);
                 this.scrollToBottom();
-    
+
                 const generationConfig = {};
                 if (state.settings.temperature !== null) generationConfig.temperature = state.settings.temperature;
                 if (state.settings.maxTokens !== null) generationConfig.maxOutputTokens = state.settings.maxTokens;
                 if (state.settings.topK !== null) generationConfig.topK = state.settings.topK;
                 if (state.settings.topP !== null) generationConfig.topP = state.settings.topP;
-                 if (state.settings.thinkingBudget !== null || state.settings.includeThoughts) {
+                if (state.settings.thinkingBudget !== null || state.settings.includeThoughts) {
                     generationConfig.thinkingConfig = {};
-                    if(state.settings.thinkingBudget !== null) generationConfig.thinkingConfig.thinkingBudget = state.settings.thinkingBudget;
-                    if(state.settings.includeThoughts) generationConfig.thinkingConfig.includeThoughts = true;
+                    if (state.settings.thinkingBudget !== null) generationConfig.thinkingConfig.thinkingBudget = state.settings.thinkingBudget;
+                    if (state.settings.includeThoughts) generationConfig.thinkingConfig.includeThoughts = true;
                 }
                 const systemInstruction = state.currentSystemPrompt?.trim() ? { role: "system", parts: [{ text: state.currentSystemPrompt.trim() }] } : null;
-    
+
                 const newMessages = await this._internalHandleSend(historyForApi, generationConfig, systemInstruction);
                 const newAggregatedMessage = this._aggregateMessages(newMessages);
-    
+
                 // 成功したので、待避していたデータを取得し、待避領域をクリア
                 const finalOriginalResponses = state.pendingCascadeResponses || [];
                 state.pendingCascadeResponses = null;
@@ -9606,24 +9638,24 @@ const appLogic = {
 
                 // 最終結果のexecutedFunctionsを初期化
                 newAggregatedMessage.executedFunctions = newAggregatedMessage.executedFunctions || [];
-                
+
                 // 再生成中に実行された関数呼び出しがあれば、それらも新しいメッセージのexecutedFunctionsに追加する
                 newMessages.forEach(msg => {
                     if (msg.executedFunctions && Array.isArray(msg.executedFunctions)) {
-                         msg.executedFunctions.forEach(funcName => {
-                             if (!newAggregatedMessage.executedFunctions.includes(funcName)) {
-                                 newAggregatedMessage.executedFunctions.push(funcName);
-                             }
-                         });
+                        msg.executedFunctions.forEach(funcName => {
+                            if (!newAggregatedMessage.executedFunctions.includes(funcName)) {
+                                newAggregatedMessage.executedFunctions.push(funcName);
+                            }
+                        });
                     }
                     // ツール実行結果からも復元
-                     if (msg.role === 'tool' && msg.name) {
-                         if (!newAggregatedMessage.executedFunctions.includes(msg.name)) {
-                             newAggregatedMessage.executedFunctions.push(msg.name);
-                         }
-                     }
+                    if (msg.role === 'tool' && msg.name) {
+                        if (!newAggregatedMessage.executedFunctions.includes(msg.name)) {
+                            newAggregatedMessage.executedFunctions.push(msg.name);
+                        }
+                    }
                 });
-                
+
                 newAggregatedMessage.isCascaded = true;
                 newAggregatedMessage.isSelected = true;
                 newAggregatedMessage.siblingGroupId = siblingGroupId;
@@ -9632,35 +9664,35 @@ const appLogic = {
                 uiUtils.renderChatMessages();
                 this.scrollToBottom();
                 await dbUtils.saveChat();
-    
-            } catch(error) {
+
+            } catch (error) {
                 console.error("再生成エラー:", error);
                 const errorMessage = (error.name !== 'AbortError') ? (error.message || "不明なエラーが発生しました。") : "リクエストがキャンセルされました。";
-                
-    
+
+
                 // 1. プレースホルダーを履歴から削除
                 const placeholderIndex = state.currentMessages.findIndex(m => m.timestamp === modelMessage.timestamp);
                 if (placeholderIndex !== -1) {
                     state.currentMessages.splice(placeholderIndex, 1);
                 }
-    
+
                 // 2. DBにはエラーメッセージを含まない現在の履歴（ユーザープロンプトまで）を保存
                 await dbUtils.saveChat();
-    
+
                 // 3. UI表示のためだけに、エラーメッセージを現在のメッセージリストに追加
                 state.currentMessages.push({ role: 'error', content: errorMessage, timestamp: Date.now(), isNonPersistent: true });
-    
+
                 // 4. UIを再描画（これで「ユーザープロンプト → エラー」表示になる）
                 uiUtils.renderChatMessages();
-    
+
                 // 5. 次の操作に備え、UI表示用に追加したエラーメッセージを履歴から削除
                 state.currentMessages = state.currentMessages.filter(m => !m.isNonPersistent);
-                
+
                 this.scrollToBottom();
-    
+
             } finally {
                 uiUtils.setSendingState(false);
-                state.abortController = null; 
+                state.abortController = null;
                 if (state.settings.autoScroll) {
                     requestAnimationFrame(() => {
                         this.scrollToBottom();
@@ -9668,7 +9700,7 @@ const appLogic = {
                 }
             }
         }
-    },    
+    },
 
     // --- カスケード応答操作 ---
     getCascadedSiblings(index, includeSelf = false) {
@@ -9692,7 +9724,7 @@ const appLogic = {
         if (!currentMsg || !currentMsg.isCascaded || !currentMsg.siblingGroupId) return;
 
         const groupId = currentMsg.siblingGroupId;
-        
+
         const siblingsWithIndices = state.currentMessages
             .map((msg, i) => ({ msg, originalIndex: i }))
             .filter(item => item.msg.siblingGroupId === groupId);
@@ -9720,7 +9752,7 @@ const appLogic = {
 
             // UIを再描画し、その後で操作UIを強制的に再表示する
             uiUtils.renderChatMessages();
-            
+
             // requestAnimationFrameを使用して、DOMの更新が完了した後に実行
             requestAnimationFrame(() => {
                 const elementToShowActions = elements.messageContainer.querySelector(`.message[data-index="${newSelectedIndex}"]`);
@@ -9806,7 +9838,7 @@ const appLogic = {
             }
         }
     },
-    
+
     // --- ファイルアップロード関連ロジック ---
     async handleFileSelection(fileList) {
         if (!fileList || fileList.length === 0) return;
@@ -9876,7 +9908,7 @@ const appLogic = {
         console.log(`${addedCount}個のファイルが選択リストに新しく追加されました。`);
     },
 
-    
+
 
     removeSelectedFile(indexToRemove) {
         if (indexToRemove >= 0 && indexToRemove < state.selectedFilesForUpload.length) {
@@ -9969,16 +10001,16 @@ const appLogic = {
         let lastError = null;
         const maxRetries = state.settings.enableAutoRetry ? state.settings.maxRetries : 0;
         const forceCalling = state.settings.forceFunctionCalling && isFirstCall;
-        
+
         // state.abortControllerを確実に作成（ユーザーの手動キャンセル用）
         if (!state.abortController) {
             state.abortController = new AbortController();
         }
-        
+
         // タイムアウト設定の取得
         const timeoutEnabled = state.settings.enableApiTimeout || false;
         const timeoutMs = timeoutEnabled ? (state.settings.apiTimeoutSeconds || 90) * 1000 : null;
-        
+
         if (timeoutEnabled) {
             console.log(`[Timeout] APIタイムアウト有効: ${timeoutMs}ms`);
         } else {
@@ -9990,7 +10022,7 @@ const appLogic = {
             const attemptController = new AbortController();
             let timeoutId = null;
             let abortListener = null;
-            
+
             try {
                 // state.abortControllerの中断イベントを監視し、attemptControllerにも伝播
                 if (state.abortController && !state.abortController.signal.aborted) {
@@ -10000,7 +10032,7 @@ const appLogic = {
                     };
                     state.abortController.signal.addEventListener('abort', abortListener, { once: true });
                 }
-                
+
                 if (state.abortController?.signal.aborted) {
                     throw new DOMException("リクエストがキャンセルされました。", "AbortError");
                 }
@@ -10015,7 +10047,7 @@ const appLogic = {
                         delay = Math.min(exponentialDelay, maxDelay);
                     }
 
-                    uiUtils.setLoadingIndicatorText(`APIエラー 再試行(${attempt}回目)... ${Math.round(delay/1000)}秒待機`);
+                    uiUtils.setLoadingIndicatorText(`APIエラー 再試行(${attempt}回目)... ${Math.round(delay / 1000)}秒待機`);
                     console.log(`API呼び出し失敗。${delay}ms後にリトライします... (試行 ${attempt + 1}/${maxRetries + 1})`);
                     await interruptibleSleep(delay, state.abortController.signal);
                 }
@@ -10073,7 +10105,7 @@ const appLogic = {
 
                 // 非ストリーミングの処理に統一
                 const responseData = await response.json();
-                
+
                 // タイマークリア（成功時）
                 if (timeoutId) {
                     clearTimeout(timeoutId);
@@ -10081,7 +10113,7 @@ const appLogic = {
                     const elapsed = Date.now() - startTime;
                     console.log(`[API Call] レスポンス取得成功 (所要時間: ${elapsed}ms)`);
                 }
-                
+
                 if (responseData.promptFeedback) {
                     const blockReason = responseData.promptFeedback.blockReason || 'SAFETY';
                     throw new Error(`APIが応答をブロックしました (理由: ${blockReason})`);
@@ -10089,7 +10121,7 @@ const appLogic = {
                 if (!responseData.candidates || responseData.candidates.length === 0) {
                     throw new Error("API応答に有効な候補(candidates)が含まれていません。プロンプトがブロックされた可能性があります。");
                 }
-                
+
                 const candidate = responseData.candidates[0];
                 const finishReasonError = getFinishReasonError(candidate);
                 if (finishReasonError) throw finishReasonError;
@@ -10107,7 +10139,7 @@ const appLogic = {
                         finalThoughtParts.push(part);
                         finalToolCalls.push({ functionCall: part.functionCall });
                     }
-                    
+
                     // Thought Partの検出 (旧形式: thought がオブジェクトの場合)
                     else if (part.thought && part.thought !== true) {
                         finalThoughtParts.push(part);
@@ -10122,7 +10154,7 @@ const appLogic = {
                             finalContent += part.text;
                         }
                     }
-                    
+
                     // 関数呼び出しの処理（thoughtSignatureを持たない通常のfunctionCall）
                     else if (part.functionCall) {
                         finalToolCalls.push({ functionCall: part.functionCall });
@@ -10137,7 +10169,7 @@ const appLogic = {
                         }
                     });
                 }
-                
+
                 const safetyError = checkForSafetyRejection(candidate, finalContent, finalToolCalls, []);
                 if (safetyError) throw safetyError;
 
@@ -10162,14 +10194,14 @@ const appLogic = {
                     clearTimeout(timeoutId);
                     timeoutId = null;
                 }
-                
+
                 // リスナーのクリーンアップ
                 if (abortListener && state.abortController) {
                     state.abortController.signal.removeEventListener('abort', abortListener);
                 }
 
                 lastError = error;
-                
+
                 // タイムアウトによるAbortの判定
                 if (error.name === 'AbortError' && attemptController.signal.aborted && !state.abortController?.signal.aborted) {
                     // attemptControllerによるAbort = タイムアウト
@@ -10179,19 +10211,19 @@ const appLogic = {
                     console.warn(`[Timeout] タイムアウト検出。エラーとして扱い、リトライ機構に委ねます。`);
                     // continueせずにそのままcatchブロックの末尾へ（= リトライループ継続）
                 }
-                
+
                 // ユーザーによる手動キャンセル
                 if (error.name === 'AbortError' && state.abortController?.signal.aborted) {
                     console.error("待機中または通信中に中断されました。リトライを中止します。", error);
                     throw error;
                 }
-                
+
                 // 4xx系エラーは即座に終了
                 if (error.status && error.status >= 400 && error.status < 500) {
                     console.error(`リトライ不可のエラー (ステータス: ${error.status})。リトライを中止します。`, error);
                     throw error;
                 }
-                
+
                 console.warn(`API呼び出し/処理試行 ${attempt + 1} が失敗しました。`, error);
                 if (error.candidate) {
                     console.error("ブロックされた応答の詳細:", JSON.stringify(error.candidate, null, 2));
@@ -10206,7 +10238,7 @@ const appLogic = {
     createRipple(event, button) {
         // 既存のrippleを削除
         const existingRipple = button.querySelector(".ripple");
-        if(existingRipple) {
+        if (existingRipple) {
             existingRipple.remove();
         }
 
@@ -10215,7 +10247,7 @@ const appLogic = {
         const radius = diameter / 2;
 
         circle.style.width = circle.style.height = `${diameter}px`;
-        
+
         const rect = button.getBoundingClientRect();
         circle.style.left = `${event.clientX - rect.left - radius}px`;
         circle.style.top = `${event.clientY - rect.top - radius}px`;
@@ -10264,27 +10296,27 @@ const appLogic = {
      * @param {string} url - 画像のURL
      * @returns {Promise<object>} 処理結果
      */
-     async applyBackgroundImageFromUrl(url) {
+    async applyBackgroundImageFromUrl(url) {
         if (!url || typeof url !== 'string') {
             return { error: "画像URLが無効です。" };
         }
         console.log(`一時的な背景画像をURLから適用: ${url}`);
-        
+
         // 既存のオブジェクトURLがあれば解放する
         uiUtils.revokeExistingObjectUrl();
-        
+
         // 新しいURLをstateに保存
         state.backgroundImageUrl = url;
-        
+
         const chatScreen = elements.chatScreen;
         const isAlreadyVisible = chatScreen.classList.contains('background-visible');
-    
+
         // フェードアウト完了後に画像を設定してフェードインさせる処理
         const switchImageAndFadeIn = () => {
             document.documentElement.style.setProperty('--chat-background-image', `url("${url}")`);
             chatScreen.classList.add('background-visible');
         };
-    
+
         if (isAlreadyVisible) {
             // 画像が表示されている場合：一度フェードアウトさせてから切り替える
             chatScreen.addEventListener('transitionend', switchImageAndFadeIn, { once: true });
@@ -10293,15 +10325,15 @@ const appLogic = {
             // 画像がない場合：即座に切り替えてフェードイン
             switchImageAndFadeIn();
         }
-        
+
         // 一時的な背景が適用されたことを示すフラグを立てる
-    
+
 
         state.isTemporaryBackgroundActive = true;
-        
+
         // サムネイルUIを更新（新しいURLでサムネイルが表示される）
         uiUtils.updateBackgroundSettingsUI();
-        
+
         const message = `背景画像を一時的に変更しました。この変更はリロードするか、設定から背景を再設定すると元に戻ります。`;
         return { success: true, message: message };
     },
@@ -10324,7 +10356,7 @@ const appLogic = {
                 throw new Error(`画像の取得に失敗しました (HTTPステータス: ${response.status})`);
             }
             const blob = await response.blob();
-            
+
             const maxSize = 5 * 1024 * 1024; // 5MB
             if (blob.size > maxSize) {
                 return { error: `画像サイズが大きすぎます (${(maxSize / 1024 / 1024).toFixed(1)}MB以下にしてください)` };
@@ -10336,7 +10368,7 @@ const appLogic = {
             state.backgroundImageUrl = URL.createObjectURL(blob);
             document.documentElement.style.setProperty('--chat-background-image', `url(${state.backgroundImageUrl})`);
             uiUtils.updateBackgroundSettingsUI();
-            
+
             console.log("背景画像をURLから正常に更新しました。");
             return { success: true, message: "背景画像を更新しました。" };
 
@@ -10344,7 +10376,7 @@ const appLogic = {
             console.error("背景画像のURLからの取得エラー:", error);
             // CORSエラーはコンソールに表示されることが多いが、プログラムからは詳細を取得できない場合がある
             if (error instanceof TypeError) { // ネットワークエラーはCORSの可能性が高い
-                 return { error: `画像の取得に失敗しました。指定されたURLのサーバーが外部からのアクセスを許可していない(CORSポリシー)可能性があります。` };
+                return { error: `画像の取得に失敗しました。指定されたURLのサーバーが外部からのアクセスを許可していない(CORSポリシー)可能性があります。` };
             }
             return { error: `画像の取得中にエラーが発生しました: ${error.message}` };
         } finally {
@@ -10357,10 +10389,10 @@ const appLogic = {
         if (!state.activeProfile) {
             return uiUtils.showCustomAlert("エクスポートするプロファイルが選択されていません。");
         }
-        
+
         // stateのデータを汚染しないようにディープコピーする
         const profileToExport = JSON.parse(JSON.stringify(state.activeProfile));
-        
+
         // アイコンBlobがあればBase64に変換して埋め込む
         if (state.activeProfile.icon instanceof Blob) {
             try {
@@ -10405,7 +10437,7 @@ const appLogic = {
                 }
 
                 let newProfile = { ...importedData };
-                
+
                 if (newProfile.icon && newProfile.icon.data) {
                     try {
                         newProfile.icon = await this.base64ToBlob(newProfile.icon.data, newProfile.icon.mimeType);
@@ -10425,7 +10457,7 @@ const appLogic = {
                 const newId = await dbUtils.addProfile(newProfile);
                 const newlyAddedProfile = await dbUtils.getProfile(newId);
                 state.profiles.push(newlyAddedProfile);
-                
+
                 uiUtils.updateProfileSwitcherUI();
                 await uiUtils.showCustomAlert(`プロファイル「${finalName}」をインポートしました。`);
 
@@ -10436,7 +10468,7 @@ const appLogic = {
         };
         reader.readAsText(file);
     },
-    updateAssetCount: async function() {
+    updateAssetCount: async function () {
         try {
             const assets = await dbUtils.getAllAssets();
             elements.assetCountDisplay.textContent = `現在 ${assets.length} 枚のアセットが保存されています。`;
@@ -10446,7 +10478,7 @@ const appLogic = {
         }
     },
 
-    convertBlobToWebP: function(originalBlob) {
+    convertBlobToWebP: function (originalBlob) {
         return new Promise((resolve) => {
             const reader = new FileReader();
             reader.onload = (e) => {
@@ -10481,7 +10513,7 @@ const appLogic = {
         });
     },
 
-    handleAssetExport: async function() {
+    handleAssetExport: async function () {
         uiUtils.showProgressDialog('エクスポート準備中...');
         try {
             const assets = await dbUtils.getAllAssets();
@@ -10509,7 +10541,7 @@ const appLogic = {
                     fileName = `${baseName}_${count}`;
                 }
                 usedFileNames.add(fileName);
-                
+
                 manifest.push({ asset_name: asset.name, file_name: fileName });
                 zip.file(fileName, asset.blob);
             }
@@ -10517,7 +10549,7 @@ const appLogic = {
             zip.file("manifest.json", JSON.stringify(manifest, null, 2));
 
             const content = await zip.generateAsync({ type: "blob" });
-            
+
             uiUtils.updateProgressMessage('ファイルをダウンロード中...');
             const a = document.createElement("a");
             const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -10536,7 +10568,7 @@ const appLogic = {
         }
     },
 
-    handleAssetImport: async function(file) {
+    handleAssetImport: async function (file) {
         if (!file) return;
         if (typeof JSZip === 'undefined') {
             return uiUtils.showCustomAlert("Zip処理ライブラリが読み込まれていません。");
@@ -10596,7 +10628,7 @@ const appLogic = {
                 uiUtils.updateProgressMessage(`アセットを処理中 (${i + 1}/${assetsToImport.length}): ${assetName}`);
 
                 const existingAsset = await dbUtils.getAsset(assetName);
-                
+
                 if (existingAsset) {
                     console.log(`[Import] 競合を検出: アセット「${assetName}」は既に存在します。`);
                     if (!applyToAll) {
@@ -10626,12 +10658,12 @@ const appLogic = {
 
                 const blob = await item.file.async("blob");
                 const webpBlob = await this.convertBlobToWebP(blob);
-                
+
                 await assetDB.save({ name: assetName, blob: webpBlob, createdAt: new Date() });
                 console.log(`[Import] アセット「${assetName}」をDBに保存しました。`);
                 importedCount++;
             }
-            
+
             uiUtils.hideProgressDialog();
             await uiUtils.showCustomAlert(`${importedCount}件のアセットのインポート処理が完了しました。`);
             await this.updateAssetCount();
@@ -10694,18 +10726,18 @@ const appLogic = {
 
                 const actionsDiv = document.createElement('div');
                 actionsDiv.className = 'asset-actions-item';
-                
+
                 const deleteBtn = document.createElement('button');
                 deleteBtn.innerHTML = '<span class="material-symbols-outlined">delete</span>';
                 deleteBtn.title = "削除";
                 deleteBtn.onclick = () => this.confirmDeleteAsset(asset.name);
 
                 actionsDiv.appendChild(deleteBtn);
-                
+
                 itemDiv.appendChild(thumbnail);
                 itemDiv.appendChild(infoDiv);
                 itemDiv.appendChild(actionsDiv);
-                
+
                 container.appendChild(itemDiv);
             });
 
@@ -10727,7 +10759,7 @@ const appLogic = {
     updateCharacterProfileButtonVisibility() {
         const memory = state.currentPersistentMemory || {};
         const hasCharacterData = Object.keys(memory).some(key => key.startsWith('character_memory_'));
-        
+
         elements.characterProfileBtn.disabled = !hasCharacterData;
         if (!hasCharacterData) {
             elements.characterProfileBtn.title = "キャラクターデータがありません";
@@ -10750,9 +10782,9 @@ const appLogic = {
 
         const listContainer = elements.characterListPane;
         listContainer.innerHTML = '';
-        
+
         const characterNames = characterKeys.map(key => key.replace('character_memory_', ''));
-        
+
         characterNames.forEach(name => {
             const itemDiv = document.createElement('div');
             itemDiv.className = 'profile-character-item';
@@ -10821,10 +10853,10 @@ const appLogic = {
                 </div>
                 <div id="profile-relationships-grid" class="profile-relationships-grid">
                     ${Object.keys(data.relationships || {}).map((targetName, index) => {
-                        const escapedNameHtml = htmlUtils.escapeHtml(targetName);
-                        const escapedContext = htmlUtils.escapeHtml(data.relationships[targetName].context || '');
-                        const affinity = data.relationships[targetName].affinity || 0;
-                        return `
+            const escapedNameHtml = htmlUtils.escapeHtml(targetName);
+            const escapedContext = htmlUtils.escapeHtml(data.relationships[targetName].context || '');
+            const affinity = data.relationships[targetName].affinity || 0;
+            return `
                         <div class="profile-relationship-card" data-rel-index="${index}">
                             <div class="profile-relationship-card-header">
                                 <h5>${escapedNameHtml}</h5>
@@ -10838,7 +10870,7 @@ const appLogic = {
                             <textarea id="context-${index}">${escapedContext}</textarea>
                         </div>
                         `;
-                    }).join('')}
+        }).join('')}
                 </div>
             </div>
             <div class="profile-detail-section profile-delete-character-section">
@@ -10854,7 +10886,7 @@ const appLogic = {
         detailPane.querySelector('#profile-location').addEventListener('blur', createFieldUpdater(['current_location']));
         detailPane.querySelector('#profile-summary').addEventListener('blur', createFieldUpdater(['summary']));
         detailPane.querySelector('#profile-goal').addEventListener('blur', createFieldUpdater(['short_term_goal']));
-        
+
         detailPane.querySelector('#add-relationship-btn').addEventListener('click', () => this.addRelationship(characterName));
         detailPane.querySelector('#delete-character-btn').addEventListener('click', () => this.confirmDeleteCharacter(characterName)); // 追加
 
@@ -10886,7 +10918,7 @@ const appLogic = {
             current = current[fieldPath[i]];
         }
         const finalKey = fieldPath[fieldPath.length - 1];
-        
+
         // affinityは数値に変換
         if (finalKey === 'affinity') {
             newValue = parseInt(newValue, 10) || 0;
@@ -10920,7 +10952,7 @@ const appLogic = {
 
         // 新しい空の関係を追加
         memory.relationships[targetName] = { affinity: 0, context: "" };
-        
+
         try {
             await dbUtils.saveChat();
             // UIを再描画して新しいカードを表示
@@ -10971,7 +11003,7 @@ const appLogic = {
             try {
                 await dbUtils.saveChat();
                 console.log(`キャラクター「${characterName}」のデータを削除しました。`);
-                
+
                 // ダイアログを再オープンしてリストを更新
                 this.openCharacterProfileDialog();
                 // フローティングボタンの状態も更新
@@ -10992,7 +11024,7 @@ const appLogic = {
             try {
                 await assetDB.delete(assetName);
                 console.log(`アセット「${assetName}」を削除しました。`);
-                
+
                 // UIを再描画
                 this.openAssetManagementDialog();
                 // 設定画面のカウント表示も更新
@@ -11048,7 +11080,7 @@ const appLogic = {
                 } catch (cleanupErr) {
                     console.warn("image_store クリーンアップ中にエラー:", cleanupErr);
                 }
-                
+
                 // UIを再描画
                 this.openAssetManagementDialog();
                 // 設定画面のカウント表示も更新
@@ -11062,7 +11094,7 @@ const appLogic = {
     },
 
 
-    showAssetConflictDialog: function(assetName) {
+    showAssetConflictDialog: function (assetName) {
         return new Promise(resolve => {
             const dialog = elements.assetConflictDialog;
             elements.assetConflictMessage.textContent = `アセット「${assetName}」は既に存在します。どうしますか？`;
@@ -11086,7 +11118,7 @@ const appLogic = {
                     });
                 }
             };
-            
+
             // 既存のリスナーがあれば念のため削除
             // (dialog.close()で消えるはずだが、安全のため)
             const oldListener = actionArea._listener;
@@ -11148,24 +11180,24 @@ const appLogic = {
         memoryItems.forEach((item, index) => {
             const itemDiv = document.createElement('div');
             itemDiv.className = 'memory-item';
-            
+
             const textSpan = document.createElement('span');
             textSpan.className = 'memory-item-text';
             textSpan.textContent = item;
-            
+
             const actionsDiv = document.createElement('div');
             actionsDiv.className = 'memory-item-actions';
-            
+
             const editBtn = document.createElement('button');
             editBtn.innerHTML = '<span class="material-symbols-outlined">edit</span>';
             editBtn.title = "編集";
             editBtn.onclick = () => this.editMemoryItem(index);
-            
+
             const deleteBtn = document.createElement('button');
             deleteBtn.innerHTML = '<span class="material-symbols-outlined">delete</span>';
             deleteBtn.title = "削除";
             deleteBtn.onclick = () => this.deleteMemoryItem(index);
-            
+
             actionsDiv.appendChild(editBtn);
             actionsDiv.appendChild(deleteBtn);
             itemDiv.appendChild(textSpan);
@@ -11195,7 +11227,7 @@ const appLogic = {
         try {
             const memoryData = await dbUtils.getMemory(state.activeProfileId);
             if (!memoryData || !memoryData.items || !memoryData.items[index]) return;
-            
+
             const currentItem = memoryData.items[index];
             const newItem = await uiUtils.showCustomPrompt("記憶を編集:", currentItem);
 
@@ -11218,7 +11250,7 @@ const appLogic = {
 
             const itemToDelete = memoryData.items[index];
             const confirmed = await uiUtils.showCustomConfirm(`以下の記憶を削除しますか？\n\n「${itemToDelete}」`);
-            
+
             if (confirmed) {
                 memoryData.items.splice(index, 1);
                 await dbUtils.saveMemory(state.activeProfileId, memoryData);
@@ -11363,7 +11395,7 @@ const appLogic = {
             if (newItems.length > 0) {
                 const existingItems = new Set(memoryData.items);
                 const uniqueNewItems = newItems.filter(item => !existingItems.has(item));
-                
+
                 if (uniqueNewItems.length > 0) {
                     memoryData.items.push(...uniqueNewItems);
                     await dbUtils.saveMemory(state.activeProfileId, memoryData);
@@ -11411,7 +11443,7 @@ const appLogic = {
 
         if (state.currentSummarizedContext && state.currentSummarizedContext.summaryRange) {
             const originalEndIndex = state.currentSummarizedContext.summaryRange.end;
-            
+
             // 要約済み範囲に含まれる表示メッセージの数をカウント
             const summarizedVisibleMessages = visibleMessages.filter(msg => {
                 const originalIndex = state.currentMessages.indexOf(msg);
@@ -11459,7 +11491,7 @@ const appLogic = {
             const systemInstruction = {
                 parts: [{ text: state.settings.summarySystemPrompt }]
             };
-            
+
             const userContent = `【要約対象の会話履歴】\n${originalText}`;
 
             const requestBody = {
@@ -11557,7 +11589,7 @@ const appLogic = {
             elements.summaryEditor.disabled = true;
             elements.summaryRegenerateBtn.disabled = true;
             elements.summaryConfirmBtn.disabled = true;
-            
+
             // APIを再呼び出し
             await this._callSummaryApi(originalText);
         } else {
@@ -11592,10 +11624,10 @@ const appLogic = {
             await dbUtils.saveChat();
 
             elements.summaryDialog.close('confirm');
-            
+
             // UIを再描画してサマリーマーカーを表示させる
             uiUtils.renderChatMessages();
-            
+
             await uiUtils.showCustomAlert(`履歴の要約を保存しました。\n次回以降、APIには要約された内容が送信されます。`);
 
         } catch (error) {
@@ -11688,7 +11720,7 @@ const appLogic = {
         const step = (currentTime) => {
             if (startTime === null) startTime = currentTime;
             const elapsed = currentTime - startTime;
-            
+
             // アニメーションの各フレームでscrollHeightを再取得
             const endY = mainContent.scrollHeight - mainContent.clientHeight;
             const distance = endY - startY;
@@ -11714,7 +11746,7 @@ const appLogic = {
      * @param {boolean} isManual - 手動実行かどうか
      * @returns {Promise<{metadataJson: string, localAssets: Map<string, {blob: Blob, hash: string}>}>}
      */
-     async _prepareExportData() {
+    async _prepareExportData() {
         try {
             // ディープコピーの対象を、Blobを含まないメタデータのみに限定する
             const [profiles, chats, memories, allSettings] = await Promise.all([
@@ -11737,7 +11769,7 @@ const appLogic = {
                 request.onerror = (e) => rej(e.target.error);
             });
 
-            const settingsForExport = allSettings.filter(setting => 
+            const settingsForExport = allSettings.filter(setting =>
                 !['dropboxTokens', 'syncIsDirty', 'syncLastError', 'lastSyncId'].includes(setting.key)
             );
 
@@ -11790,7 +11822,7 @@ const appLogic = {
                                 if (!attachment.assetId && attachment.base64Data) {
                                     attachment.assetId = `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
                                     if (!chat._needsUpdate) chat._needsUpdate = true;
-                                    
+
                                     try {
                                         const blob = await this.base64ToBlob(attachment.base64Data, attachment.mimeType);
                                         addAsset(attachment.assetId, blob);
@@ -11799,7 +11831,7 @@ const appLogic = {
                                     } catch (e) {
                                         console.error(`[Data Export V2] 新規添付ファイルのアセット化に失敗:`, e);
                                     }
-                                } 
+                                }
                                 else if (attachment.assetId) {
                                     const imgData = chatImages.find(img => img.id === attachment.assetId);
                                     if (imgData && imgData.blob) {
@@ -11901,7 +11933,7 @@ const appLogic = {
                 }
             };
 
-            
+
             console.log(`[Data Export V2] データ準備完了。syncId: ${syncId}, アセット数: ${localAssets.size}`);
 
             return {
@@ -11922,19 +11954,19 @@ const appLogic = {
     async importDataFromString(jsonString) {
         console.log("[Data Import V2] 文字列からのデータインポートを開始します。");
         uiUtils.showProgressDialog('インポートデータを準備中...');
-    
+
         try {
             const parsedData = JSON.parse(jsonString);
             if (parsedData.version !== "2.0" || !parsedData.data) {
                 throw new Error("インポートデータの形式が無効か、バージョンが古いです。");
             }
-            
+
             const cloudData = parsedData.data;
 
             const localAssetsBeforeClear = new Map();
             const localImageAssets = await dbUtils.getAllAssets();
             localImageAssets.forEach(asset => {
-                if(asset.assetId && asset.blob) localAssetsBeforeClear.set(asset.assetId, asset.blob);
+                if (asset.assetId && asset.blob) localAssetsBeforeClear.set(asset.assetId, asset.blob);
             });
             const localChatImages = await new Promise((res, rej) => {
                 const store = dbUtils._getStore('image_store');
@@ -11943,7 +11975,7 @@ const appLogic = {
                 request.onerror = (e) => rej(e.target.error);
             });
             localChatImages.forEach(image => {
-                if(image.id && image.blob) localAssetsBeforeClear.set(image.id, image.blob);
+                if (image.id && image.blob) localAssetsBeforeClear.set(image.id, image.blob);
             });
             console.log(`[Sync Pull] ローカルに存在するアセットBlob: ${localAssetsBeforeClear.size}件をメモリに保持しました。`);
 
@@ -11952,7 +11984,7 @@ const appLogic = {
             (cloudData.assets || []).forEach(a => { if (a.assetId) requiredAssetIds.add(a.assetId); });
             (cloudData.chats || []).forEach(c => {
                 (c.messages || []).forEach(m => {
-                    if (m.imageIds) m.imageIds.forEach(id => { if(id) requiredAssetIds.add(id); });
+                    if (m.imageIds) m.imageIds.forEach(id => { if (id) requiredAssetIds.add(id); });
                 });
             });
             console.log(`[Sync Pull] クラウドが必要とするアセットID: ${requiredAssetIds.size}件`);
@@ -11980,15 +12012,15 @@ const appLogic = {
 
             // clearAndImportDataからの戻り値を受け取る
             const { removedAssetInfo } = await dbUtils.clearAndImportData(cloudData, localAssetsBeforeClear, downloadedAssets, requiredAssetIds);
-    
+
             console.log("[Data Import V2] データのインポートに成功しました。");
-            
+
             // 戻り値にクレンジング情報とメタデータを両方含める
             return {
                 ...parsedData, // syncId, exportedAtなどを含む
                 removedAssetInfo: removedAssetInfo // クレンジング情報を追加
             };
-    
+
         } catch (error) {
             console.error("[Data Import V2] インポート処理中にエラーが発生しました:", error);
             uiUtils.hideProgressDialog();
@@ -12016,7 +12048,7 @@ const appLogic = {
      * [PKCE] code_verifierを生成する
      * @returns {string} ランダムな文字列
      */
-     _generateCodeVerifier() {
+    _generateCodeVerifier() {
         const randomBytes = new Uint8Array(32);
         window.crypto.getRandomValues(randomBytes);
         return btoa(String.fromCharCode.apply(null, randomBytes))
@@ -12035,18 +12067,18 @@ const appLogic = {
         return btoa(String.fromCharCode.apply(null, new Uint8Array(hashBuffer)))
             .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
     },
-    
+
     async updateDropboxUIState() {
         const tokenData = await dbUtils.getSetting('dropboxTokens');
         const isAuthenticated = tokenData && tokenData.value && tokenData.value.access_token;
 
         elements.syncStatusHeaderIcon.style.display = isAuthenticated ? 'block' : 'none';
-        
+
         if (isAuthenticated) {
             document.body.classList.add('dropbox-connected');
             elements.dropboxAuthState.classList.add('hidden');
             elements.dropboxConnectedState.classList.remove('hidden');
-            
+
             // 最終同期日時を取得して表示
             const lastSyncSetting = await dbUtils.getSetting('lastSyncTimestamp');
             if (lastSyncSetting && lastSyncSetting.value) {
@@ -12104,7 +12136,7 @@ const appLogic = {
         const indicators = [
             elements.syncStatusHeaderIcon,
             elements.syncStatusSettingsIcon, // 設定画面のアイコンを追加
-            elements.syncProgressText 
+            elements.syncProgressText
         ].filter(Boolean);
 
         const statusMap = {
@@ -12120,7 +12152,7 @@ const appLogic = {
 
         indicators.forEach(element => {
             element.dataset.status = newStatus;
-            
+
             if (element.classList.contains('sync-status-header-icon')) { // 共通クラスで判定
                 element.textContent = statusInfo.icon;
                 element.title = message || statusInfo.text;
@@ -12135,7 +12167,7 @@ const appLogic = {
     },
 
     // --- Stable Diffusion連携機能の本体ロジック ---
-    handleStableDiffusionGeneration: async function(args, responseText = '') {
+    handleStableDiffusionGeneration: async function (args, responseText = '') {
         if (!state.settings.sdApiUrl) {
             return { error: "Stable Diffusion WebUIのURLが設定されていません。" };
         }
@@ -12152,7 +12184,7 @@ const appLogic = {
                     uiUtils.setLoadingIndicatorText(`プロンプト改善中... (${i}/${maxRetries})`);
                     currentPrompt = await this._improveSdPrompt(args.prompt, currentPrompt, qualityCheckResult.reason);
                 }
-                
+
                 uiUtils.setLoadingIndicatorText('SDで画像生成中...');
                 const payload = { ...args, prompt: currentPrompt };
                 generatedImageBlob = await this.callStableDiffusionApi(payload);
@@ -12168,7 +12200,7 @@ const appLogic = {
                 console.log(`[Quality Check Cycle ${i + 1}/${maxRetries + 1}] 判定: ${qualityCheckResult.result}。理由: ${qualityCheckResult.reason || 'N/A'}`);
 
                 if (qualityCheckResult.result === 'OK') {
-                    break; 
+                    break;
                 } else {
                     if (i >= maxRetries) {
                         throw new Error(`品質チェックが上限回数(${maxRetries}回)に達しました。最後のNG理由: ${qualityCheckResult.reason}`);
@@ -12194,103 +12226,103 @@ const appLogic = {
         }
     },
 
-        // --- デバッグログUI関連 ---
-        toggleDebugLogButtonVisibility(isEnabled) {
-            elements.debugLogBtn.classList.toggle('hidden', !isEnabled);
-        },
-    
-        openLogDialog() {
-            this.renderLogDialogContent();
-            elements.debugLogDialog.showModal();
-        },
-    
-        renderLogDialogContent() {
-            const logs = DebugLogger.getLogs();
-            const container = elements.logContainer;
-            const fragment = document.createDocumentFragment();
-            const LOG_TRUNCATE_THRESHOLD = 200; // 省略を開始する文字数
-    
-            if (logs.length === 0) {
-                container.innerHTML = '<div class="log-entry">ログはありません。</div>';
-                return;
+    // --- デバッグログUI関連 ---
+    toggleDebugLogButtonVisibility(isEnabled) {
+        elements.debugLogBtn.classList.toggle('hidden', !isEnabled);
+    },
+
+    openLogDialog() {
+        this.renderLogDialogContent();
+        elements.debugLogDialog.showModal();
+    },
+
+    renderLogDialogContent() {
+        const logs = DebugLogger.getLogs();
+        const container = elements.logContainer;
+        const fragment = document.createDocumentFragment();
+        const LOG_TRUNCATE_THRESHOLD = 200; // 省略を開始する文字数
+
+        if (logs.length === 0) {
+            container.innerHTML = '<div class="log-entry">ログはありません。</div>';
+            return;
+        }
+
+        logs.forEach(log => {
+            const entryDiv = document.createElement('div');
+            entryDiv.classList.add('log-entry', `log-type-${log.type}`);
+
+            const timestampSpan = document.createElement('span');
+            timestampSpan.className = 'log-timestamp';
+            timestampSpan.textContent = log.timestamp.toLocaleTimeString('ja-JP', { hour12: false });
+
+            const typeSpan = document.createElement('span');
+            typeSpan.className = 'log-type';
+            typeSpan.textContent = `[${log.type}]`;
+
+            entryDiv.appendChild(timestampSpan);
+            entryDiv.appendChild(typeSpan);
+
+            const messageText = log.args.join(' ');
+
+            if (messageText.length > LOG_TRUNCATE_THRESHOLD) {
+                entryDiv.classList.add('collapsible');
+
+                const summarySpan = document.createElement('span');
+                summarySpan.className = 'log-summary';
+                summarySpan.textContent = messageText.substring(0, LOG_TRUNCATE_THRESHOLD) + '... (クリックして展開)';
+
+                const fullSpan = document.createElement('span');
+                fullSpan.className = 'log-full hidden';
+                fullSpan.textContent = messageText;
+
+                entryDiv.appendChild(summarySpan);
+                entryDiv.appendChild(fullSpan);
+
+                entryDiv.addEventListener('click', () => {
+                    summarySpan.classList.toggle('hidden');
+                    fullSpan.classList.toggle('hidden');
+                });
+
+            } else {
+                const messageNode = document.createTextNode(messageText);
+                entryDiv.appendChild(messageNode);
             }
-    
-            logs.forEach(log => {
-                const entryDiv = document.createElement('div');
-                entryDiv.classList.add('log-entry', `log-type-${log.type}`);
-    
-                const timestampSpan = document.createElement('span');
-                timestampSpan.className = 'log-timestamp';
-                timestampSpan.textContent = log.timestamp.toLocaleTimeString('ja-JP', { hour12: false });
-    
-                const typeSpan = document.createElement('span');
-                typeSpan.className = 'log-type';
-                typeSpan.textContent = `[${log.type}]`;
-                
-                entryDiv.appendChild(timestampSpan);
-                entryDiv.appendChild(typeSpan);
-    
-                const messageText = log.args.join(' ');
-    
-                if (messageText.length > LOG_TRUNCATE_THRESHOLD) {
-                    entryDiv.classList.add('collapsible');
-    
-                    const summarySpan = document.createElement('span');
-                    summarySpan.className = 'log-summary';
-                    summarySpan.textContent = messageText.substring(0, LOG_TRUNCATE_THRESHOLD) + '... (クリックして展開)';
-                    
-                    const fullSpan = document.createElement('span');
-                    fullSpan.className = 'log-full hidden';
-                    fullSpan.textContent = messageText;
-    
-                    entryDiv.appendChild(summarySpan);
-                    entryDiv.appendChild(fullSpan);
-    
-                    entryDiv.addEventListener('click', () => {
-                        summarySpan.classList.toggle('hidden');
-                        fullSpan.classList.toggle('hidden');
-                    });
-    
-                } else {
-                    const messageNode = document.createTextNode(messageText);
-                    entryDiv.appendChild(messageNode);
-                }
-                
-                fragment.appendChild(entryDiv);
-            });
-            
-            container.innerHTML = ''; // 一旦クリア
-            container.appendChild(fragment);
-            // ダイアログを開いたときに最下部にスクロール
-            container.scrollTop = container.scrollHeight;
-        },
-    
-    
-        clearLogs() {
-            DebugLogger.clearLogs();
-            this.renderLogDialogContent(); // UIを更新
-        },
-    
-        async copyLogsToClipboard() {
-            const logs = DebugLogger.getLogs();
-            if (logs.length === 0) {
-                await uiUtils.showCustomAlert("コピーするログがありません。");
-                return;
-            }
-            const textToCopy = logs.map(log => {
-                const time = log.timestamp.toISOString();
-                const message = log.args.join(' ');
-                return `${time} [${log.type}] ${message}`;
-            }).join('\n');
-    
-            try {
-                await navigator.clipboard.writeText(textToCopy);
-                await uiUtils.showCustomAlert("ログをクリップボードにコピーしました。");
-            } catch (err) {
-                console.error('クリップボードへのコピーに失敗:', err);
-                await uiUtils.showCustomAlert("クリップボードへのコピーに失敗しました。");
-            }
-        },
+
+            fragment.appendChild(entryDiv);
+        });
+
+        container.innerHTML = ''; // 一旦クリア
+        container.appendChild(fragment);
+        // ダイアログを開いたときに最下部にスクロール
+        container.scrollTop = container.scrollHeight;
+    },
+
+
+    clearLogs() {
+        DebugLogger.clearLogs();
+        this.renderLogDialogContent(); // UIを更新
+    },
+
+    async copyLogsToClipboard() {
+        const logs = DebugLogger.getLogs();
+        if (logs.length === 0) {
+            await uiUtils.showCustomAlert("コピーするログがありません。");
+            return;
+        }
+        const textToCopy = logs.map(log => {
+            const time = log.timestamp.toISOString();
+            const message = log.args.join(' ');
+            return `${time} [${log.type}] ${message}`;
+        }).join('\n');
+
+        try {
+            await navigator.clipboard.writeText(textToCopy);
+            await uiUtils.showCustomAlert("ログをクリップボードにコピーしました。");
+        } catch (err) {
+            console.error('クリップボードへのコピーに失敗:', err);
+            await uiUtils.showCustomAlert("クリップボードへのコピーに失敗しました。");
+        }
+    },
 
     async _improveSdPrompt(originalPrompt, failedPrompt, ngReason) {
         const model = state.settings.sdPromptImproveModel;
@@ -12317,17 +12349,17 @@ const appLogic = {
         const improvedPrompt = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
         if (!improvedPrompt) throw new Error("プロンプト改善APIから有効な応答が得られませんでした。");
-        
+
         console.log("[SD Prompt Improver] 改善されたプロンプト:", improvedPrompt);
         return improvedPrompt;
     },
 
-    runQualityChecker: async function(imageBlob, prompt, responseText = '') {
+    runQualityChecker: async function (imageBlob, prompt, responseText = '') {
         const qcModel = state.settings.sdQcModel;
         const qcSystemPrompt = state.settings.sdQcPrompt
             .replace('{prompt}', prompt || '(プロンプトなし)')
             .replace('{response_text}', responseText || '(応答文なし)');
-        
+
         const imageBase64 = await this.fileToBase64(imageBlob);
 
         const requestBody = {
@@ -12367,7 +12399,7 @@ const appLogic = {
         }
     },
 
-    callStableDiffusionApi: async function(args) {
+    callStableDiffusionApi: async function (args) {
         const apiUrl = state.settings.sdApiUrl.trim().replace(/\/$/, '');
         const endpoint = `${apiUrl}/sdapi/v1/txt2img`;
 
@@ -12398,7 +12430,7 @@ const appLogic = {
             payload.denoising_strength = 0.7;
             console.log("[Stable Diffusion] Hires. fixが有効ですがdenoising_strengthが未指定のため、デフォルト値の0.7を設定しました。");
         }
-        
+
         // sd_model_checkpoint を override_settings に移動する後処理
         if (payload.sd_model_checkpoint) {
             if (!payload.override_settings) {
@@ -12442,12 +12474,12 @@ const appLogic = {
 
 
 
-    runQualityChecker: async function(imageBlob, prompt, responseText = '') {
+    runQualityChecker: async function (imageBlob, prompt, responseText = '') {
         const qcModel = state.settings.sdQcModel;
         const qcSystemPrompt = state.settings.sdQcPrompt
             .replace('{prompt}', prompt || '(プロンプトなし)')
             .replace('{response_text}', responseText || '(応答文なし)');
-        
+
         const imageBase64 = await this.fileToBase64(imageBlob);
 
         const requestBody = {
