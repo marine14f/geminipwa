@@ -4630,6 +4630,10 @@ const apiUtils = {
             delete headersToSend['host'];
             delete headersToSend['content-length'];
 
+            // ヘッダーをJSON化してBase64エンコード（安全な転送のため）
+            const headersJson = JSON.stringify(headersToSend);
+            const headersBase64 = btoa(headersJson);
+
             // ストリームプロキシ方式で送信
             // ボディをJSONでラップせず、生の文字列として送信することで、
             // Worker側でのパース負荷を回避し、CPU制限を回避する
@@ -4638,7 +4642,7 @@ const apiUtils = {
                 headers: {
                     'X-Proxy-Url': endpoint,
                     'X-Proxy-Method': method,
-                    'X-Proxy-Headers': JSON.stringify(headersToSend)
+                    'X-Proxy-Headers': headersBase64
                 },
                 body: bodyString, // 生のJSON文字列を送信
                 signal: signal
