@@ -28,6 +28,7 @@ const TEXTAREA_MAX_HEIGHT = 120;
 const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models/';
 const ZAI_API_BASE_URL = 'https://api.z.ai/api/paas/v4/chat/completions';
 const OPENROUTER_API_BASE_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const PROXY_URL = 'https://gemini-pwa-mk2-proxy.marine14f.workers.dev/';
 const DUPLICATE_SUFFIX = ' (コピー)';
 const IMPORT_PREFIX = '(取込) ';
 const LIGHT_THEME_COLOR = '#4a90e2';
@@ -59,7 +60,6 @@ const ZAI_MODELS = [
 ];
 
 const BEDROCK_MODELS = [
-    { value: 'anthropic.claude-opus-4-5-20251101-v1:0', label: 'Claude Opus 4.5' },
     { value: 'jp.anthropic.claude-sonnet-4-5-20250929-v1:0', label: 'Claude Sonnet 4.5 (推奨・東京リージョン用)' },
     { value: 'anthropic.claude-sonnet-4-5-20250929-v1:0', label: 'Claude Sonnet 4.5 (標準リージョン用)' },
     { value: 'anthropic.claude-3-5-sonnet-20241022-v2:0', label: 'Claude 3.5 Sonnet v2' },
@@ -74,7 +74,6 @@ const DEFAULT_BEDROCK_REGION = 'us-east-1';
 
 const VERSION_HISTORY = {
     "1.13": [
-        "AmazonBedrockのモデルリストに`anthropic.claude-opus-4-5-20251101-v1:0`を追加。",
         "API送信時の停止ボタンが即座に中断されない問題を修正。`state.abortController`の中断シグナルが各API呼び出し関数に確実に伝播するよう改善。",
         "`callApiWithRetry()`、`translateText()`、`proofreadText()`関数で、リトライ待機中や`fetch()`実行中にも即座に中断できるように修正。"
     ],
@@ -4469,7 +4468,7 @@ const apiUtils = {
 
     // Amazon Bedrock APIを呼び出す
     async callBedrockApi(messagesForApi, generationConfig, systemInstruction, tools = null, forceCalling = false, signal = null) {
-        console.log(`[Debug] callBedrockApi: Amazon Bedrock APIを呼び出します。`);
+        console.log(`[Debug] callBedrockApi: Amazon Bedrock APIをプロキシ経由で呼び出します。`);
         
         const accessKey = state.settings.bedrockAccessKey;
         const secretKey = state.settings.bedrockSecretKey;
@@ -4493,11 +4492,6 @@ const apiUtils = {
             throw new Error("Bedrock認証情報（Access KeyまたはSecret Key）が設定されていません。");
         }
 
-        // AWS SDK が読み込まれているか確認
-        if (!window.BedrockRuntimeClient || !window.ConverseCommand) {
-            throw new Error("AWS Bedrock SDK が読み込まれていません。ページを再読み込みしてください。");
-        }
-
         // signalが渡されていない場合のみstate.abortControllerを作成
         if (!signal) {
             state.abortController = new AbortController();
@@ -4507,15 +4501,6 @@ const apiUtils = {
         const modelId = state.settings.modelName || DEFAULT_BEDROCK_MODEL;
 
         try {
-            // BedrockRuntimeClientの初期化
-            const client = new window.BedrockRuntimeClient({
-                region: region,
-                credentials: {
-                    accessKeyId: accessKey,
-                    secretAccessKey: secretKey
-                }
-            });
-
             // Gemini形式からBedrock Converse形式へ変換
             const converseMessages = this.convertGeminiToConverseFormat(messagesForApi);
             
@@ -4593,14 +4578,36 @@ const apiUtils = {
                 return value;
             }, 2));
 
-            // Converse APIコマンドを実行
-            const command = new window.ConverseCommand(requestBody);
-            const response = await client.send(command);
-            
-            console.log("Amazon Bedrockからのレスポンス:", response);
+            // プロキシ経由でBedrock APIを呼び出し
+            const proxyRequestBody = {
+                type: 'bedrock',
+                requestBody: requestBody,
+                accessKey: accessKey,
+                secretKey: secretKey,
+                region: region,
+                modelId: modelId
+            };
+
+            const proxyResponse = await fetch(PROXY_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(proxyRequestBody),
+                signal: signal
+            });
+
+            if (!proxyResponse.ok) {
+                const errorData = await proxyResponse.json().catch(() => ({ error: proxyResponse.statusText }));
+                console.error("プロキシからのエラーレスポンス:", errorData);
+                throw new Error(`Bedrock APIプロキシエラー: ${proxyResponse.status} ${errorData.error || proxyResponse.statusText}`);
+            }
+
+            const bedrockResponse = await proxyResponse.json();
+            console.log("Amazon Bedrockからのレスポンス:", bedrockResponse);
 
             // レスポンスをGemini形式に変換
-            const geminiFormatResponse = this.convertConverseToGeminiFormat(response);
+            const geminiFormatResponse = this.convertConverseToGeminiFormat(bedrockResponse);
 
             // Responseオブジェクトのように扱えるようにラップ
             return {
