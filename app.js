@@ -4601,14 +4601,37 @@ const apiUtils = {
                 return value;
             }, 2));
 
-            // プロキシ経由でBedrock APIを呼び出し
+            // プロキシ経由でBedrock APIを呼び出し（署名はクライアント側で生成）
+            const endpoint = `https://bedrock-runtime.${region}.amazonaws.com/model/${modelId}/converse`;
+            const host = `bedrock-runtime.${region}.amazonaws.com`;
+            const method = 'POST';
+            const service = 'bedrock';
+
+            // リクエストボディをJSON文字列に変換
+            const bodyString = JSON.stringify(requestBody);
+            const bodyHash = await sha256(bodyString);
+
+            // 署名付きヘッダー生成 (クライアント側で実行)
+            const signedHeaders = await createSignedRequest(
+                method,
+                endpoint,
+                host,
+                service,
+                region,
+                bodyHash,
+                {},
+                accessKey,
+                secretKey,
+                modelId
+            );
+
+            // プロキシへ送信 (署名済みリクエストを転送するだけ)
             const proxyRequestBody = {
-                type: 'bedrock',
-                requestBody: requestBody,
-                accessKey: accessKey,
-                secretKey: secretKey,
-                region: region,
-                modelId: modelId
+                type: 'proxy',
+                url: endpoint,
+                method: method,
+                headers: signedHeaders,
+                body: bodyString
             };
 
             const proxyResponse = await fetch(PROXY_URL, {
@@ -12519,3 +12542,143 @@ const appLogic = {
 window.appLogic = appLogic;
 window.state = state;
 window.dbUtils = dbUtils;
+
+// --- AWS Signature v4 Helper Functions ---
+
+/**
+ * SHA256ハッシュを計算
+ * @param {string} data
+ * @returns {Promise<string>} 16進数文字列
+ */
+async function sha256(data) {
+    const encoder = new TextEncoder();
+    const dataBuffer = encoder.encode(data);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * HMAC-SHA256署名を計算
+ * @param {string} key - キー（バイナリまたは文字列）
+ * @param {string} message - メッセージ
+ * @returns {Promise<ArrayBuffer>}
+ */
+async function hmacSha256(key, message) {
+    let keyBuffer;
+    if (typeof key === 'string') {
+        const encoder = new TextEncoder();
+        keyBuffer = encoder.encode(key);
+    } else {
+        keyBuffer = key;
+    }
+
+    const encoder = new TextEncoder();
+    const messageBuffer = encoder.encode(message);
+
+    const cryptoKey = await crypto.subtle.importKey(
+        'raw',
+        keyBuffer,
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign']
+    );
+
+    return await crypto.subtle.sign('HMAC', cryptoKey, messageBuffer);
+}
+
+/**
+ * URLパスセグメントをエンコード（AWS署名用）
+ */
+function encodeUriSegment(segment) {
+    return encodeURIComponent(segment).replace(/%2F/g, '/');
+}
+
+/**
+ * AWS正規URIを構築
+ */
+function buildCanonicalUri(urlPath) {
+    const pathWithoutLeadingSlash = urlPath.startsWith('/') ? urlPath.slice(1) : urlPath;
+    const segments = pathWithoutLeadingSlash.split('/').filter(s => s.length > 0);
+    return '/' + segments.map(segment => encodeUriSegment(segment)).join('/');
+}
+
+/**
+ * AWS署名付きリクエストを作成
+ */
+async function createSignedRequest(method, url, host, service, region, payloadHash, headers, accessKeyId, secretAccessKey, modelId = null) {
+    const now = new Date();
+    const amzDate = now.toISOString().replace(/[:\-]|\.\d{3}/g, '').slice(0, -1) + 'Z';
+    const dateStamp = amzDate.slice(0, 8);
+
+    // 標準ヘッダー
+    const standardHeaders = {
+        'host': host,
+        'content-type': 'application/json',
+        'x-amz-date': amzDate,
+        ...headers,
+    };
+
+    // ヘッダーのソートと正規化
+    const sortedHeaderNames = Object.keys(standardHeaders).sort();
+    const canonicalHeaders = sortedHeaderNames
+        .map(name => {
+            const headerName = name.toLowerCase();
+            const headerValue = standardHeaders[name].trim().replace(/\s+/g, ' ');
+            return `${headerName}:${headerValue}\n`;
+        })
+        .join('');
+    const signedHeaders = sortedHeaderNames.map(name => name.toLowerCase()).join(';');
+
+    // 正規URIの構築
+    let canonicalUri;
+    if (modelId) {
+        const path = `/model/${modelId}/converse`;
+        canonicalUri = buildCanonicalUri(path);
+    } else {
+        const urlObj = new URL(url);
+        canonicalUri = buildCanonicalUri(urlObj.pathname);
+    }
+
+    // クエリ文字列（空の場合は空文字列）
+    const urlObj = new URL(url);
+    const canonicalQuerystring = urlObj.search.slice(1);
+
+    // 正規リクエストの構築
+    const canonicalRequest = [
+        method,
+        canonicalUri,
+        canonicalQuerystring || '',
+        canonicalHeaders,
+        signedHeaders,
+        payloadHash,
+    ].join('\n');
+
+    // ストリングトゥシグンの作成
+    const algorithm = 'AWS4-HMAC-SHA256';
+    const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+    const stringToSign = [
+        algorithm,
+        amzDate,
+        credentialScope,
+        await sha256(canonicalRequest),
+    ].join('\n');
+
+    // 署名の計算
+    const kDate = await hmacSha256('AWS4' + secretAccessKey, dateStamp);
+    const kRegion = await hmacSha256(kDate, region);
+    const kService = await hmacSha256(kRegion, service);
+    const kSigning = await hmacSha256(kService, 'aws4_request');
+    const signatureBuffer = await hmacSha256(kSigning, stringToSign);
+    const signature = Array.from(new Uint8Array(signatureBuffer))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+
+    // 認証ヘッダーの作成
+    const authorization = `${algorithm} Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+    return {
+        ...standardHeaders,
+        'Authorization': authorization,
+    };
+}
