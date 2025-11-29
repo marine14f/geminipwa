@@ -1301,7 +1301,7 @@ async function generate_image(args = {}) {
  * @param {object} chat - 現在のチャットデータ
  * @returns {Promise<object>} 処理結果
  */
- async function edit_image({ prompt, source_images, model = "gemini-2.5-flash-image-preview" }, chat) {
+ async function edit_image({ prompt, source_images, model = "gemini-3-pro-image-preview" }, chat) {
     // ▼▼▼ デバッグ用ログ出力コード。また出番があったらつかう。 ▼▼▼
     /*
     console.log("--- [DEBUG] edit_image が受け取った chat オブジェクト ---");
@@ -2205,7 +2205,7 @@ window.functionDeclarations = [
                     },
                     "model": {
                         "type": "STRING",
-                        "description": "使用する画像編集モデルを指定します。指定がない場合はデフォルトの 'gemini-2.5-flash-image-preview' が使用されます。",
+                        "description": "使用する画像編集モデルを指定します。指定がない場合はデフォルトの 'gemini-3-pro-image-preview' が使用されます。",
                         "enum": [
                             "gemini-2.5-flash-image-preview",
                             "gemini-3-pro-image-preview"
