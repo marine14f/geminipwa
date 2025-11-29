@@ -1180,7 +1180,7 @@ async function set_ui_opacity({ overlay, message_bubble }) {
  *
  * @param {Object} args
  * @param {string} args.prompt             - 英語プロンプト（必須）
- * @param {string} [args.model]            - 明示モデル指定（"imagen-4.0-generate-001" | "imagen-4.0-ultra-generate-001" | "imagen-4.0-fast-generate-001" | "gemini-2.5-flash-image-preview"）
+ * @param {string} [args.model]            - 明示モデル指定（"imagen-4.0-generate-001" | "imagen-4.0-ultra-generate-001" | "imagen-4.0-fast-generate-001" | "gemini-2.5-flash-image-preview" | "gemini-3-pro-image-preview"）
  * @param {number} [args.numberOfImages=1] - 1〜4
  * @param {string} [args.sampleImageSize]  - "1K" | "2K"（Standard/Ultraのみ）
  * @param {string} [args.aspectRatio]      - "1:1" | "3:4" | "4:3" | "9:16" | "16:9"
@@ -1222,9 +1222,9 @@ async function generate_image(args = {}) {
       let generatedImagesBase64 = [];
       let responseMeta = {};
   
-      if (modelName === "gemini-2.5-flash-image-preview") {
+      if (modelName === "gemini-2.5-flash-image-preview" || modelName === "gemini-3-pro-image-preview") {
         const resp = await ai.models.generateContent({
-          model: "gemini-2.5-flash-image-preview",
+          model: modelName,
           contents: [{ role: "user", parts: [{ text: prompt }] }],
         });
         
@@ -2112,12 +2112,13 @@ window.functionDeclarations = [
                   },
                   "model": {
                       "type": "string",
-                      "description": "使用する画像生成モデルを指定します。指定がない場合はプロンプト内容に応じて自動的に選択されます。\n\n- \"imagen-4.0-generate-001\": 標準モデル。汎用的な画像生成に適しています。\n- \"imagen-4.0-ultra-generate-001\": 複雑な構図や多要素を含む画像（風景、群衆、広角など）に適しています。\n- \"imagen-4.0-fast-generate-001\": 単純でフラットな画像（アイコン、パターン、スタンプなど）に適しています。\n- \"gemini-2.5-flash-image-preview\": ユーザーが明示的に指定した場合のみ使用。Geminiによる簡易プレビュー生成を行います。",
+                      "description": "使用する画像生成モデルを指定します。指定がない場合はプロンプト内容に応じて自動的に選択されます。\n\n- \"imagen-4.0-generate-001\": 標準モデル。汎用的な画像生成に適しています。\n- \"imagen-4.0-ultra-generate-001\": 複雑な構図や多要素を含む画像（風景、群衆、広角など）に適しています。\n- \"imagen-4.0-fast-generate-001\": 単純でフラットな画像（アイコン、パターン、スタンプなど）に適しています。\n- \"gemini-2.5-flash-image-preview\": ユーザーが明示的に指定した場合のみ使用。Geminiによる簡易プレビュー生成を行います。\n- \"gemini-3-pro-image-preview\": ユーザーが明示的に指定した場合のみ使用。Gemini 3 Proによる画像生成を行います。",
                       "enum": [
                       "imagen-4.0-generate-001",
                       "imagen-4.0-ultra-generate-001",
                       "imagen-4.0-fast-generate-001",
-                      "gemini-2.5-flash-image-preview"
+                      "gemini-2.5-flash-image-preview",
+                      "gemini-3-pro-image-preview"
                       ]
                   },
                   "numberOfImages": { 
