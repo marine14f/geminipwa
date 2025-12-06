@@ -60,17 +60,38 @@ const ZAI_MODELS = [
 ];
 
 const BEDROCK_MODELS = [
-    { value: 'jp.anthropic.claude-sonnet-4-5-20250929-v1:0', label: 'Claude Sonnet 4.5 (推奨・東京リージョン用)' },
-    { value: 'anthropic.claude-sonnet-4-5-20250929-v1:0', label: 'Claude Sonnet 4.5 (標準リージョン用)' },
-    { value: 'anthropic.claude-3-5-sonnet-20241022-v2:0', label: 'Claude 3.5 Sonnet v2' },
-    { value: 'anthropic.claude-3-5-sonnet-20240620-v1:0', label: 'Claude 3.5 Sonnet v1' },
-    { value: 'anthropic.claude-3-opus-20240229-v1:0', label: 'Claude 3 Opus' },
-    { value: 'anthropic.claude-3-sonnet-20240229-v1:0', label: 'Claude 3 Sonnet' },
-    { value: 'anthropic.claude-3-haiku-20240307-v1:0', label: 'Claude 3 Haiku' }
+    { value: 'jp.anthropic.claude-sonnet-4-5-20250929-v1:0', label: 'Claude Sonnet 4.5' },
+    { value: 'anthropic.claude-opus-4-5-20251101-v1:0', label: 'Claude Opus 4.5 ' }
 ];
 
 const DEFAULT_BEDROCK_MODEL = 'jp.anthropic.claude-sonnet-4-5-20250929-v1:0';
 const DEFAULT_BEDROCK_REGION = 'us-east-1';
+
+// Amazon Bedrock専用レートリミッター (5 RPM制限対応)
+class BedrockRateLimiter {
+    constructor(requestsPerMinute = 5) {
+        this.requestsPerMinute = requestsPerMinute;
+        this.minInterval = (60 * 1000) / requestsPerMinute; // ミリ秒
+        this.lastRequestTime = 0;
+    }
+
+    async waitForNextSlot() {
+        const now = Date.now();
+        const timeSinceLastRequest = now - this.lastRequestTime;
+        const waitTime = Math.max(0, this.minInterval - timeSinceLastRequest);
+
+        if (waitTime > 0) {
+            console.log(`[Bedrock Rate Limiter] 次のリクエストまで ${Math.ceil(waitTime / 1000)} 秒待機中...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
+
+        this.lastRequestTime = Date.now();
+        console.log(`[Bedrock Rate Limiter] リクエストスロット確保 (前回から ${Math.ceil(timeSinceLastRequest / 1000)} 秒経過)`);
+    }
+}
+
+const bedrockRateLimiter = new BedrockRateLimiter(5);
+
 
 const VERSION_HISTORY = {
     "1.13": [
@@ -3646,7 +3667,8 @@ const apiUtils = {
                         functionCall: {
                             name: contentItem.toolUse.name,
                             args: contentItem.toolUse.input || {},
-                            _toolCallId: contentItem.toolUse.toolUseId
+                            _toolCallId: contentItem.toolUse.toolUseId, // OpenAI互換用
+                            _toolUseId: contentItem.toolUse.toolUseId // Bedrock用
                         }
                     });
                 }
@@ -4511,142 +4533,111 @@ const apiUtils = {
         const modelId = state.settings.modelName || DEFAULT_BEDROCK_MODEL;
 
         try {
-            // Gemini形式からBedrock Converse形式へ変換
-            console.log(`[Bedrock Debug] 変換前のメッセージ数: ${messagesForApi.length}`);
-            const converseMessages = this.convertGeminiToConverseFormat(messagesForApi);
-            console.log(`[Bedrock Debug] 変換成功。変換後のメッセージ数: ${converseMessages.length}`);
-
-            // 各メッセージの内容を簡易表示
-            converseMessages.forEach((msg, idx) => {
-                const contentTypes = msg.content?.map(c => Object.keys(c)[0]).join(', ') || '空';
-                console.log(`[Bedrock Debug] メッセージ${idx}: role=${msg.role}, content類=[${contentTypes}]`);
-            });
-
-            // デバッグ: 変換後のメッセージ数とtoolResult数を確認
-            console.log(`[Bedrock] 変換後のメッセージ数: ${converseMessages.length}`);
-            converseMessages.forEach((msg, idx) => {
-                const toolResults = msg.content?.filter(c => c.toolResult) || [];
-                if (toolResults.length > 0) {
-                    console.log(`[Bedrock] メッセージ${idx} (role: ${msg.role}): ${toolResults.length}個のtoolResultを含む`);
-                }
-            });
-
-            // システムプロンプトの処理
-            let systemPrompts = [];
-            if (systemInstruction && systemInstruction.parts && systemInstruction.parts.length > 0) {
-                const systemText = systemInstruction.parts[0].text;
-                if (systemText) {
-                    systemPrompts.push({ text: systemText });
-                }
+            // セッションIDがなければ新規作成
+            if (!state.currentSessionId) {
+                state.currentSessionId = crypto.randomUUID();
+                console.log(`[Bedrock] 新規セッションIDを生成しました: ${state.currentSessionId}`);
             }
 
-            // リクエストボディの構築
+            // このAPI呼び出しで送信する新しいメッセージ部分を特定
+            // ただし、sessionIdをリセットした直後は全履歴を送信する
+            let newMessages;
+            let isFullHistory = false;
+            if (state.bedrockSessionJustReset) {
+                // sessionIdリセット直後は全履歴を送信
+                console.log('[Bedrock] sessionIdリセット直後のため、全履歴を送信します');
+                newMessages = messagesForApi;
+                isFullHistory = true;
+                state.bedrockSessionJustReset = false; // フラグをクリア
+            } else {
+                // 通常は最後のユーザーメッセージと、それに続くツール応答のみ送信
+                const lastUserMessageIndex = messagesForApi.map(m => m.role).lastIndexOf('user');
+                newMessages = lastUserMessageIndex !== -1 ? messagesForApi.slice(lastUserMessageIndex) : [];
+            }
+
             const requestBody = {
+                sessionId: state.currentSessionId,
                 modelId: modelId,
-                messages: converseMessages,
-                inferenceConfig: {}
+                systemInstruction: systemInstruction,
+                newMessages: newMessages,
+                generationConfig: generationConfig,
+                toolConfig: null,
+                isFullHistory: isFullHistory  // フラグを追加
             };
-
-            // システムプロンプトを追加
-            if (systemPrompts.length > 0) {
-                requestBody.system = systemPrompts;
-            }
-
-            // 生成設定の追加
-            if (generationConfig.maxOutputTokens) {
-                requestBody.inferenceConfig.maxTokens = generationConfig.maxOutputTokens;
-            }
-
-            // Claude Sonnet 4.5では temperature と topP を同時に指定できないため、temperatureのみ使用
-            const isClaudeSonnet45 = modelId.includes('claude-sonnet-4-5');
-
-            if (generationConfig.temperature !== undefined && generationConfig.temperature !== null) {
-                requestBody.inferenceConfig.temperature = generationConfig.temperature;
-            }
-
-            // Claude Sonnet 4.5以外の場合のみtopPを設定
-            if (!isClaudeSonnet45 && generationConfig.topP !== undefined && generationConfig.topP !== null) {
-                requestBody.inferenceConfig.topP = generationConfig.topP;
-            } else if (isClaudeSonnet45 && generationConfig.topP !== undefined) {
-                console.log('[Bedrock] Claude Sonnet 4.5では topP パラメータをスキップします（temperature と topP の同時指定不可のため）');
-            }
 
             // Function Callingの処理
             if (state.settings.geminiEnableFunctionCalling && window.functionDeclarations) {
                 const bedrockTools = this.convertGeminiToolsToBedrock(window.functionDeclarations);
                 if (bedrockTools.length > 0) {
                     requestBody.toolConfig = {
-                        tools: bedrockTools
+                        tools: bedrockTools,
+                        toolChoice: forceCalling ? { any: {} } : { auto: {} }
                     };
-
-                    if (forceCalling) {
-                        requestBody.toolConfig.toolChoice = { any: {} };
-                    } else {
-                        requestBody.toolConfig.toolChoice = { auto: {} };
-                    }
-
-                    console.log(`Amazon Bedrock APIに ${bedrockTools.length} 個のFunction Callingツールを設定しました。`);
                 }
             }
 
-            // ペイロードサイズを確認
-            const payloadString = JSON.stringify(requestBody);
-            const payloadSizeKB = (payloadString.length / 1024).toFixed(2);
-            console.log(`[Bedrock Debug] ペイロードサイズ: ${payloadSizeKB} KB`);
+            console.log("Bedrockプロキシへの送信データ:", requestBody);
 
-            console.log("Amazon Bedrockへの送信データ:", JSON.stringify(requestBody, (key, value) => {
-                if (key === 'bytes' && value instanceof Uint8Array) {
-                    return `[Uint8Array: ${value.length} bytes]`;
+            // レートリミッター: 5 RPM制限を守るため、必要に応じて待機
+            await bedrockRateLimiter.waitForNextSlot();
+
+            // 503エラー時の自動リトライ (Exponential Backoff)
+            const maxRetries = 3;
+            let retryCount = 0;
+            let proxyResponse;
+            let lastError;
+
+            while (retryCount <= maxRetries) {
+                try {
+                    const timestamp = new Date().toISOString();
+                    console.log(`[Bedrock API] ${timestamp} リクエスト送信 (試行 ${retryCount + 1}/${maxRetries + 1})`);
+
+                    proxyResponse = await fetch(`${PROXY_URL}?type=bedrock_proxy`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Bedrock-Access-Key-Id': accessKey,
+                            'X-Bedrock-Secret-Access-Key': secretKey,
+                            'X-Bedrock-Region': region
+                        },
+                        body: JSON.stringify(requestBody),
+                        signal: signal
+                    });
+
+                    // 503エラー以外、または成功の場合はループを抜ける
+                    if (proxyResponse.status !== 503) {
+                        break;
+                    }
+
+                    // 503エラーの場合
+                    const errorData = await proxyResponse.json().catch(() => ({ error: proxyResponse.statusText }));
+                    lastError = new Error(`Bedrock APIプロキシエラー: ${proxyResponse.status} ${errorData.error || proxyResponse.statusText}`);
+
+                    console.warn(`[Bedrock Retry] 503エラー検出 (試行 ${retryCount + 1}/${maxRetries + 1}):`, errorData.error);
+
+                    // 最大リトライ回数に達した場合はエラーをスロー
+                    if (retryCount >= maxRetries) {
+                        console.error(`[Bedrock Retry] 最大リトライ回数(${maxRetries})に達しました。`);
+                        throw lastError;
+                    }
+
+                    // Exponential Backoff: 2秒 → 4秒 → 8秒
+                    const backoffDelay = Math.pow(2, retryCount + 1) * 1000;
+                    console.log(`[Bedrock Retry] ${backoffDelay / 1000}秒後にリトライします...`);
+                    await new Promise(resolve => setTimeout(resolve, backoffDelay));
+
+                    retryCount++;
+
+                } catch (fetchError) {
+                    // fetch自体のエラー（ネットワークエラーなど）の場合
+                    if (fetchError.name === 'AbortError') {
+                        console.log('[Bedrock API] リクエストが中断されました。');
+                        throw fetchError;
+                    }
+                    // 503エラー以外のHTTPエラーはリトライせずに即座にスロー
+                    throw fetchError;
                 }
-                return value;
-            }, 2));
-
-            // プロキシ経由でBedrock APIを呼び出し（署名はクライアント側で生成）
-            const endpoint = `https://bedrock-runtime.${region}.amazonaws.com/model/${modelId}/converse`;
-            const host = `bedrock-runtime.${region}.amazonaws.com`;
-            const method = 'POST';
-            const service = 'bedrock';
-
-            // リクエストボディをJSON文字列に変換
-            const bodyString = JSON.stringify(requestBody);
-            const bodyHash = await sha256(bodyString);
-
-            // 署名付きヘッダー生成 (クライアント側で実行)
-            const signedHeaders = await createSignedRequest(
-                method,
-                endpoint,
-                host,
-                service,
-                region,
-                bodyHash,
-                {},
-                accessKey,
-                secretKey,
-                modelId
-            );
-
-            // fetchで送るヘッダーからhostを除外
-            const headersToSend = { ...signedHeaders };
-            delete headersToSend['host'];
-            delete headersToSend['content-length'];
-
-            // ヘッダーをJSON化してBase64エンコード（安全な転送のため）
-            const headersJson = JSON.stringify(headersToSend);
-            const headersBase64 = btoa(headersJson);
-
-            // ストリームプロキシ方式で送信
-            // ボディをJSONでラップせず、生の文字列として送信することで、
-            // Worker側でのパース負荷を回避し、CPU制限を回避する
-            const proxyResponse = await fetch(`${PROXY_URL}?type=proxy`, {
-                method: 'POST',
-                headers: {
-                    'X-Proxy-Url': endpoint,
-                    'X-Proxy-Method': method,
-                    'X-Proxy-Headers': headersBase64
-                },
-                body: bodyString, // 生のJSON文字列を送信
-                signal: signal
-            });
+            }
 
             if (!proxyResponse.ok) {
                 const errorData = await proxyResponse.json().catch(() => ({ error: proxyResponse.statusText }));
@@ -4655,7 +4646,7 @@ const apiUtils = {
             }
 
             const bedrockResponse = await proxyResponse.json();
-            console.log("Amazon Bedrockからのレスポンス:", bedrockResponse);
+            console.log("Amazon Bedrockからのレスポンス(プロキシ経由):", bedrockResponse);
 
             // レスポンスをGemini形式に変換
             const geminiFormatResponse = this.convertConverseToGeminiFormat(bedrockResponse);
@@ -5217,6 +5208,15 @@ const appLogic = {
         }
 
         return historyToProcess.map(msg => {
+            // 既にparts形式で保存されている場合（Function Calling結果など）はそのまま使用する
+            if (msg.parts && Array.isArray(msg.parts) && msg.parts.length > 0) {
+                // ディープコピーして返す
+                return {
+                    role: msg.role === 'tool' ? 'tool' : (msg.role === 'model' ? 'model' : 'user'),
+                    parts: JSON.parse(JSON.stringify(msg.parts))
+                };
+            }
+
             const parts = [];
             let contentText = msg.content || '';
             if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
@@ -9596,6 +9596,21 @@ const appLogic = {
         const confirmed = await uiUtils.showCustomConfirm(`「${messageContentPreview}」から再生成しますか？\n(これより未来の会話履歴は削除され、既存の応答は別候補として保持されます)`);
 
         if (confirmed) {
+            // デバッグ: 条件チェック
+            console.log('[DEBUG retryFromMessage] confirmed=true');
+            console.log('[DEBUG retryFromMessage] apiProvider:', state.settings.apiProvider);
+            console.log('[DEBUG retryFromMessage] currentSessionId:', state.currentSessionId);
+            console.log('[DEBUG retryFromMessage] 条件評価:', state.settings.apiProvider === 'bedrock' && state.currentSessionId);
+
+            // Amazon Bedrock使用時は、再生成の際にセッションIDをリセットする
+            // これにより、worker.jsのstoredHistoryがクリアされ、メッセージ重複エラーを回避できる
+            if (state.settings.apiProvider === 'bedrock') {
+                console.log(`[Bedrock] 再生成のため、セッションIDをリセットします (旧ID: ${state.currentSessionId})`);
+                state.currentSessionId = crypto.randomUUID();
+                state.bedrockSessionJustReset = true; // フラグを立てる
+                console.log(`[Bedrock] 新しいセッションID: ${state.currentSessionId}`);
+            }
+
             uiUtils.setSendingState(true);
 
             let originalResponses = [];
@@ -9619,6 +9634,11 @@ const appLogic = {
             // 次の再生成に備えて、元の応答をstateに待避させる
             state.pendingCascadeResponses = originalResponses;
 
+            // API用の履歴を準備（削除する前に実行）
+            // NOTE: index地点のユーザーメッセージを含む履歴を準備する必要がある
+            const baseHistory = state.currentMessages.slice(0, index + 1).filter(msg => !msg.isCascaded || msg.isSelected);
+            const historyForApi = this._prepareApiHistory(baseHistory);
+
             // UI上から古い応答を削除し、stateもユーザープロンプトまでの状態に戻す
             state.currentMessages.splice(index + 1);
             uiUtils.renderChatMessages();
@@ -9626,8 +9646,6 @@ const appLogic = {
             let modelMessage;
 
             try {
-                const baseHistory = state.currentMessages.filter(msg => !msg.isCascaded || msg.isSelected);
-                const historyForApi = this._prepareApiHistory(baseHistory);
 
                 modelMessage = { role: 'model', content: '', timestamp: Date.now() };
                 state.currentMessages.push(modelMessage);
