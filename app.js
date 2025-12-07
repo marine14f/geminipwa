@@ -4549,7 +4549,6 @@ const apiUtils = {
 
             if (state.bedrockSessionJustReset || hasToolMessages) {
                 // sessionIdリセット直後、またはFunction Calling中は全履歴を送信
-                // （storedHistoryとの重複を避けるため）
                 if (state.bedrockSessionJustReset) {
                     console.log('[Bedrock] sessionIdリセット直後のため、全履歴を送信します');
                     state.bedrockSessionJustReset = false; // フラグをクリア
@@ -4558,6 +4557,40 @@ const apiUtils = {
                 }
                 newMessages = messagesForApi;
                 isFullHistory = true;
+
+                // 2025/12/07 修正: ツールが無効化されている(tools=null)のに、履歴にtoolメッセージが含まれている場合、
+                // Bedrockは「toolUseがあるならtoolConfigが必要」というエラー(400)を返す。
+                // しかしtoolConfigを渡すと無限ループ(再度ツール実行)のリスクがある。
+                // そのため、ツール無効時は履歴のtoolUse/toolResultをすべてテキストに変換して送信する。
+                if ((!tools || tools.length === 0) && hasToolMessages) {
+                    console.log('[Bedrock] ツール無効化モードのため、履歴のTool関連メッセージをテキストに変換します');
+                    newMessages = newMessages.map(msg => {
+                        // オブジェクトのディープコピーを作成
+                        const newMsg = JSON.parse(JSON.stringify(msg));
+
+                        if (newMsg.role === 'model') {
+                            if (newMsg.parts) {
+                                newMsg.parts = newMsg.parts.map(part => {
+                                    if (part.functionCall) {
+                                        return { text: `[Tool Use] ${part.functionCall.name}(${JSON.stringify(part.functionCall.args)})` };
+                                    }
+                                    return part;
+                                });
+                            }
+                        } else if (newMsg.role === 'tool') {
+                            newMsg.role = 'user'; // toolロールはテキストのみの場合はuserとして扱うのが安全
+                            if (newMsg.parts) {
+                                newMsg.parts = newMsg.parts.map(part => {
+                                    if (part.functionResponse) {
+                                        return { text: `[Tool Result] ${part.functionResponse.name}: ${JSON.stringify(part.functionResponse.response)}` };
+                                    }
+                                    return part;
+                                });
+                            }
+                        }
+                        return newMsg;
+                    });
+                }
             } else {
                 // 通常は最後のユーザーメッセージのみ送信
                 const lastUserMessageIndex = messagesForApi.map(m => m.role).lastIndexOf('user');
@@ -4575,8 +4608,8 @@ const apiUtils = {
             };
 
             // Function Callingの処理
-            if (state.settings.geminiEnableFunctionCalling && window.functionDeclarations) {
-                const bedrockTools = this.convertGeminiToolsToBedrock(window.functionDeclarations);
+            if (state.settings.geminiEnableFunctionCalling && tools && tools.length > 0) {
+                const bedrockTools = this.convertGeminiToolsToBedrock(tools);
                 if (bedrockTools.length > 0) {
                     requestBody.toolConfig = {
                         tools: bedrockTools,
@@ -4659,6 +4692,26 @@ const apiUtils = {
 
             // レスポンスをGemini形式に変換
             const geminiFormatResponse = this.convertConverseToGeminiFormat(bedrockResponse);
+
+            // 2025/12/07: `cleanupToolLogs` 処理
+            // 履歴フラット化により、モデルが「[Tool Use] ...」といったログ形式を学習して出力してしまう場合がある。
+            // これらはユーザーに見せるべきではないため、レスポンスから除去する。
+            if (geminiFormatResponse.candidates && geminiFormatResponse.candidates.length > 0) {
+                const candidate = geminiFormatResponse.candidates[0];
+                if (candidate.content && candidate.content.parts) {
+                    candidate.content.parts = candidate.content.parts.map(part => {
+                        if (part.text) {
+                            // [Tool Use] ... および [Tool Result] ... の行を除去
+                            // 文末の改行も考慮して置換
+                            let text = part.text;
+                            text = text.replace(/\[Tool Use\]\s*[\s\S]*?(\n|$)/g, '');
+                            text = text.replace(/\[Tool Result\]\s*[\s\S]*?(\n|$)/g, '');
+                            return { text: text };
+                        }
+                        return part;
+                    });
+                }
+            }
 
             // Responseオブジェクトのように扱えるようにラップ
             return {
