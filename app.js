@@ -4543,14 +4543,23 @@ const apiUtils = {
             // ただし、sessionIdをリセットした直後は全履歴を送信する
             let newMessages;
             let isFullHistory = false;
-            if (state.bedrockSessionJustReset) {
-                // sessionIdリセット直後は全履歴を送信
-                console.log('[Bedrock] sessionIdリセット直後のため、全履歴を送信します');
+
+            // toolメッセージ（Function Calling結果）が含まれているかチェック
+            const hasToolMessages = messagesForApi.some(m => m.role === 'tool');
+
+            if (state.bedrockSessionJustReset || hasToolMessages) {
+                // sessionIdリセット直後、またはFunction Calling中は全履歴を送信
+                // （storedHistoryとの重複を避けるため）
+                if (state.bedrockSessionJustReset) {
+                    console.log('[Bedrock] sessionIdリセット直後のため、全履歴を送信します');
+                    state.bedrockSessionJustReset = false; // フラグをクリア
+                } else {
+                    console.log('[Bedrock] Function Calling中のため、全履歴を送信します');
+                }
                 newMessages = messagesForApi;
                 isFullHistory = true;
-                state.bedrockSessionJustReset = false; // フラグをクリア
             } else {
-                // 通常は最後のユーザーメッセージと、それに続くツール応答のみ送信
+                // 通常は最後のユーザーメッセージのみ送信
                 const lastUserMessageIndex = messagesForApi.map(m => m.role).lastIndexOf('user');
                 newMessages = lastUserMessageIndex !== -1 ? messagesForApi.slice(lastUserMessageIndex) : [];
             }
