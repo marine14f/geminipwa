@@ -4706,6 +4706,11 @@ const apiUtils = {
                             let text = part.text;
                             text = text.replace(/\[Tool Use\]\s*[\s\S]*?(\n|$)/g, '');
                             text = text.replace(/\[Tool Result\]\s*[\s\S]*?(\n|$)/g, '');
+
+                            // 修正: 全て除去されて空になった場合、APIエラー回避のためにゼロ幅スペースを入れる
+                            if (!text.trim()) {
+                                text = '\u200B';
+                            }
                             return { text: text };
                         }
                         return part;
