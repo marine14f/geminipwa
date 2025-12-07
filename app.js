@@ -4564,6 +4564,12 @@ const apiUtils = {
                 // そのため、ツール無効時は履歴のtoolUse/toolResultをすべてテキストに変換して送信する。
                 if ((!tools || tools.length === 0) && hasToolMessages) {
                     console.log('[Bedrock] ツール無効化モードのため、履歴のTool関連メッセージをテキストに変換します');
+
+                    // システムプロンプトに「ツールログを出力しないように」と強い指示を追加
+                    if (systemInstruction && systemInstruction.parts && systemInstruction.parts.length > 0) {
+                        systemInstruction.parts[0].text += "\n\n[IMPORTANT] You are in 'Text Generation Mode'. You cannot use tools now. Do NOT output '[System Log]' or tool usage logs. Output ONLY the response/story in natural language.";
+                    }
+
                     newMessages = newMessages.map(msg => {
                         // オブジェクトのディープコピーを作成
                         const newMsg = JSON.parse(JSON.stringify(msg));
@@ -4572,7 +4578,7 @@ const apiUtils = {
                             if (newMsg.parts) {
                                 newMsg.parts = newMsg.parts.map(part => {
                                     if (part.functionCall) {
-                                        return { text: `[Tool Use] ${part.functionCall.name}(${JSON.stringify(part.functionCall.args)})` };
+                                        return { text: `[System Log: Tool Use] ${part.functionCall.name}(${JSON.stringify(part.functionCall.args)})` };
                                     }
                                     return part;
                                 });
@@ -4582,7 +4588,7 @@ const apiUtils = {
                             if (newMsg.parts) {
                                 newMsg.parts = newMsg.parts.map(part => {
                                     if (part.functionResponse) {
-                                        return { text: `[Tool Result] ${part.functionResponse.name}: ${JSON.stringify(part.functionResponse.response)}` };
+                                        return { text: `[System Log: Tool Result] ${part.functionResponse.name}: ${JSON.stringify(part.functionResponse.response)}` };
                                     }
                                     return part;
                                 });
@@ -4701,11 +4707,11 @@ const apiUtils = {
                 if (candidate.content && candidate.content.parts) {
                     candidate.content.parts = candidate.content.parts.map(part => {
                         if (part.text) {
-                            // [Tool Use] ... および [Tool Result] ... の行を除去
+                            // [System Log: Tool Use] ... および [System Log: Tool Result] ... の行を除去
                             // 文末の改行も考慮して置換
                             let text = part.text;
-                            text = text.replace(/\[Tool Use\]\s*[\s\S]*?(\n|$)/g, '');
-                            text = text.replace(/\[Tool Result\]\s*[\s\S]*?(\n|$)/g, '');
+                            text = text.replace(/\[System Log: Tool Use\]\s*[\s\S]*?(\n|$)/g, '');
+                            text = text.replace(/\[System Log: Tool Result\]\s*[\s\S]*?(\n|$)/g, '');
 
                             // 修正: 全て除去されて空になった場合、APIエラー回避のためにゼロ幅スペースを入れる
                             if (!text.trim()) {
