@@ -733,7 +733,6 @@ function formatFileSize(bytes) {
 function base64ToBlob(base64, mimeType) {
     return fetch(`data:${mimeType};base64,${base64}`).then(res => res.blob());
 }
-
 // --- Service Worker関連 ---
 function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) {
@@ -1533,7 +1532,6 @@ const dbUtils = {
             request.onerror = (event) => reject(`全メモリ取得エラー: ${event.target.error}`);
         });
     },
-
     /**
      * [V2] メタデータを受け取り、アセットをDLしてからDBをクリア＆インポートする
      */
@@ -3757,7 +3755,6 @@ const apiUtils = {
 
         return bedrockTools;
     },
-
     // Gemini APIを呼び出す
     async callGeminiApi(messagesForApi, generationConfig, systemInstruction, tools = null, forceCalling = false, signal = null) {
         console.log(`[Debug] callGeminiApi: 現在の設定値を確認します。`, {
@@ -4497,7 +4494,6 @@ const apiUtils = {
             }
         }
     },
-
     // Amazon Bedrock APIを呼び出す
     async callBedrockApi(messagesForApi, generationConfig, systemInstruction, tools = null, forceCalling = false, signal = null) {
         console.log(`[Debug] callBedrockApi: Amazon Bedrock APIをプロキシ経由で呼び出します。`);
@@ -4624,6 +4620,7 @@ const apiUtils = {
                 }
             }
 
+            console.log("[Bedrock SystemInstruction Check]", systemInstruction);
             console.log("Bedrockプロキシへの送信データ:", requestBody);
 
             // レートリミッター: 5 RPM制限を守るため、必要に応じて待機
@@ -5640,7 +5637,6 @@ const appLogic = {
         // プロバイダー固有の設定項目の表示/非表示
         // Gemini専用機能（グラウンディング、Function Callingなど）の表示制御は後で実装
     },
-
     // プロバイダーに応じたモデルリストの更新
     updateModelOptions(provider) {
         // OpenRouterの場合はテキスト入力を使用するためセレクトボックスの更新は不要
@@ -6343,9 +6339,6 @@ const appLogic = {
         this.handlePush();
         state.syncMessageCounter = 0;
     },
-
-
-
     /**
      * [V2 Core Push] 実際にアップロード処理を行うコア関数
      * @private
@@ -6653,7 +6646,6 @@ const appLogic = {
             console.log(`[SYNC_DEBUG] handlePull: 終了。`);
         }
     },
-
     // イベントリスナーを設定
     setupEventListeners() {
         if (!this._popstateBound) {
@@ -7072,47 +7064,7 @@ const appLogic = {
             }
         });
 
-        document.body.addEventListener('click', (event) => {
-            if (!elements.messageContainer.contains(event.target)) {
-                const currentlyShown = elements.messageContainer.querySelector('.message.show-actions');
-                if (currentlyShown) {
-                    currentlyShown.classList.remove('show-actions');
-                }
-            }
-        }, true);
-
-        if ('visualViewport' in window) {
-            window.visualViewport.addEventListener('resize', this.updateZoomState.bind(this));
-            window.visualViewport.addEventListener('scroll', this.updateZoomState.bind(this));
-        } else {
-            console.warn("VisualViewport API is not supported in this browser.");
-        }
-
-        elements.attachFileBtn.addEventListener('click', () => uiUtils.showFileUploadDialog());
-
-        elements.selectFilesBtn.addEventListener('click', () => {
-            const fileInput = document.createElement('input');
-            fileInput.type = 'file';
-            fileInput.multiple = true;
-            fileInput.style.display = 'none';
-
-            fileInput.addEventListener('change', (event) => {
-                this.handleFileSelection(event.target.files);
-                document.body.removeChild(fileInput);
-            });
-
-            document.body.appendChild(fileInput);
-            fileInput.click();
-        });
-
-        elements.confirmAttachBtn.addEventListener('click', () => this.confirmAttachment());
-        elements.cancelAttachBtn.addEventListener('click', () => this.cancelAttachment());
-        elements.fileUploadDialog.addEventListener('close', () => {
-            if (elements.fileUploadDialog.returnValue !== 'ok') {
-                this.cancelAttachment();
-            }
-        });
-        document.addEventListener('click', (e) => {
+        document.body.addEventListener('click', (e) => {
             const button = e.target.closest('button');
             if (button && !button.disabled) {
                 this.createRipple(e, button);
@@ -7435,7 +7387,6 @@ const appLogic = {
                 }
             }
         });
-
         // --- PC (Mouse Hover) Logic ---
         if (window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
             const showHeaderPC = () => {
@@ -8200,7 +8151,6 @@ const appLogic = {
             uiUtils.hideProgressDialog();
         }
     },
-
     // チャット削除の確認と実行 (メッセージペア全体)
     async confirmDeleteChat(id, title) {
         const confirmed = await uiUtils.showCustomConfirm(`「${title || 'この履歴'}」を削除しますか？`);
@@ -11863,7 +11813,6 @@ const appLogic = {
 
         requestAnimationFrame(step);
     },
-
     /**
      * [V2] 同期用にメタデータとアセットリストを分離して準備する
      * @param {boolean} isManual - 手動実行かどうか
@@ -12657,7 +12606,6 @@ async function sha256(data) {
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
-
 /**
  * HMAC-SHA256署名を計算
  * @param {string} key - キー（バイナリまたは文字列）
