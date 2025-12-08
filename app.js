@@ -61,7 +61,7 @@ const ZAI_MODELS = [
 
 const BEDROCK_MODELS = [
     { value: 'jp.anthropic.claude-sonnet-4-5-20250929-v1:0', label: 'Claude Sonnet 4.5' },
-    { value: 'anthropic.claude-opus-4-5-20251101-v1:0', label: 'Claude Opus 4.5 ' }
+    { value: 'global.anthropic.claude-opus-4-5-20251101-v1:0', label: 'Claude Opus 4.5 ' }
 ];
 
 const DEFAULT_BEDROCK_MODEL = 'jp.anthropic.claude-sonnet-4-5-20250929-v1:0';
@@ -7750,6 +7750,8 @@ const appLogic = {
     startNewChat() {
         state.pendingCascadeResponses = null; // 保留中のカスケードデータをクリア
         state.currentChatId = null;
+        state.currentSessionId = null; // Bedrockセッションをリセット
+        state.bedrockSessionJustReset = true; // 次回送信時に全履歴を送るフラグを立てる
         state.currentMessages = [];
         state.currentSystemPrompt = state.settings.systemPrompt || '';
         state.pendingAttachments = [];
@@ -7777,6 +7779,8 @@ const appLogic = {
         state.syncMessageCounter = 0;
 
         state.currentMessages = [];
+        state.currentSessionId = null; // Bedrockセッションをリセット
+        state.bedrockSessionJustReset = true; // 次回送信時に全履歴を送るフラグを立てる
 
         if (state.isSending) {
             const confirmed = await uiUtils.showCustomConfirm("送信中です。中断して別のチャットを読み込みますか？");
