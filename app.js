@@ -4691,10 +4691,11 @@ const apiUtils = {
             }
 
             const bedrockResponse = await proxyResponse.json();
-            console.log("Amazon Bedrockからのレスポンス(プロキシ経由):", bedrockResponse);
+            console.log("Amazon Bedrockからのレスポンス(プロキシ経由):", JSON.stringify(bedrockResponse, null, 2));
 
             // レスポンスをGemini形式に変換
             const geminiFormatResponse = this.convertConverseToGeminiFormat(bedrockResponse);
+            console.log("Gemini形式への変換結果:", JSON.stringify(geminiFormatResponse, null, 2));
 
             // 2025/12/07: `cleanupToolLogs` 処理
             // 履歴フラット化により、モデルが「[Tool Use] ...」といったログ形式を学習して出力してしまう場合がある。
