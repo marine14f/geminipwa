@@ -3805,8 +3805,34 @@ const apiUtils = {
             }
         }
 
+        // Gemini用にメッセージをサニタイズ（不要なIDフィールドを削除）
+        const sanitizeForGemini = (msgs) => {
+            return msgs.map(msg => {
+                const newMsg = { ...msg };
+                if (newMsg.parts && Array.isArray(newMsg.parts)) {
+                    newMsg.parts = newMsg.parts.map(part => {
+                        const newPart = { ...part };
+                        if (newPart.functionCall) {
+                            newPart.functionCall = { ...newPart.functionCall };
+                            delete newPart.functionCall._toolCallId;
+                            delete newPart.functionCall._toolUseId;
+                        }
+                        if (newPart.functionResponse) {
+                            newPart.functionResponse = { ...newPart.functionResponse };
+                            delete newPart.functionResponse._toolCallId;
+                            delete newPart.functionResponse._toolUseId;
+                        }
+                        return newPart;
+                    });
+                }
+                return newMsg;
+            });
+        };
+
+        const sanitizedMessages = sanitizeForGemini(messagesForApi);
+
         const requestBody = {
-            contents: messagesForApi,
+            contents: sanitizedMessages,
             ...(Object.keys(finalGenerationConfig).length > 0 && { generationConfig: finalGenerationConfig }),
             safetySettings: [
                 { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
