@@ -7555,6 +7555,35 @@ const appLogic = {
         elements.clearLogsBtn.addEventListener('click', () => this.clearLogs());
         elements.copyLogsBtn.addEventListener('click', () => this.copyLogsToClipboard());
 
+        // --- ファイル添付関連 (追加) ---
+        if (elements.attachFileBtn) {
+            elements.attachFileBtn.addEventListener('click', () => {
+                uiUtils.showFileUploadDialog();
+            });
+        }
+
+        if (elements.fileInput) {
+            elements.fileInput.addEventListener('change', (event) => {
+                const files = event.target.files;
+                if (files && files.length > 0) {
+                    this.handleFileSelection(files);
+                }
+                event.target.value = ''; // Reset input to allow re-selection
+            });
+        }
+
+        if (elements.confirmAttachBtn) {
+            elements.confirmAttachBtn.addEventListener('click', () => {
+                this.confirmAttachment();
+            });
+        }
+
+        if (elements.cancelAttachBtn) {
+            elements.cancelAttachBtn.addEventListener('click', () => {
+                elements.fileUploadDialog.close('cancel');
+            });
+        }
+
     },
 
 
