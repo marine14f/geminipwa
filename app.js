@@ -68,15 +68,15 @@ const DEFAULT_BEDROCK_MODEL = 'jp.anthropic.claude-sonnet-4-5-20250929-v1:0';
 const DEFAULT_BEDROCK_REGION = 'us-east-1';
 
 // Vertex AI モデルリスト
+// 注意: Vertex AIで利用可能なモデルはGoogle AI Studioと異なる場合があります
+// プレビュー版モデルは一部のリージョン（主にus-central1）でのみ利用可能な場合があります
 const VERTEX_MODELS = [
     { value: 'gemini-2.5-pro', label: 'gemini-2.5-pro' },
     { value: 'gemini-2.5-flash', label: 'gemini-2.5-flash' },
     { value: 'gemini-2.5-flash-lite', label: 'gemini-2.5-flash-lite' },
     { value: 'gemini-2.0-flash', label: 'gemini-2.0-flash' },
     { value: 'gemini-2.0-flash-lite', label: 'gemini-2.0-flash-lite' },
-    { value: 'gemini-2.5-flash-preview-09-2025', label: 'gemini-2.5-flash-preview-09-2025', group: 'プレビュー版' },
-    { value: 'gemini-2.5-flash-lite-preview-09-2025', label: 'gemini-2.5-flash-lite-preview-09-2025', group: 'プレビュー版' },
-    { value: 'gemini-3-pro-preview', label: 'gemini-3-pro-preview', group: 'プレビュー版' }
+    { value: 'gemini-3-pro-preview', label: 'gemini-3-pro-preview (globalリージョン推奨)', group: 'プレビュー版' },
 ];
 
 const DEFAULT_VERTEX_MODEL = 'gemini-2.5-pro';
@@ -84,6 +84,7 @@ const DEFAULT_VERTEX_REGION = 'us-central1';
 
 // Vertex AI リージョン一覧
 const VERTEX_REGIONS = [
+    { value: 'global', label: 'global (グローバル - Gemini 3 Pro等)' },
     { value: 'us-central1', label: 'us-central1 (アイオワ)' },
     { value: 'us-east1', label: 'us-east1 (サウスカロライナ)' },
     { value: 'us-east4', label: 'us-east4 (北バージニア)' },
@@ -4837,9 +4838,26 @@ const apiUtils = {
     async callVertexApi(messagesForApi, generationConfig, systemInstruction, tools = null, forceCalling = false, signal = null) {
         console.log(`[Debug] callVertexApi: Vertex AI APIをプロキシ経由で呼び出します。`);
 
-        const projectId = state.settings.vertexProjectId;
-        const region = state.settings.vertexRegion || DEFAULT_VERTEX_REGION;
-        const serviceAccountKey = state.settings.vertexServiceAccountKey;
+        // UI要素から直接値を取得（settingsに反映されていない場合のフォールバック）
+        const projectIdFromUI = elements.vertexProjectIdInput?.value?.trim() || '';
+        const regionFromUI = elements.vertexRegionSelect?.value || DEFAULT_VERTEX_REGION;
+        const serviceAccountKeyFromUI = elements.vertexServiceAccountKeyInput?.value?.trim() || '';
+
+        // state.settingsの値を優先、なければUI要素から取得
+        const projectId = state.settings.vertexProjectId || projectIdFromUI;
+        const region = state.settings.vertexRegion || regionFromUI;
+        const serviceAccountKey = state.settings.vertexServiceAccountKey || serviceAccountKeyFromUI;
+
+        console.log(`[Vertex AI Debug] 設定値確認:`, {
+            'state.settings.vertexProjectId': state.settings.vertexProjectId ? '設定済み' : '未設定',
+            'state.settings.vertexRegion': state.settings.vertexRegion || '未設定',
+            'state.settings.vertexServiceAccountKey': state.settings.vertexServiceAccountKey ? `設定済み (${state.settings.vertexServiceAccountKey.length}文字)` : '未設定',
+            'UI projectId': projectIdFromUI ? '設定済み' : '未設定',
+            'UI region': regionFromUI,
+            'UI serviceAccountKey': serviceAccountKeyFromUI ? `設定済み (${serviceAccountKeyFromUI.length}文字)` : '未設定',
+            '使用するprojectId': projectId ? '設定済み' : '未設定',
+            '使用するserviceAccountKey': serviceAccountKey ? `設定済み (${serviceAccountKey.length}文字)` : '未設定'
+        });
 
         if (!projectId || !serviceAccountKey) {
             throw new Error("Vertex AIの設定が不完全です。Project IDとサービスアカウントキーを設定してください。");

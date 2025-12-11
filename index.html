@@ -311,6 +311,7 @@
                             placeholder="例: my-project-123" aria-label="Google Cloud Project ID">
                         <label for="vertex-region-select" style="margin-top: 10px;">Vertex AI リージョン:</label>
                         <select id="vertex-region-select" aria-label="Vertex AI リージョン">
+                            <option value="global">global (グローバル - Gemini 3 Pro等)</option>
                             <option value="us-central1">us-central1 (アイオワ)</option>
                             <option value="us-east1">us-east1 (サウスカロライナ)</option>
                             <option value="us-east4">us-east4 (北バージニア)</option>
@@ -331,7 +332,8 @@
                         <p style="font-size: 11px; color: var(--text-secondary); margin-top: 8px;">
                             ※ Vertex AIはデバッグモード専用です。<br>
                             ※ サービスアカウントキーはGoogle Cloud Console → IAMと管理 → サービスアカウント → キーから取得できます。<br>
-                            ※ サービスアカウントには「Vertex AI ユーザー」ロールが必要です。
+                            ※ サービスアカウントには「Vertex AI ユーザー」ロールが必要です。<br>
+                            ※ <strong>gemini-3-pro-preview等のグローバルサポートモデルは「global」リージョンを選択してください。</strong>
                         </p>
                     </div>
 
