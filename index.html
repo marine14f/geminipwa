@@ -255,6 +255,7 @@
                             <option value="zai">Z.ai</option>
                             <option value="openrouter">OpenRouter</option>
                             <option value="bedrock">Amazon Bedrock</option>
+                            <option value="vertex">Vertex AI</option>
                         </select>
                     </div>
 
@@ -301,6 +302,36 @@
                         <p style="font-size: 11px; color: var(--text-secondary); margin-top: 8px;">
                             ※ Bedrockはデバッグモード専用です。APIキーは安全に管理してください。<br>
                             ※ APIキーはAWSコンソールから発行できます。
+                        </p>
+                    </div>
+
+                    <div id="vertex-api-key-container" class="hidden">
+                        <label for="vertex-project-id">Google Cloud Project ID:</label>
+                        <input type="text" id="vertex-project-id"
+                            placeholder="例: my-project-123" aria-label="Google Cloud Project ID">
+                        <label for="vertex-region-select" style="margin-top: 10px;">Vertex AI リージョン:</label>
+                        <select id="vertex-region-select" aria-label="Vertex AI リージョン">
+                            <option value="us-central1">us-central1 (アイオワ)</option>
+                            <option value="us-east1">us-east1 (サウスカロライナ)</option>
+                            <option value="us-east4">us-east4 (北バージニア)</option>
+                            <option value="us-west1">us-west1 (オレゴン)</option>
+                            <option value="us-west4">us-west4 (ラスベガス)</option>
+                            <option value="europe-west1">europe-west1 (ベルギー)</option>
+                            <option value="europe-west2">europe-west2 (ロンドン)</option>
+                            <option value="europe-west3">europe-west3 (フランクフルト)</option>
+                            <option value="europe-west4">europe-west4 (オランダ)</option>
+                            <option value="asia-northeast1">asia-northeast1 (東京)</option>
+                            <option value="asia-northeast3">asia-northeast3 (ソウル)</option>
+                            <option value="asia-southeast1">asia-southeast1 (シンガポール)</option>
+                        </select>
+                        <label for="vertex-service-account-key" style="margin-top: 10px;">サービスアカウントキー (JSON):</label>
+                        <textarea id="vertex-service-account-key" rows="4"
+                            placeholder='{"type":"service_account","project_id":"...","private_key":"...","client_email":"..."}'
+                            aria-label="サービスアカウントキー" style="font-family: monospace; font-size: 12px;"></textarea>
+                        <p style="font-size: 11px; color: var(--text-secondary); margin-top: 8px;">
+                            ※ Vertex AIはデバッグモード専用です。<br>
+                            ※ サービスアカウントキーはGoogle Cloud Console → IAMと管理 → サービスアカウント → キーから取得できます。<br>
+                            ※ サービスアカウントには「Vertex AI ユーザー」ロールが必要です。
                         </p>
                     </div>
 

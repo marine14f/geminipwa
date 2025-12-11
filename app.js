@@ -67,6 +67,37 @@ const BEDROCK_MODELS = [
 const DEFAULT_BEDROCK_MODEL = 'jp.anthropic.claude-sonnet-4-5-20250929-v1:0';
 const DEFAULT_BEDROCK_REGION = 'us-east-1';
 
+// Vertex AI モデルリスト
+const VERTEX_MODELS = [
+    { value: 'gemini-2.5-pro', label: 'gemini-2.5-pro' },
+    { value: 'gemini-2.5-flash', label: 'gemini-2.5-flash' },
+    { value: 'gemini-2.5-flash-lite', label: 'gemini-2.5-flash-lite' },
+    { value: 'gemini-2.0-flash', label: 'gemini-2.0-flash' },
+    { value: 'gemini-2.0-flash-lite', label: 'gemini-2.0-flash-lite' },
+    { value: 'gemini-2.5-flash-preview-09-2025', label: 'gemini-2.5-flash-preview-09-2025', group: 'プレビュー版' },
+    { value: 'gemini-2.5-flash-lite-preview-09-2025', label: 'gemini-2.5-flash-lite-preview-09-2025', group: 'プレビュー版' },
+    { value: 'gemini-3-pro-preview', label: 'gemini-3-pro-preview', group: 'プレビュー版' }
+];
+
+const DEFAULT_VERTEX_MODEL = 'gemini-2.5-pro';
+const DEFAULT_VERTEX_REGION = 'us-central1';
+
+// Vertex AI リージョン一覧
+const VERTEX_REGIONS = [
+    { value: 'us-central1', label: 'us-central1 (アイオワ)' },
+    { value: 'us-east1', label: 'us-east1 (サウスカロライナ)' },
+    { value: 'us-east4', label: 'us-east4 (北バージニア)' },
+    { value: 'us-west1', label: 'us-west1 (オレゴン)' },
+    { value: 'us-west4', label: 'us-west4 (ラスベガス)' },
+    { value: 'europe-west1', label: 'europe-west1 (ベルギー)' },
+    { value: 'europe-west2', label: 'europe-west2 (ロンドン)' },
+    { value: 'europe-west3', label: 'europe-west3 (フランクフルト)' },
+    { value: 'europe-west4', label: 'europe-west4 (オランダ)' },
+    { value: 'asia-northeast1', label: 'asia-northeast1 (東京)' },
+    { value: 'asia-northeast3', label: 'asia-northeast3 (ソウル)' },
+    { value: 'asia-southeast1', label: 'asia-southeast1 (シンガポール)' },
+];
+
 // Amazon Bedrock専用レートリミッター (5 RPM制限対応)
 class BedrockRateLimiter {
     constructor(requestsPerMinute = 5) {
@@ -311,8 +342,12 @@ try {
         openrouterModelInputContainer: document.getElementById('openrouter-model-input-container'),
         bedrockAccessKeyInput: document.getElementById('bedrock-access-key'),
         bedrockSecretKeyInput: document.getElementById('bedrock-secret-key'),
-        bedrockRegionSelect: document.getElementById('bedrock-region'),
+        bedrockRegionSelect: document.getElementById('bedrock-region-select'),
         bedrockApiKeyContainer: document.getElementById('bedrock-api-key-container'),
+        vertexProjectIdInput: document.getElementById('vertex-project-id'),
+        vertexRegionSelect: document.getElementById('vertex-region-select'),
+        vertexServiceAccountKeyInput: document.getElementById('vertex-service-account-key'),
+        vertexApiKeyContainer: document.getElementById('vertex-api-key-container'),
         modelNameSelect: document.getElementById('model-name'),
         modelNameLabel: document.getElementById('model-name-label'),
         userDefinedModelsGroup: document.getElementById('user-defined-models-group'),
@@ -537,13 +572,16 @@ const state = {
     videoUrlCache: new Map(),
     imageUrlCache: new Map(),
     settings: {
-        apiProvider: 'gemini', // 'gemini' | 'zai' | 'bedrock' | 'openrouter'
+        apiProvider: 'gemini', // 'gemini' | 'zai' | 'bedrock' | 'openrouter' | 'vertex'
         apiKey: '',
         zaiApiKey: '',
         openrouterApiKey: '',
         bedrockAccessKey: '',
         bedrockSecretKey: '',
         bedrockRegion: DEFAULT_BEDROCK_REGION,
+        vertexProjectId: '',
+        vertexRegion: DEFAULT_VERTEX_REGION,
+        vertexServiceAccountKey: '',
         modelName: DEFAULT_MODEL,
         systemPrompt: '',
         temperature: null,
@@ -919,6 +957,7 @@ const dbUtils = {
 
                             const profileSettingKeys = [
                                 'apiProvider', 'apiKey', 'zaiApiKey', 'bedrockAccessKey', 'bedrockSecretKey', 'bedrockRegion',
+                                'vertexProjectId', 'vertexRegion', 'vertexServiceAccountKey',
                                 'modelName', 'systemPrompt', 'temperature', 'maxTokens', 'topK', 'topP',
                                 'presencePenalty', 'frequencyPenalty', 'thinkingBudget', 'includeThoughts',
                                 'enableThoughtTranslation', 'thoughtTranslationModel', 'dummyUser',
@@ -2552,7 +2591,7 @@ const uiUtils = {
         // プロバイダーとAPIキーの設定（要素が存在する場合のみ）
         if (elements.apiProviderSelect) {
             let provider = state.settings.apiProvider || 'gemini';
-            const isDebugOnlyProvider = provider === 'zai' || provider === 'openrouter' || provider === 'bedrock';
+            const isDebugOnlyProvider = provider === 'zai' || provider === 'openrouter' || provider === 'bedrock' || provider === 'vertex';
             if (!state.settings.debugMode && isDebugOnlyProvider) {
                 provider = 'gemini';
                 state.settings.apiProvider = provider;
@@ -2586,6 +2625,15 @@ const uiUtils = {
         }
         if (elements.bedrockRegionSelect) {
             elements.bedrockRegionSelect.value = state.settings.bedrockRegion || DEFAULT_BEDROCK_REGION;
+        }
+        if (elements.vertexProjectIdInput) {
+            elements.vertexProjectIdInput.value = state.settings.vertexProjectId || '';
+        }
+        if (elements.vertexRegionSelect) {
+            elements.vertexRegionSelect.value = state.settings.vertexRegion || DEFAULT_VERTEX_REGION;
+        }
+        if (elements.vertexServiceAccountKeyInput) {
+            elements.vertexServiceAccountKeyInput.value = state.settings.vertexServiceAccountKey || '';
         }
         elements.modelNameSelect.value = state.settings.modelName || DEFAULT_MODEL;
         elements.systemPromptDefaultTextarea.value = state.settings.systemPrompt || '';
@@ -4778,8 +4826,149 @@ const apiUtils = {
             return await this.callOpenRouterApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling, signal);
         } else if (provider === 'bedrock') {
             return await this.callBedrockApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling, signal);
+        } else if (provider === 'vertex') {
+            return await this.callVertexApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling, signal);
         } else {
             return await this.callGeminiApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling, signal);
+        }
+    },
+
+    // Vertex AI APIを呼び出す
+    async callVertexApi(messagesForApi, generationConfig, systemInstruction, tools = null, forceCalling = false, signal = null) {
+        console.log(`[Debug] callVertexApi: Vertex AI APIをプロキシ経由で呼び出します。`);
+
+        const projectId = state.settings.vertexProjectId;
+        const region = state.settings.vertexRegion || DEFAULT_VERTEX_REGION;
+        const serviceAccountKey = state.settings.vertexServiceAccountKey;
+
+        if (!projectId || !serviceAccountKey) {
+            throw new Error("Vertex AIの設定が不完全です。Project IDとサービスアカウントキーを設定してください。");
+        }
+
+        // signalが渡されていない場合のみstate.abortControllerを作成
+        if (!signal) {
+            state.abortController = new AbortController();
+            signal = state.abortController.signal;
+        }
+
+        const modelId = state.settings.modelName || DEFAULT_VERTEX_MODEL;
+
+        try {
+            // サービスアカウントキーをBase64エンコード
+            const serviceAccountKeyBase64 = btoa(serviceAccountKey);
+
+            // Gemini用にメッセージをサニタイズ（不要なIDフィールドを削除）
+            const sanitizeForVertex = (msgs) => {
+                return msgs.map(msg => {
+                    const newMsg = { ...msg };
+                    if (newMsg.parts && Array.isArray(newMsg.parts)) {
+                        newMsg.parts = newMsg.parts.map(part => {
+                            const newPart = { ...part };
+                            if (newPart.functionCall) {
+                                newPart.functionCall = { ...newPart.functionCall };
+                                delete newPart.functionCall._toolCallId;
+                                delete newPart.functionCall._toolUseId;
+                            }
+                            if (newPart.functionResponse) {
+                                newPart.functionResponse = { ...newPart.functionResponse };
+                                delete newPart.functionResponse._toolCallId;
+                                delete newPart.functionResponse._toolUseId;
+                            }
+                            return newPart;
+                        });
+                    }
+                    return newMsg;
+                });
+            };
+
+            const sanitizedMessages = sanitizeForVertex(messagesForApi);
+
+            // リクエストボディを構築
+            const requestBody = {
+                modelId: modelId,
+                contents: sanitizedMessages,
+                generationConfig: generationConfig,
+                safetySettings: [
+                    { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                    { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                    { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                    { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+                ]
+            };
+
+            // システムインストラクションを追加
+            if (systemInstruction && systemInstruction.parts && systemInstruction.parts.length > 0 && systemInstruction.parts[0].text) {
+                requestBody.systemInstruction = systemInstruction;
+            }
+
+            // ツール設定
+            let finalTools = [];
+            if (state.settings.geminiEnableFunctionCalling) {
+                finalTools = window.functionDeclarations || [];
+                console.log("Function Calling を有効にしてAPIを呼び出します。");
+            } else if (state.settings.geminiEnableGrounding) {
+                finalTools.push({ "google_search": {} });
+                console.log("グラウンディング (Google Search) を有効にしてAPIを呼び出します。");
+            }
+
+            if (finalTools.length > 0) {
+                requestBody.tools = finalTools;
+            }
+
+            if (forceCalling && state.settings.geminiEnableFunctionCalling) {
+                requestBody.toolConfig = {
+                    functionCallingConfig: {
+                        mode: 'ANY'
+                    }
+                };
+                console.log("Function Calling を強制モード (ANY) で実行します。");
+            }
+
+            console.log("[Vertex AI] リクエストを送信:", JSON.stringify(requestBody, (key, value) => {
+                if (key === 'data' && typeof value === 'string' && value.length > 100) {
+                    return value.substring(0, 50) + '...[省略]...' + value.substring(value.length - 20);
+                }
+                return value;
+            }, 2));
+
+            const timestamp = new Date().toLocaleTimeString();
+            console.log(`[API_DEBUG ${timestamp}] Sending fetch request to Vertex AI Proxy...`);
+
+            const proxyResponse = await fetch(`${PROXY_URL}?type=vertex_proxy`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Vertex-Project-Id': projectId,
+                    'X-Vertex-Region': region,
+                    'X-Vertex-Service-Account-Key': serviceAccountKeyBase64,
+                },
+                body: JSON.stringify(requestBody),
+                signal
+            });
+
+            const receivedTimestamp = new Date().toLocaleTimeString();
+            console.log(`[API_DEBUG ${receivedTimestamp}] Received response from Vertex AI Proxy. Status: ${proxyResponse.status}`);
+
+            const proxyData = await proxyResponse.json();
+
+            if (!proxyResponse.ok) {
+                console.error("Vertex AI Proxyからのエラー:", proxyData);
+                throw new Error(`Vertex AI APIエラー (${proxyResponse.status}): ${proxyData.error || proxyResponse.statusText}`);
+            }
+
+            console.log("[Vertex AI] プロキシレスポンス受信:", JSON.stringify(proxyData).substring(0, 500));
+
+            // Gemini形式のレスポンスを返す（Vertex AIとGemini APIは同じレスポンス形式）
+            return {
+                ok: true,
+                json: async () => proxyData
+            };
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                throw new Error("リクエストがキャンセルされました。");
+            } else {
+                throw error;
+            }
         }
     }
 };
@@ -5184,7 +5373,7 @@ const appLogic = {
 
     getCurrentUiSettings() {
         const settings = {};
-        const stringKeys = ['apiProvider', 'apiKey', 'zaiApiKey', 'openrouterApiKey', 'bedrockAccessKey', 'bedrockSecretKey', 'bedrockRegion', 'modelName', 'dummyUser', 'dummyModel', 'additionalModels', 'historySortOrder', 'fontFamily', 'proofreadingModelName', 'proofreadingSystemInstruction', 'googleSearchApiKey', 'googleSearchEngineId', 'headerColor', 'thoughtTranslationModel', 'summaryModelName', 'summarySystemPrompt'];
+        const stringKeys = ['apiProvider', 'apiKey', 'zaiApiKey', 'openrouterApiKey', 'bedrockAccessKey', 'bedrockSecretKey', 'bedrockRegion', 'vertexProjectId', 'vertexRegion', 'vertexServiceAccountKey', 'modelName', 'dummyUser', 'dummyModel', 'additionalModels', 'historySortOrder', 'fontFamily', 'proofreadingModelName', 'proofreadingSystemInstruction', 'googleSearchApiKey', 'googleSearchEngineId', 'headerColor', 'thoughtTranslationModel', 'summaryModelName', 'summarySystemPrompt'];
         const numberKeys = ['temperature', 'maxTokens', 'topK', 'topP', 'thinkingBudget', 'maxRetries', 'maxBackoffDelaySeconds', 'overlayOpacity', 'messageOpacity'];
         const booleanKeys = ['enterToSend', 'darkMode', 'geminiEnableGrounding', 'geminiEnableFunctionCalling', 'enableSwipeNavigation', 'enableProofreading', 'enableAutoRetry', 'useFixedRetryDelay', 'reverseDummyOrder', 'concatDummyModel', 'includeThoughts', 'enableThoughtTranslation', 'applyDummyToProofread', 'applyDummyToTranslate', 'forceFunctionCalling', 'autoScroll', 'enableWideMode', 'enableSummaryButton'];
 
@@ -5619,6 +5808,7 @@ const appLogic = {
         const isZai = provider === 'zai';
         const isOpenRouter = provider === 'openrouter';
         const isBedrock = provider === 'bedrock';
+        const isVertex = provider === 'vertex';
 
         // APIキー入力欄の表示/非表示
         if (elements.geminiApiKeyContainer) {
@@ -5633,6 +5823,9 @@ const appLogic = {
         if (elements.bedrockApiKeyContainer) {
             elements.bedrockApiKeyContainer.classList.toggle('hidden', !isBedrock);
         }
+        if (elements.vertexApiKeyContainer) {
+            elements.vertexApiKeyContainer.classList.toggle('hidden', !isVertex);
+        }
 
         // モデル選択UIの表示/非表示（OpenRouterはテキスト入力、その他はセレクトボックス）
         if (elements.modelNameLabel) {
@@ -5646,7 +5839,7 @@ const appLogic = {
         }
 
         // デバッグモード専用プロバイダーのチェック
-        const isDebugOnlyProvider = isZai || isOpenRouter || isBedrock;
+        const isDebugOnlyProvider = isZai || isOpenRouter || isBedrock || isVertex;
         if (!state.settings.debugMode && isDebugOnlyProvider) {
             // デバッグモードOFFならGeminiに戻す
             state.settings.apiProvider = 'gemini';
@@ -5703,6 +5896,8 @@ const appLogic = {
             models = ZAI_MODELS;
         } else if (provider === 'bedrock') {
             models = BEDROCK_MODELS;
+        } else if (provider === 'vertex') {
+            models = VERTEX_MODELS;
         } else {
             models = GEMINI_MODELS;
         }
@@ -5749,6 +5944,8 @@ const appLogic = {
                 defaultModel = DEFAULT_OPENROUTER_MODEL;
             } else if (provider === 'bedrock') {
                 defaultModel = DEFAULT_BEDROCK_MODEL;
+            } else if (provider === 'vertex') {
+                defaultModel = DEFAULT_VERTEX_MODEL;
             } else {
                 defaultModel = DEFAULT_MODEL;
             }
@@ -6850,7 +7047,7 @@ const appLogic = {
                 element: elements.apiProviderSelect,
                 event: 'change',
                 onUpdate: (value) => {
-                    const isDebugOnlyProvider = value === 'zai' || value === 'openrouter' || value === 'bedrock';
+                    const isDebugOnlyProvider = value === 'zai' || value === 'openrouter' || value === 'bedrock' || value === 'vertex';
                     if (!state.settings.debugMode && isDebugOnlyProvider) {
                         const fallbackProvider = 'gemini';
                         state.settings.apiProvider = fallbackProvider;
@@ -6922,7 +7119,7 @@ const appLogic = {
                         elements.apiProviderRow.classList.toggle('hidden', !value);
                     }
 
-                    const isDebugOnlyProvider = state.settings.apiProvider === 'zai' || state.settings.apiProvider === 'openrouter' || state.settings.apiProvider === 'bedrock';
+                    const isDebugOnlyProvider = state.settings.apiProvider === 'zai' || state.settings.apiProvider === 'openrouter' || state.settings.apiProvider === 'bedrock' || state.settings.apiProvider === 'vertex';
                     if (!value && isDebugOnlyProvider) {
                         const fallbackProvider = 'gemini';
                         state.settings.apiProvider = fallbackProvider;
