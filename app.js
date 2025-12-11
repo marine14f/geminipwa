@@ -7075,6 +7075,9 @@ const appLogic = {
             bedrockAccessKey: { element: elements.bedrockAccessKeyInput, event: 'input' },
             bedrockSecretKey: { element: elements.bedrockSecretKeyInput, event: 'input' },
             bedrockRegion: { element: elements.bedrockRegionSelect, event: 'change' },
+            vertexProjectId: { element: elements.vertexProjectIdInput, event: 'input' },
+            vertexRegion: { element: elements.vertexRegionSelect, event: 'change' },
+            vertexServiceAccountKey: { element: elements.vertexServiceAccountKeyInput, event: 'input' },
             modelName: {
                 element: elements.modelNameSelect,
                 event: 'change',
