@@ -99,30 +99,101 @@ const VERTEX_REGIONS = [
     { value: 'asia-southeast1', label: 'asia-southeast1 (シンガポール)' },
 ];
 
-// Amazon Bedrock専用レートリミッター (5 RPM制限対応)
+// Amazon Bedrock専用レートリミッター (5 RPM + 250,000 TPM制限対応)
 class BedrockRateLimiter {
-    constructor(requestsPerMinute = 5) {
+    constructor(requestsPerMinute = 5, tokensPerMinute = 250000) {
+        // RPM制限
         this.requestsPerMinute = requestsPerMinute;
         this.minInterval = (60 * 1000) / requestsPerMinute; // ミリ秒
         this.lastRequestTime = 0;
+        
+        // TPM制限
+        this.tokensPerMinute = tokensPerMinute;
+        this.tokenUsageHistory = []; // { timestamp, tokens } の配列
+        this.TPM_SAFETY_MARGIN = 0.9; // 安全マージン（90%で制限）
     }
 
-    async waitForNextSlot() {
-        const now = Date.now();
-        const timeSinceLastRequest = now - this.lastRequestTime;
-        const waitTime = Math.max(0, this.minInterval - timeSinceLastRequest);
+    /**
+     * 1分以上前のトークン使用履歴をクリーンアップ
+     */
+    _cleanupOldUsage() {
+        const oneMinuteAgo = Date.now() - 60000;
+        this.tokenUsageHistory = this.tokenUsageHistory.filter(entry => entry.timestamp > oneMinuteAgo);
+    }
 
-        if (waitTime > 0) {
-            console.log(`[Bedrock Rate Limiter] 次のリクエストまで ${Math.ceil(waitTime / 1000)} 秒待機中...`);
-            await new Promise(resolve => setTimeout(resolve, waitTime));
+    /**
+     * 現在の1分間のトークン使用量を取得
+     */
+    getCurrentTPM() {
+        this._cleanupOldUsage();
+        return this.tokenUsageHistory.reduce((sum, entry) => sum + entry.tokens, 0);
+    }
+
+    /**
+     * トークン使用量を記録
+     * @param {number} inputTokens - 入力トークン数
+     * @param {number} outputTokens - 出力トークン数
+     */
+    recordTokenUsage(inputTokens, outputTokens) {
+        const totalTokens = (inputTokens || 0) + (outputTokens || 0);
+        this.tokenUsageHistory.push({
+            timestamp: Date.now(),
+            tokens: totalTokens
+        });
+        const currentTPM = this.getCurrentTPM();
+        console.log(`[Bedrock TPM] トークン使用記録: 入力=${inputTokens}, 出力=${outputTokens}, 合計=${totalTokens}, 現在のTPM=${currentTPM}/${this.tokensPerMinute}`);
+    }
+
+    /**
+     * 次のリクエストスロットを待機（RPM + TPM両方をチェック）
+     * @param {number} estimatedInputTokens - 推定入力トークン数（オプション）
+     */
+    async waitForNextSlot(estimatedInputTokens = 0) {
+        const now = Date.now();
+        
+        // RPM制限のチェック
+        const timeSinceLastRequest = now - this.lastRequestTime;
+        let rpmWaitTime = Math.max(0, this.minInterval - timeSinceLastRequest);
+
+        // TPM制限のチェック
+        let tpmWaitTime = 0;
+        const currentTPM = this.getCurrentTPM();
+        const effectiveLimit = this.tokensPerMinute * this.TPM_SAFETY_MARGIN;
+        const projectedTPM = currentTPM + estimatedInputTokens;
+
+        if (projectedTPM > effectiveLimit) {
+            // 最も古い使用履歴が期限切れになるまで待機
+            if (this.tokenUsageHistory.length > 0) {
+                const oldestEntry = this.tokenUsageHistory[0];
+                const timeUntilExpiry = (oldestEntry.timestamp + 60000) - Date.now();
+                tpmWaitTime = Math.max(0, timeUntilExpiry + 1000); // 1秒の余裕を追加
+                console.log(`[Bedrock TPM] TPM制限に近づいています。現在=${currentTPM}, 推定追加=${estimatedInputTokens}, 予測合計=${projectedTPM}, 制限=${this.tokensPerMinute}`);
+            }
+        }
+
+        // より長い待機時間を採用
+        const totalWaitTime = Math.max(rpmWaitTime, tpmWaitTime);
+
+        if (totalWaitTime > 0) {
+            const reason = tpmWaitTime > rpmWaitTime ? 'TPM制限' : 'RPM制限';
+            console.log(`[Bedrock Rate Limiter] ${reason}のため ${Math.ceil(totalWaitTime / 1000)} 秒待機中... (現在のTPM: ${currentTPM}/${this.tokensPerMinute})`);
+            await new Promise(resolve => setTimeout(resolve, totalWaitTime));
         }
 
         this.lastRequestTime = Date.now();
-        console.log(`[Bedrock Rate Limiter] リクエストスロット確保 (前回から ${Math.ceil(timeSinceLastRequest / 1000)} 秒経過)`);
+        console.log(`[Bedrock Rate Limiter] リクエストスロット確保 (前回から ${Math.ceil(timeSinceLastRequest / 1000)} 秒経過, 現在のTPM: ${this.getCurrentTPM()})`);
+    }
+
+    /**
+     * TPM制限のリセット（デバッグ用）
+     */
+    resetTPM() {
+        this.tokenUsageHistory = [];
+        console.log('[Bedrock TPM] トークン使用履歴をリセットしました');
     }
 }
 
-const bedrockRateLimiter = new BedrockRateLimiter(5);
+const bedrockRateLimiter = new BedrockRateLimiter(5, 250000);
 
 
 const VERSION_HISTORY = {
@@ -4768,6 +4839,14 @@ const apiUtils = {
             const bedrockResponse = await proxyResponse.json();
             console.log("Amazon Bedrockからのレスポンス(プロキシ経由):", JSON.stringify(bedrockResponse, null, 2));
 
+            // TPM制限対応: トークン使用量を記録
+            if (bedrockResponse.usage) {
+                bedrockRateLimiter.recordTokenUsage(
+                    bedrockResponse.usage.inputTokens || 0,
+                    bedrockResponse.usage.outputTokens || 0
+                );
+            }
+
             // レスポンスをGemini形式に変換
             const geminiFormatResponse = this.convertConverseToGeminiFormat(bedrockResponse);
             console.log("Gemini形式への変換結果:", JSON.stringify(geminiFormatResponse, null, 2));
@@ -5895,7 +5974,8 @@ const appLogic = {
 
         // 既存のオプションをクリア（ユーザー指定モデルグループを除く）
         const userDefinedGroup = elements.userDefinedModelsGroup;
-        const currentValue = modelSelect.value;
+        // 保存された設定値を優先的に使用（プロファイル読み込み時にUI反映前でも正しい値を参照するため）
+        const currentValue = state.settings.modelName || modelSelect.value;
 
         // すべてのoptgroupとoptionを削除（ユーザー指定グループを除く）
         const optgroups = Array.from(modelSelect.querySelectorAll('optgroup'));
