@@ -4675,6 +4675,19 @@ const apiUtils = {
         const modelId = state.settings.modelName || DEFAULT_BEDROCK_MODEL;
 
         try {
+            // 要約コンテキストがある場合、システムプロンプトに要約文を追加
+            // これにより、KVストアには要約後の新しい会話のみが蓄積され、
+            // 要約文は毎回システムプロンプト経由で送信される
+            if (state.currentSummarizedContext && state.currentSummarizedContext.summaryText) {
+                const summaryPrefix = `【これまでの会話の要約】\n${state.currentSummarizedContext.summaryText}\n\n---\n\n`;
+                if (systemInstruction && systemInstruction.parts && systemInstruction.parts.length > 0) {
+                    systemInstruction.parts[0].text = summaryPrefix + systemInstruction.parts[0].text;
+                } else {
+                    systemInstruction = { role: "system", parts: [{ text: summaryPrefix.trim() }] };
+                }
+                console.log('[Bedrock] 要約コンテキストをシステムプロンプトに追加しました');
+            }
+
             // セッションIDがなければ新規作成
             if (!state.currentSessionId) {
                 state.currentSessionId = crypto.randomUUID();
@@ -5544,28 +5557,37 @@ const appLogic = {
         const messagesForApi = JSON.parse(JSON.stringify(baseMessages));
 
         let historyToProcess;
+        const provider = state.settings.apiProvider || 'gemini';
 
         // 要約コンテキストが存在する場合、API送信用の履歴を動的に構築する
         if (state.currentSummarizedContext && state.currentSummarizedContext.summaryText) {
-            console.log("[API Prep] 要約コンテキストを検出。API履歴を圧縮します。");
-            const { summaryText } = state.currentSummarizedContext;
-            const headCount = 5;
-            const tailCount = 15;
+            if (provider === 'bedrock') {
+                // Bedrockの場合：要約文はシステムプロンプトに追加されるため、
+                // ここでは要約済み範囲を除外し、要約後のメッセージのみを返す
+                const summaryEndIndex = state.currentSummarizedContext.summaryRange?.end || 0;
+                historyToProcess = messagesForApi.slice(summaryEndIndex);
+                console.log(`[API Prep] Bedrock: 要約済み範囲(0-${summaryEndIndex})を除外。要約後のメッセージ ${historyToProcess.length}件を送信します。`);
+            } else {
+                // Gemini等の場合：従来通り冒頭+要約+末尾の形式で圧縮
+                console.log("[API Prep] 要約コンテキストを検出。API履歴を圧縮します。");
+                const { summaryText } = state.currentSummarizedContext;
+                const headCount = 5;
+                const tailCount = 15;
 
-            const headMessages = messagesForApi.slice(0, headCount);
-            const tailMessages = messagesForApi.slice(Math.max(headCount, messagesForApi.length - tailCount));
+                const headMessages = messagesForApi.slice(0, headCount);
+                const tailMessages = messagesForApi.slice(Math.max(headCount, messagesForApi.length - tailCount));
 
-            const summaryMessage = {
-                role: 'user',
-                content: `【これまでの会話の要約】\n${summaryText}`,
-                timestamp: Date.now(),
-                isHidden: true, // UIには表示されない内部的なメッセージ
-                attachments: []
-            };
+                const summaryMessage = {
+                    role: 'user',
+                    content: `【これまでの会話の要約】\n${summaryText}`,
+                    timestamp: Date.now(),
+                    isHidden: true, // UIには表示されない内部的なメッセージ
+                    attachments: []
+                };
 
-            historyToProcess = [...headMessages, summaryMessage, ...tailMessages];
-            console.log(`[API Prep] 履歴を圧縮しました: Head(${headMessages.length}) + Summary(1) + Tail(${tailMessages.length}) = ${historyToProcess.length}件`);
-
+                historyToProcess = [...headMessages, summaryMessage, ...tailMessages];
+                console.log(`[API Prep] 履歴を圧縮しました: Head(${headMessages.length}) + Summary(1) + Tail(${tailMessages.length}) = ${historyToProcess.length}件`);
+            }
         } else {
             // 通常の履歴
             historyToProcess = messagesForApi;
@@ -11915,47 +11937,103 @@ const appLogic = {
 
     async _callSummaryApi(originalText) {
         try {
+            const provider = state.settings.apiProvider || 'gemini';
             const systemInstruction = {
                 parts: [{ text: state.settings.summarySystemPrompt }]
             };
 
             const userContent = `【要約対象の会話履歴】\n${originalText}`;
-
-            const requestBody = {
-                contents: [{ role: 'user', parts: [{ text: userContent }] }],
-                systemInstruction: systemInstruction,
-                generationConfig: {
-                    temperature: 0.3,
-                },
-                safetySettings: [
-                    { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-                    { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-                    { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-                    { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
-                ]
-            };
-
             const summaryModel = state.settings.summaryModelName || state.settings.modelName;
+            
             console.log("--- [要約API] リクエスト開始 ---");
+            console.log("使用プロバイダー:", provider);
             console.log("使用モデル:", summaryModel);
-            console.log("リクエストボディ:", JSON.stringify(requestBody, null, 2));
 
-            const endpoint = `${GEMINI_API_BASE_URL}${summaryModel}:generateContent`;
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.settings.apiKey },
-                body: JSON.stringify(requestBody),
-            });
+            let responseData;
 
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ error: { message: "レスポンスボディのJSONパースに失敗" } }));
-                console.error("--- [要約API] APIエラーレスポンス ---");
-                console.error("ステータス:", response.status, response.statusText);
-                console.error("エラーレスポンスボディ:", errorData);
-                throw new Error(errorData.error?.message || `APIエラー: ${response.status}`);
+            if (provider === 'bedrock') {
+                // Bedrock API経由で要約を実行
+                // 現在のチャットセッションと分離するため、一時的なセッションIDを使用
+                const originalSessionId = state.currentSessionId;
+                state.currentSessionId = `summary_${crypto.randomUUID()}`;
+                state.bedrockSessionJustReset = true; // 新規セッションフラグを設定
+                
+                const messagesForApi = [{ role: 'user', parts: [{ text: userContent }] }];
+                const generationConfig = { temperature: 0.3, maxOutputTokens: 8192 };
+                
+                try {
+                    const response = await apiUtils.callBedrockApi(
+                        messagesForApi,
+                        generationConfig,
+                        systemInstruction,
+                        null,  // tools
+                        false, // forceCalling
+                        null   // signal
+                    );
+                    
+                    if (!response.ok) {
+                        throw new Error(`Bedrock APIエラー: ${response.status}`);
+                    }
+                    responseData = await response.json();
+                } finally {
+                    // セッションIDを元に戻す
+                    state.currentSessionId = originalSessionId;
+                }
+                
+            } else if (provider === 'vertex') {
+                // Vertex AI経由で要約を実行
+                const messagesForApi = [{ role: 'user', parts: [{ text: userContent }] }];
+                const generationConfig = { temperature: 0.3, maxOutputTokens: 8192 };
+                
+                const response = await apiUtils.callVertexApi(
+                    messagesForApi,
+                    generationConfig,
+                    systemInstruction,
+                    null,  // tools
+                    false, // forceCalling
+                    null   // signal
+                );
+                
+                if (!response.ok) {
+                    throw new Error(`Vertex AI APIエラー: ${response.status}`);
+                }
+                responseData = await response.json();
+                
+            } else {
+                // Gemini API（デフォルト）
+                const requestBody = {
+                    contents: [{ role: 'user', parts: [{ text: userContent }] }],
+                    systemInstruction: systemInstruction,
+                    generationConfig: {
+                        temperature: 0.3,
+                    },
+                    safetySettings: [
+                        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+                    ]
+                };
+
+                console.log("リクエストボディ:", JSON.stringify(requestBody, null, 2));
+
+                const endpoint = `${GEMINI_API_BASE_URL}${summaryModel}:generateContent`;
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': state.settings.apiKey },
+                    body: JSON.stringify(requestBody),
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ error: { message: "レスポンスボディのJSONパースに失敗" } }));
+                    console.error("--- [要約API] APIエラーレスポンス ---");
+                    console.error("ステータス:", response.status, response.statusText);
+                    console.error("エラーレスポンスボディ:", errorData);
+                    throw new Error(errorData.error?.message || `APIエラー: ${response.status}`);
+                }
+
+                responseData = await response.json();
             }
-
-            const responseData = await response.json();
 
             console.log("--- [要約API] 正常レスポンス ---");
             console.log("レスポンスボディ全体:", JSON.stringify(responseData, null, 2));
@@ -12046,6 +12124,14 @@ const appLogic = {
                 summaryRange: { start: 0, end: end }, // startは常に0、endを更新
                 summarizedAt: Date.now()
             };
+
+            // Bedrockプロバイダーの場合、セッションIDをリセット
+            // これにより、KVストアの古い全履歴がクリアされ、要約後は新しいセッションで開始される
+            if (state.settings.apiProvider === 'bedrock') {
+                state.currentSessionId = crypto.randomUUID();
+                state.bedrockSessionJustReset = true;
+                console.log(`[Bedrock] 要約確定によりセッションIDをリセットしました: ${state.currentSessionId}`);
+            }
 
             // 変更されたsummarizedContextを含むチャット全体を保存する
             await dbUtils.saveChat();
