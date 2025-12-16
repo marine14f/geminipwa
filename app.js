@@ -4675,19 +4675,6 @@ const apiUtils = {
         const modelId = state.settings.modelName || DEFAULT_BEDROCK_MODEL;
 
         try {
-            // 要約コンテキストがある場合、システムプロンプトに要約文を追加
-            // これにより、KVストアには要約後の新しい会話のみが蓄積され、
-            // 要約文は毎回システムプロンプト経由で送信される
-            if (state.currentSummarizedContext && state.currentSummarizedContext.summaryText) {
-                const summaryPrefix = `【これまでの会話の要約】\n${state.currentSummarizedContext.summaryText}\n\n---\n\n`;
-                if (systemInstruction && systemInstruction.parts && systemInstruction.parts.length > 0) {
-                    systemInstruction.parts[0].text = summaryPrefix + systemInstruction.parts[0].text;
-                } else {
-                    systemInstruction = { role: "system", parts: [{ text: summaryPrefix.trim() }] };
-                }
-                console.log('[Bedrock] 要約コンテキストをシステムプロンプトに追加しました');
-            }
-
             // セッションIDがなければ新規作成
             if (!state.currentSessionId) {
                 state.currentSessionId = crypto.randomUUID();
@@ -5562,10 +5549,11 @@ const appLogic = {
         // 要約コンテキストが存在する場合、API送信用の履歴を動的に構築する
         if (state.currentSummarizedContext && state.currentSummarizedContext.summaryText) {
             if (provider === 'bedrock') {
-                // Bedrockの場合：要約文はシステムプロンプトに追加されるため、
-                // ここでは冒頭5件（ルール文を含む可能性）+ 要約後のメッセージを返す
+                // Bedrockの場合：冒頭5件 + 要約文 + 要約後のメッセージ
+                // Geminiと同様の形式でメッセージ履歴に要約文を含める
                 const headCount = 5;
                 const tailCount = 15;
+                const { summaryText } = state.currentSummarizedContext;
                 const rawSummaryEndIndex = state.currentSummarizedContext.summaryRange?.end || 0;
                 const totalMessages = messagesForApi.length;
                 // summaryEndIndexがtotalMessagesを超える場合は補正
@@ -5575,19 +5563,28 @@ const appLogic = {
                 
                 const headMessages = messagesForApi.slice(0, Math.min(headCount, totalMessages));
                 
+                // 要約メッセージを作成
+                const summaryMessage = {
+                    role: 'user',
+                    content: `【これまでの会話の要約】\n${summaryText}`,
+                    timestamp: Date.now(),
+                    isHidden: true,
+                    attachments: []
+                };
+                
                 // 要約後のメッセージを取得（重複防止のためheadCountより後から）
                 const afterSummaryStartIndex = Math.max(headCount, summaryEndIndex);
                 let afterSummaryMessages = messagesForApi.slice(afterSummaryStartIndex);
                 
-                // 要約後のメッセージがない/少ない場合は、最新tailCount件を取得（冒頭と重複しないように）
+                // 要約後のメッセージがない場合は、最新tailCount件を取得（冒頭と重複しないように）
                 if (afterSummaryMessages.length === 0 && totalMessages > headCount) {
                     const tailStartIndex = Math.max(headCount, totalMessages - tailCount);
                     afterSummaryMessages = messagesForApi.slice(tailStartIndex);
                     console.log(`[API Prep] Bedrock: 要約後メッセージがないため、最新${afterSummaryMessages.length}件（index ${tailStartIndex}から）を使用`);
                 }
                 
-                historyToProcess = [...headMessages, ...afterSummaryMessages];
-                console.log(`[API Prep] Bedrock: 冒頭${headMessages.length}件 + 後続${afterSummaryMessages.length}件 = 合計${historyToProcess.length}件を送信します。`);
+                historyToProcess = [...headMessages, summaryMessage, ...afterSummaryMessages];
+                console.log(`[API Prep] Bedrock: 冒頭${headMessages.length}件 + 要約文(1) + 後続${afterSummaryMessages.length}件 = 合計${historyToProcess.length}件を送信します。`);
             } else {
                 // Gemini等の場合：従来通り冒頭+要約+末尾の形式で圧縮
                 console.log("[API Prep] 要約コンテキストを検出。API履歴を圧縮します。");
