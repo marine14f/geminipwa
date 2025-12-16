@@ -5565,18 +5565,29 @@ const appLogic = {
                 // Bedrockの場合：要約文はシステムプロンプトに追加されるため、
                 // ここでは冒頭5件（ルール文を含む可能性）+ 要約後のメッセージを返す
                 const headCount = 5;
-                const summaryEndIndex = state.currentSummarizedContext.summaryRange?.end || 0;
+                const tailCount = 15;
+                const rawSummaryEndIndex = state.currentSummarizedContext.summaryRange?.end || 0;
                 const totalMessages = messagesForApi.length;
+                // summaryEndIndexがtotalMessagesを超える場合は補正
+                const summaryEndIndex = Math.min(rawSummaryEndIndex, totalMessages);
                 
-                console.log(`[API Prep] Bedrock Debug: totalMessages=${totalMessages}, summaryEndIndex=${summaryEndIndex}, headCount=${headCount}`);
+                console.log(`[API Prep] Bedrock Debug: totalMessages=${totalMessages}, summaryEndIndex=${summaryEndIndex} (raw=${rawSummaryEndIndex}), headCount=${headCount}`);
                 
                 const headMessages = messagesForApi.slice(0, Math.min(headCount, totalMessages));
-                // 重複を防ぐため、headCountとsummaryEndIndexの大きい方から取得
+                
+                // 要約後のメッセージを取得（重複防止のためheadCountより後から）
                 const afterSummaryStartIndex = Math.max(headCount, summaryEndIndex);
-                const afterSummaryMessages = messagesForApi.slice(afterSummaryStartIndex);
+                let afterSummaryMessages = messagesForApi.slice(afterSummaryStartIndex);
+                
+                // 要約後のメッセージがない/少ない場合は、最新tailCount件を取得（冒頭と重複しないように）
+                if (afterSummaryMessages.length === 0 && totalMessages > headCount) {
+                    const tailStartIndex = Math.max(headCount, totalMessages - tailCount);
+                    afterSummaryMessages = messagesForApi.slice(tailStartIndex);
+                    console.log(`[API Prep] Bedrock: 要約後メッセージがないため、最新${afterSummaryMessages.length}件（index ${tailStartIndex}から）を使用`);
+                }
                 
                 historyToProcess = [...headMessages, ...afterSummaryMessages];
-                console.log(`[API Prep] Bedrock: 冒頭${headMessages.length}件 + 要約後${afterSummaryMessages.length}件（index ${afterSummaryStartIndex}から） = 合計${historyToProcess.length}件を送信します。`);
+                console.log(`[API Prep] Bedrock: 冒頭${headMessages.length}件 + 後続${afterSummaryMessages.length}件 = 合計${historyToProcess.length}件を送信します。`);
             } else {
                 // Gemini等の場合：従来通り冒頭+要約+末尾の形式で圧縮
                 console.log("[API Prep] 要約コンテキストを検出。API履歴を圧縮します。");
