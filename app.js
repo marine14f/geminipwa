@@ -5563,10 +5563,13 @@ const appLogic = {
         if (state.currentSummarizedContext && state.currentSummarizedContext.summaryText) {
             if (provider === 'bedrock') {
                 // Bedrockの場合：要約文はシステムプロンプトに追加されるため、
-                // ここでは要約済み範囲を除外し、要約後のメッセージのみを返す
+                // ここでは冒頭5件（ルール文を含む可能性）+ 要約後のメッセージを返す
+                const headCount = 5;
                 const summaryEndIndex = state.currentSummarizedContext.summaryRange?.end || 0;
-                historyToProcess = messagesForApi.slice(summaryEndIndex);
-                console.log(`[API Prep] Bedrock: 要約済み範囲(0-${summaryEndIndex})を除外。要約後のメッセージ ${historyToProcess.length}件を送信します。`);
+                const headMessages = messagesForApi.slice(0, headCount);
+                const afterSummaryMessages = messagesForApi.slice(summaryEndIndex);
+                historyToProcess = [...headMessages, ...afterSummaryMessages];
+                console.log(`[API Prep] Bedrock: 冒頭${headMessages.length}件 + 要約後${afterSummaryMessages.length}件 = ${historyToProcess.length}件を送信します。`);
             } else {
                 // Gemini等の場合：従来通り冒頭+要約+末尾の形式で圧縮
                 console.log("[API Prep] 要約コンテキストを検出。API履歴を圧縮します。");
