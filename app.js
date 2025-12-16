@@ -5566,10 +5566,17 @@ const appLogic = {
                 // ここでは冒頭5件（ルール文を含む可能性）+ 要約後のメッセージを返す
                 const headCount = 5;
                 const summaryEndIndex = state.currentSummarizedContext.summaryRange?.end || 0;
-                const headMessages = messagesForApi.slice(0, headCount);
-                const afterSummaryMessages = messagesForApi.slice(summaryEndIndex);
+                const totalMessages = messagesForApi.length;
+                
+                console.log(`[API Prep] Bedrock Debug: totalMessages=${totalMessages}, summaryEndIndex=${summaryEndIndex}, headCount=${headCount}`);
+                
+                const headMessages = messagesForApi.slice(0, Math.min(headCount, totalMessages));
+                // 重複を防ぐため、headCountとsummaryEndIndexの大きい方から取得
+                const afterSummaryStartIndex = Math.max(headCount, summaryEndIndex);
+                const afterSummaryMessages = messagesForApi.slice(afterSummaryStartIndex);
+                
                 historyToProcess = [...headMessages, ...afterSummaryMessages];
-                console.log(`[API Prep] Bedrock: 冒頭${headMessages.length}件 + 要約後${afterSummaryMessages.length}件 = ${historyToProcess.length}件を送信します。`);
+                console.log(`[API Prep] Bedrock: 冒頭${headMessages.length}件 + 要約後${afterSummaryMessages.length}件（index ${afterSummaryStartIndex}から） = 合計${historyToProcess.length}件を送信します。`);
             } else {
                 // Gemini等の場合：従来通り冒頭+要約+末尾の形式で圧縮
                 console.log("[API Prep] 要約コンテキストを検出。API履歴を圧縮します。");
