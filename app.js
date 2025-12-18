@@ -82,6 +82,17 @@ const VERTEX_MODELS = [
 const DEFAULT_VERTEX_MODEL = 'gemini-2.5-pro';
 const DEFAULT_VERTEX_REGION = 'us-central1';
 
+// Azure AI Foundry モデルリスト（デプロイメント名を使用）
+const AZURE_MODELS = [
+    { value: 'claude-opus-4.5', label: 'Claude Opus 4.5' },
+    { value: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5' },
+    { value: 'claude-sonnet-4', label: 'Claude Sonnet 4' },
+    { value: 'claude-3-5-sonnet', label: 'Claude 3.5 Sonnet' },
+    { value: 'claude-3-5-haiku', label: 'Claude 3.5 Haiku' },
+];
+
+const DEFAULT_AZURE_MODEL = 'claude-opus-4.5';
+
 // Vertex AI リージョン一覧
 const VERTEX_REGIONS = [
     { value: 'global', label: 'global (グローバル - Gemini 3 Pro等)' },
@@ -420,6 +431,11 @@ try {
         vertexRegionSelect: document.getElementById('vertex-region-select'),
         vertexServiceAccountKeyInput: document.getElementById('vertex-service-account-key'),
         vertexApiKeyContainer: document.getElementById('vertex-api-key-container'),
+        azureResourceNameInput: document.getElementById('azure-resource-name'),
+        azureDeploymentNameInput: document.getElementById('azure-deployment-name'),
+        azureApiKeyInput: document.getElementById('azure-api-key'),
+        azureApiVersionSelect: document.getElementById('azure-api-version'),
+        azureApiKeyContainer: document.getElementById('azure-api-key-container'),
         modelNameSelect: document.getElementById('model-name'),
         modelNameLabel: document.getElementById('model-name-label'),
         userDefinedModelsGroup: document.getElementById('user-defined-models-group'),
@@ -654,6 +670,10 @@ const state = {
         vertexProjectId: '',
         vertexRegion: DEFAULT_VERTEX_REGION,
         vertexServiceAccountKey: '',
+        azureResourceName: '',
+        azureDeploymentName: '',
+        azureApiKey: '',
+        azureApiVersion: '2024-12-01-preview',
         modelName: DEFAULT_MODEL,
         systemPrompt: '',
         temperature: null,
@@ -2706,6 +2726,18 @@ const uiUtils = {
         }
         if (elements.vertexServiceAccountKeyInput) {
             elements.vertexServiceAccountKeyInput.value = state.settings.vertexServiceAccountKey || '';
+        }
+        if (elements.azureResourceNameInput) {
+            elements.azureResourceNameInput.value = state.settings.azureResourceName || '';
+        }
+        if (elements.azureDeploymentNameInput) {
+            elements.azureDeploymentNameInput.value = state.settings.azureDeploymentName || '';
+        }
+        if (elements.azureApiKeyInput) {
+            elements.azureApiKeyInput.value = state.settings.azureApiKey || '';
+        }
+        if (elements.azureApiVersionSelect) {
+            elements.azureApiVersionSelect.value = state.settings.azureApiVersion || '2024-12-01-preview';
         }
         elements.modelNameSelect.value = state.settings.modelName || DEFAULT_MODEL;
         elements.systemPromptDefaultTextarea.value = state.settings.systemPrompt || '';
@@ -4896,6 +4928,108 @@ const apiUtils = {
         }
     },
 
+    // Azure AI Foundry (Anthropic Claude) APIを呼び出す
+    async callAzureApi(messagesForApi, generationConfig, systemInstruction, tools = null, forceCalling = false, signal = null) {
+        const resourceName = state.settings.azureResourceName;
+        const apiKey = state.settings.azureApiKey;
+        const deploymentName = state.settings.azureDeploymentName;
+        if (!resourceName || !apiKey || !deploymentName) {
+            throw new Error("Azure AI Foundryの設定（リソース名、デプロイメント名、またはAPIキー）が不完全です。");
+        }
+        if (!signal) { state.abortController = new AbortController(); signal = state.abortController.signal; }
+
+        // Anthropic Messages API形式のエンドポイント
+        const endpoint = `https://${resourceName}.services.ai.azure.com/anthropic/v1/messages`;
+
+        // Gemini形式からAnthropic形式に変換
+        const anthropicMessages = [];
+        let systemText = '';
+        if (systemInstruction?.parts?.[0]?.text) {
+            systemText = systemInstruction.parts[0].text;
+        }
+
+        for (const msg of messagesForApi) {
+            const role = msg.role === 'model' ? 'assistant' : 'user';
+            const parts = msg.parts || [];
+            const content = [];
+
+            for (const part of parts) {
+                if (part.text) {
+                    content.push({ type: 'text', text: part.text });
+                } else if (part.inlineData) {
+                    content.push({
+                        type: 'image',
+                        source: {
+                            type: 'base64',
+                            media_type: part.inlineData.mimeType,
+                            data: part.inlineData.data
+                        }
+                    });
+                }
+            }
+
+            if (content.length > 0) {
+                anthropicMessages.push({ role, content });
+            }
+        }
+
+        const requestBody = {
+            model: deploymentName,
+            messages: anthropicMessages,
+            max_tokens: generationConfig?.maxOutputTokens || 4096
+        };
+        if (systemText) requestBody.system = systemText;
+        if (generationConfig?.temperature !== undefined) requestBody.temperature = generationConfig.temperature;
+        if (generationConfig?.topP !== undefined) requestBody.top_p = generationConfig.topP;
+
+        console.log("Azure AI Foundry (Anthropic)への送信データ:", JSON.stringify(requestBody, null, 2));
+
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': apiKey,
+                    'anthropic-version': '2023-06-01'
+                },
+                body: JSON.stringify(requestBody),
+                signal
+            });
+            if (!response.ok) {
+                let errorData = null;
+                try { errorData = await response.json(); } catch (e) {}
+                const errorMsg = errorData?.error?.message || response.statusText;
+                throw new Error(`Azure APIエラー (${response.status}): ${errorMsg}`);
+            }
+            const anthropicResponse = await response.json();
+
+            // Anthropic形式からGemini形式に変換
+            const parts = [];
+            if (anthropicResponse.content) {
+                for (const block of anthropicResponse.content) {
+                    if (block.type === 'text') parts.push({ text: block.text });
+                }
+            }
+
+            const geminiFormatResponse = {
+                candidates: [{
+                    content: { parts, role: 'model' },
+                    finishReason: anthropicResponse.stop_reason === 'end_turn' ? 'STOP' : 'STOP'
+                }],
+                usageMetadata: {
+                    promptTokenCount: anthropicResponse.usage?.input_tokens || 0,
+                    candidatesTokenCount: anthropicResponse.usage?.output_tokens || 0,
+                    totalTokenCount: (anthropicResponse.usage?.input_tokens || 0) + (anthropicResponse.usage?.output_tokens || 0)
+                }
+            };
+
+            return { ok: true, status: response.status, json: async () => geminiFormatResponse };
+        } catch (error) {
+            if (error.name === 'AbortError') throw new Error("リクエストがキャンセルされました。");
+            throw error;
+        }
+    },
+
     // プロバイダーに応じて適切なAPIを呼び出すラッパー関数
     async callApi(messagesForApi, generationConfig, systemInstruction, tools = null, forceCalling = false, signal = null) {
         const provider = state.settings.apiProvider || 'gemini';
@@ -4908,6 +5042,8 @@ const apiUtils = {
             return await this.callBedrockApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling, signal);
         } else if (provider === 'vertex') {
             return await this.callVertexApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling, signal);
+        } else if (provider === 'azure') {
+            return await this.callAzureApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling, signal);
         } else {
             return await this.callGeminiApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling, signal);
         }
@@ -5946,6 +6082,7 @@ const appLogic = {
         const isOpenRouter = provider === 'openrouter';
         const isBedrock = provider === 'bedrock';
         const isVertex = provider === 'vertex';
+        const isAzure = provider === 'azure';
 
         // APIキー入力欄の表示/非表示
         if (elements.geminiApiKeyContainer) {
@@ -5963,6 +6100,9 @@ const appLogic = {
         if (elements.vertexApiKeyContainer) {
             elements.vertexApiKeyContainer.classList.toggle('hidden', !isVertex);
         }
+        if (elements.azureApiKeyContainer) {
+            elements.azureApiKeyContainer.classList.toggle('hidden', !isAzure);
+        }
 
         // モデル選択UIの表示/非表示（OpenRouterはテキスト入力、その他はセレクトボックス）
         if (elements.modelNameLabel) {
@@ -5976,7 +6116,7 @@ const appLogic = {
         }
 
         // デバッグモード専用プロバイダーのチェック
-        const isDebugOnlyProvider = isZai || isOpenRouter || isBedrock || isVertex;
+        const isDebugOnlyProvider = isZai || isOpenRouter || isBedrock || isVertex || isAzure;
         if (!state.settings.debugMode && isDebugOnlyProvider) {
             // デバッグモードOFFならGeminiに戻す
             state.settings.apiProvider = 'gemini';
@@ -6036,6 +6176,8 @@ const appLogic = {
             models = BEDROCK_MODELS;
         } else if (provider === 'vertex') {
             models = VERTEX_MODELS;
+        } else if (provider === 'azure') {
+            models = AZURE_MODELS;
         } else {
             models = GEMINI_MODELS;
         }
@@ -6084,6 +6226,8 @@ const appLogic = {
                 defaultModel = DEFAULT_BEDROCK_MODEL;
             } else if (provider === 'vertex') {
                 defaultModel = DEFAULT_VERTEX_MODEL;
+            } else if (provider === 'azure') {
+                defaultModel = DEFAULT_AZURE_MODEL;
             } else {
                 defaultModel = DEFAULT_MODEL;
             }
@@ -7216,6 +7360,10 @@ const appLogic = {
             vertexProjectId: { element: elements.vertexProjectIdInput, event: 'input' },
             vertexRegion: { element: elements.vertexRegionSelect, event: 'change' },
             vertexServiceAccountKey: { element: elements.vertexServiceAccountKeyInput, event: 'input' },
+            azureResourceName: { element: elements.azureResourceNameInput, event: 'input' },
+            azureDeploymentName: { element: elements.azureDeploymentNameInput, event: 'input' },
+            azureApiKey: { element: elements.azureApiKeyInput, event: 'input' },
+            azureApiVersion: { element: elements.azureApiVersionSelect, event: 'change' },
             modelName: {
                 element: elements.modelNameSelect,
                 event: 'change',

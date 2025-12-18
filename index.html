@@ -256,6 +256,7 @@
                             <option value="openrouter">OpenRouter</option>
                             <option value="bedrock">Amazon Bedrock</option>
                             <option value="vertex">Vertex AI</option>
+                            <option value="azure">Azure AI Foundry</option>
                         </select>
                     </div>
 
@@ -334,6 +335,32 @@
                             ※ サービスアカウントキーはGoogle Cloud Console → IAMと管理 → サービスアカウント → キーから取得できます。<br>
                             ※ サービスアカウントには「Vertex AI ユーザー」ロールが必要です。<br>
                             ※ <strong>gemini-3-pro-preview等のグローバルサポートモデルは「global」リージョンを選択してください。</strong>
+                        </p>
+                    </div>
+
+                    <div id="azure-api-key-container" class="hidden">
+                        <label for="azure-resource-name">リソース名:</label>
+                        <input type="text" id="azure-resource-name"
+                            placeholder="例: my-ai-resource" aria-label="Azure AI Foundry リソース名">
+                        <label for="azure-deployment-name" style="margin-top: 10px;">デプロイメント名:</label>
+                        <input type="text" id="azure-deployment-name"
+                            placeholder="例: claude-sonnet-deployment" aria-label="Azure AI Foundry デプロイメント名">
+                        <label for="azure-api-key" style="margin-top: 10px;">APIキー:</label>
+                        <input type="password" autocomplete="new-password" id="azure-api-key"
+                            placeholder="Azure AI Foundry APIキーを入力" aria-label="Azure AI Foundry APIキー">
+                        <label for="azure-api-version" style="margin-top: 10px;">APIバージョン:</label>
+                        <select id="azure-api-version" aria-label="Azure AI Foundry APIバージョン">
+                            <option value="2024-12-01-preview">2024-12-01-preview (最新)</option>
+                            <option value="2024-10-21">2024-10-21</option>
+                            <option value="2024-08-01-preview">2024-08-01-preview</option>
+                            <option value="2024-06-01">2024-06-01</option>
+                            <option value="2024-02-15-preview">2024-02-15-preview</option>
+                        </select>
+                        <p style="font-size: 11px; color: var(--text-secondary); margin-top: 8px;">
+                            ※ Azure AI Foundryはデバッグモード専用です。Claude/OpenAIモデルが利用可能です。<br>
+                            ※ リソース名は Azure ポータルの「リソース名」（URLの一部になるもの）を入力してください。<br>
+                            ※ デプロイメント名は Azure AI Foundry で作成したモデルデプロイメントの名前です。<br>
+                            ※ APIキーは Azure ポータル → リソース → キーとエンドポイント から取得できます。
                         </p>
                     </div>
 
