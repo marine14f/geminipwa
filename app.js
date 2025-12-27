@@ -4959,14 +4959,27 @@ const apiUtils = {
                             ? part.functionResponse.response
                             : JSON.stringify(part.functionResponse.response);
                         
-                        anthropicMessages.push({
-                            role: 'user',
-                            content: [{
+                        // Anthropic APIでは、tool_resultはuserロールで送信する必要があるが、
+                        // 直前のassistantメッセージのtool_useと対応させる必要がある
+                        // 複数のtool_resultがある場合は1つのuserメッセージにまとめる
+                        const lastMessage = anthropicMessages[anthropicMessages.length - 1];
+                        if (lastMessage && lastMessage.role === 'user' && lastMessage.content[0]?.type === 'tool_result') {
+                            // 既存のtool_resultメッセージに追加
+                            lastMessage.content.push({
                                 type: 'tool_result',
                                 tool_use_id: part.functionResponse._toolCallId || part.functionResponse.name,
                                 content: toolResultContent
-                            }]
-                        });
+                            });
+                        } else {
+                            anthropicMessages.push({
+                                role: 'user',
+                                content: [{
+                                    type: 'tool_result',
+                                    tool_use_id: part.functionResponse._toolCallId || part.functionResponse.name,
+                                    content: toolResultContent
+                                }]
+                            });
+                        }
                     }
                 }
                 continue;
