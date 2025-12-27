@@ -4948,25 +4948,34 @@ const apiUtils = {
             systemText = systemInstruction.parts[0].text;
         }
 
-        // 1. まずすべてのメッセージをAnthropic形式に変換
-        const tempMessages = [];
-        for (const msg of messagesForApi) {
+        // Bedrockと同様のパターンで変換: toolメッセージは連続してuserロールにまとめる
+        let pendingToolResults = [];
+
+        for (let i = 0; i < messagesForApi.length; i++) {
+            const msg = messagesForApi[i];
             const parts = msg.parts || [];
 
+            // toolロール（functionResponse）の処理
             if (msg.role === 'tool') {
-                // toolメッセージは一時的にtool_resultとして保持
                 for (const part of parts) {
                     if (part.functionResponse) {
                         const toolResultContent = typeof part.functionResponse.response === 'string'
                             ? part.functionResponse.response
                             : JSON.stringify(part.functionResponse.response);
-                        
-                        tempMessages.push({
-                            _type: 'tool_result',
+                        pendingToolResults.push({
+                            type: 'tool_result',
                             tool_use_id: part.functionResponse._toolCallId || part.functionResponse.name,
                             content: toolResultContent
                         });
                     }
+                }
+                // 次のメッセージがtool以外、または最後の場合にまとめて追加
+                const nextMsg = messagesForApi[i + 1];
+                const isLastMessage = i === messagesForApi.length - 1;
+                const nextIsNotTool = !nextMsg || nextMsg.role !== 'tool';
+                if ((isLastMessage || nextIsNotTool) && pendingToolResults.length > 0) {
+                    anthropicMessages.push({ role: 'user', content: pendingToolResults });
+                    pendingToolResults = [];
                 }
                 continue;
             }
@@ -4980,11 +4989,7 @@ const apiUtils = {
                 } else if (part.inlineData) {
                     content.push({
                         type: 'image',
-                        source: {
-                            type: 'base64',
-                            media_type: part.inlineData.mimeType,
-                            data: part.inlineData.data
-                        }
+                        source: { type: 'base64', media_type: part.inlineData.mimeType, data: part.inlineData.data }
                     });
                 } else if (part.functionCall) {
                     content.push({
@@ -4997,54 +5002,7 @@ const apiUtils = {
             }
 
             if (content.length > 0) {
-                tempMessages.push({ role, content });
-            }
-        }
-
-        // 2. tool_resultをtool_useの直後のuserメッセージにまとめる
-        for (const item of tempMessages) {
-            if (item._type === 'tool_result') {
-                // 直前のassistantメッセージにtool_useがあるか確認
-                const lastMsg = anthropicMessages[anthropicMessages.length - 1];
-                if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content.some(c => c.type === 'tool_use')) {
-                    // tool_useの直後にtool_resultを追加
-                    const toolResultMsg = anthropicMessages[anthropicMessages.length] || null;
-                    const existingToolResult = anthropicMessages.find((m, i) => 
-                        i === anthropicMessages.length - 1 + 1 && m.role === 'user' && m.content[0]?.type === 'tool_result'
-                    );
-                    
-                    // 最後のメッセージがtool_result userメッセージならそこに追加
-                    const lastAnthropicMsg = anthropicMessages[anthropicMessages.length - 1];
-                    if (lastAnthropicMsg && lastAnthropicMsg._pendingToolResults) {
-                        lastAnthropicMsg._pendingToolResults.push({
-                            type: 'tool_result',
-                            tool_use_id: item.tool_use_id,
-                            content: item.content
-                        });
-                    } else {
-                        // 新しいuserメッセージとして追加
-                        anthropicMessages.push({
-                            role: 'user',
-                            content: [{
-                                type: 'tool_result',
-                                tool_use_id: item.tool_use_id,
-                                content: item.content
-                            }]
-                        });
-                    }
-                } else {
-                    // 直前がassistantでない場合も、userメッセージとして追加
-                    anthropicMessages.push({
-                        role: 'user',
-                        content: [{
-                            type: 'tool_result',
-                            tool_use_id: item.tool_use_id,
-                            content: item.content
-                        }]
-                    });
-                }
-            } else {
-                anthropicMessages.push(item);
+                anthropicMessages.push({ role, content });
             }
         }
 
