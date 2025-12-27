@@ -4949,8 +4949,30 @@ const apiUtils = {
         }
 
         for (const msg of messagesForApi) {
-            const role = msg.role === 'model' ? 'assistant' : 'user';
             const parts = msg.parts || [];
+
+            // toolロールの処理（Function Calling結果）
+            if (msg.role === 'tool') {
+                for (const part of parts) {
+                    if (part.functionResponse) {
+                        const toolResultContent = typeof part.functionResponse.response === 'string'
+                            ? part.functionResponse.response
+                            : JSON.stringify(part.functionResponse.response);
+                        
+                        anthropicMessages.push({
+                            role: 'user',
+                            content: [{
+                                type: 'tool_result',
+                                tool_use_id: part.functionResponse._toolCallId || part.functionResponse.name,
+                                content: toolResultContent
+                            }]
+                        });
+                    }
+                }
+                continue;
+            }
+
+            const role = msg.role === 'model' ? 'assistant' : 'user';
             const content = [];
 
             for (const part of parts) {
@@ -4964,6 +4986,14 @@ const apiUtils = {
                             media_type: part.inlineData.mimeType,
                             data: part.inlineData.data
                         }
+                    });
+                } else if (part.functionCall) {
+                    // Function Call（ツール使用）の変換
+                    content.push({
+                        type: 'tool_use',
+                        id: part.functionCall._toolCallId || `call_${Date.now()}_${Math.random()}`,
+                        name: part.functionCall.name,
+                        input: part.functionCall.args || {}
                     });
                 }
             }
@@ -4982,7 +5012,38 @@ const apiUtils = {
         if (generationConfig?.temperature !== undefined) requestBody.temperature = generationConfig.temperature;
         if (generationConfig?.topP !== undefined) requestBody.top_p = generationConfig.topP;
 
-        console.log("Azure AI Foundry (Anthropic)への送信データ:", JSON.stringify(requestBody, null, 2));
+        // Function Calling（ツール）の処理
+        if (state.settings.geminiEnableFunctionCalling && tools && tools.length > 0) {
+            const anthropicTools = [];
+            for (const geminiTool of tools) {
+                if (geminiTool.function_declarations && Array.isArray(geminiTool.function_declarations)) {
+                    for (const funcDecl of geminiTool.function_declarations) {
+                        anthropicTools.push({
+                            name: funcDecl.name,
+                            description: funcDecl.description || '',
+                            input_schema: funcDecl.parameters || { type: 'object', properties: {} }
+                        });
+                    }
+                }
+            }
+            if (anthropicTools.length > 0) {
+                requestBody.tools = anthropicTools;
+                // ツール選択モード
+                if (forceCalling) {
+                    requestBody.tool_choice = { type: 'any' };
+                } else {
+                    requestBody.tool_choice = { type: 'auto' };
+                }
+                console.log(`[Azure] ${anthropicTools.length}個のFunction Callingツールを設定しました。`);
+            }
+        }
+
+        console.log("Azure AI Foundry (Anthropic)への送信データ:", JSON.stringify(requestBody, (key, value) => {
+            if (key === 'data' && typeof value === 'string' && value.length > 100) {
+                return value.substring(0, 50) + '...[省略]...' + value.substring(value.length - 20);
+            }
+            return value;
+        }, 2));
 
         try {
             const response = await fetch(endpoint, {
@@ -5003,18 +5064,43 @@ const apiUtils = {
             }
             const anthropicResponse = await response.json();
 
+            console.log("[Azure] APIレスポンス:", JSON.stringify(anthropicResponse, null, 2));
+
             // Anthropic形式からGemini形式に変換
             const parts = [];
             if (anthropicResponse.content) {
                 for (const block of anthropicResponse.content) {
-                    if (block.type === 'text') parts.push({ text: block.text });
+                    if (block.type === 'text') {
+                        parts.push({ text: block.text });
+                    } else if (block.type === 'tool_use') {
+                        // ツール使用（Function Call）の変換
+                        parts.push({
+                            functionCall: {
+                                name: block.name,
+                                args: block.input || {},
+                                _toolCallId: block.id  // Anthropic APIのtool_use IDを保存
+                            }
+                        });
+                    }
                 }
+            }
+
+            // finishReasonのマッピング
+            let finishReason = 'STOP';
+            if (anthropicResponse.stop_reason) {
+                const reasonMap = {
+                    'end_turn': 'STOP',
+                    'tool_use': 'STOP',  // ツール使用時もSTOPとして扱う
+                    'max_tokens': 'MAX_TOKENS',
+                    'stop_sequence': 'STOP'
+                };
+                finishReason = reasonMap[anthropicResponse.stop_reason] || 'STOP';
             }
 
             const geminiFormatResponse = {
                 candidates: [{
                     content: { parts, role: 'model' },
-                    finishReason: anthropicResponse.stop_reason === 'end_turn' ? 'STOP' : 'STOP'
+                    finishReason: finishReason
                 }],
                 usageMetadata: {
                     promptTokenCount: anthropicResponse.usage?.input_tokens || 0,
