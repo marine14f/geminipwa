@@ -4948,40 +4948,73 @@ const apiUtils = {
             systemText = systemInstruction.parts[0].text;
         }
 
-        // Bedrockと同様のパターンで変換: toolメッセージは連続してuserロールにまとめる
-        let pendingToolResults = [];
+        // tool_useのIDを追跡するためのマップ (後でtool_resultと紐付けるため)
+        let lastToolUseIds = [];
 
         for (let i = 0; i < messagesForApi.length; i++) {
             const msg = messagesForApi[i];
             const parts = msg.parts || [];
 
-            // toolロール（functionResponse）の処理
-            if (msg.role === 'tool') {
-                for (const part of parts) {
-                    if (part.functionResponse) {
-                        const toolResultContent = typeof part.functionResponse.response === 'string'
-                            ? part.functionResponse.response
-                            : JSON.stringify(part.functionResponse.response);
-                        pendingToolResults.push({
+            // toolロールまたはfunctionResponseを持つメッセージ、または履歴からのtool応答の処理
+            const isToolResponse = msg.role === 'tool' || 
+                                   parts.some(p => p.functionResponse) ||
+                                   (msg.name && msg.response !== undefined);
+            if (isToolResponse) {
+                // 連続するtoolメッセージをすべて収集
+                const toolResults = [];
+                let j = i;
+                while (j < messagesForApi.length) {
+                    const currentMsg = messagesForApi[j];
+                    const currentParts = currentMsg.parts || [];
+                    const hasFunctionResponse = currentMsg.role === 'tool' || currentParts.some(p => p.functionResponse);
+                    
+                    if (!hasFunctionResponse) break;
+                    
+                    // parts形式のfunctionResponseを処理
+                    for (const part of currentParts) {
+                        if (part.functionResponse) {
+                            const responseContent = typeof part.functionResponse.response === 'string'
+                                ? part.functionResponse.response
+                                : JSON.stringify(part.functionResponse.response);
+                            const toolUseId = part.functionResponse._toolCallId || part.functionResponse.name;
+                            console.log(`[Azure Debug] tool_result追加(parts形式): tool_use_id=${toolUseId}`);
+                            toolResults.push({
+                                type: 'tool_result',
+                                tool_use_id: toolUseId,
+                                content: responseContent
+                            });
+                        }
+                    }
+                    // 履歴からのtool応答形式(name/response)を処理
+                    if (currentMsg.name && currentMsg.response !== undefined) {
+                        const responseContent = typeof currentMsg.response === 'string'
+                            ? currentMsg.response
+                            : JSON.stringify(currentMsg.response);
+                        const toolUseId = currentMsg._toolCallId || currentMsg.name;
+                        console.log(`[Azure Debug] tool_result追加(履歴形式): tool_use_id=${toolUseId}`);
+                        toolResults.push({
                             type: 'tool_result',
-                            tool_use_id: part.functionResponse._toolCallId || part.functionResponse.name,
-                            content: toolResultContent
+                            tool_use_id: toolUseId,
+                            content: responseContent
                         });
                     }
+                    j++;
                 }
-                // 次のメッセージがtool以外、または最後の場合にまとめて追加
-                const nextMsg = messagesForApi[i + 1];
-                const isLastMessage = i === messagesForApi.length - 1;
-                const nextIsNotTool = !nextMsg || nextMsg.role !== 'tool';
-                if ((isLastMessage || nextIsNotTool) && pendingToolResults.length > 0) {
-                    anthropicMessages.push({ role: 'user', content: pendingToolResults });
-                    pendingToolResults = [];
+                
+                // 収集したtool_resultsをuserメッセージとして追加
+                if (toolResults.length > 0) {
+                    console.log(`[Azure Debug] tool_results(${toolResults.length}件)をuserメッセージとして追加`);
+                    anthropicMessages.push({ role: 'user', content: toolResults });
                 }
+                
+                // 処理済みのメッセージをスキップ
+                i = j - 1;
                 continue;
             }
 
             const role = msg.role === 'model' ? 'assistant' : 'user';
             const content = [];
+            const toolUseIdsInThisMessage = [];
 
             for (const part of parts) {
                 if (part.text) {
@@ -4992,17 +5025,64 @@ const apiUtils = {
                         source: { type: 'base64', media_type: part.inlineData.mimeType, data: part.inlineData.data }
                     });
                 } else if (part.functionCall) {
+                    const toolUseId = part.functionCall._toolCallId || `call_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+                    console.log(`[Azure Debug] tool_use追加: id=${toolUseId}, name=${part.functionCall.name}`);
                     content.push({
                         type: 'tool_use',
-                        id: part.functionCall._toolCallId || `call_${Date.now()}_${Math.random()}`,
+                        id: toolUseId,
                         name: part.functionCall.name,
                         input: part.functionCall.args || {}
                     });
+                    toolUseIdsInThisMessage.push(toolUseId);
+                    lastToolUseIds.push(toolUseId);
                 }
             }
 
             if (content.length > 0) {
                 anthropicMessages.push({ role, content });
+                if (toolUseIdsInThisMessage.length > 0) {
+                    console.log(`[Azure Debug] assistantメッセージ追加 (tool_use ${toolUseIdsInThisMessage.length}件): ${toolUseIdsInThisMessage.join(', ')}`);
+                }
+            }
+        }
+
+        // デバッグ: メッセージ構造を詳細にログ出力
+        console.log("[Azure Debug] 変換後のメッセージ構造:");
+        anthropicMessages.forEach((msg, idx) => {
+            const contentTypes = msg.content.map(c => c.type).join(', ');
+            const toolIds = msg.content.filter(c => c.type === 'tool_use').map(c => c.id);
+            const resultIds = msg.content.filter(c => c.type === 'tool_result').map(c => c.tool_use_id);
+            console.log(`  [${idx}] role=${msg.role}, types=[${contentTypes}], tool_use_ids=${JSON.stringify(toolIds)}, tool_result_ids=${JSON.stringify(resultIds)}`);
+        });
+
+        // 検証と修復: tool_useの直後にtool_resultがあるか確認し、なければ追加
+        for (let i = 0; i < anthropicMessages.length; i++) {
+            const msg = anthropicMessages[i];
+            const toolUseIds = msg.content.filter(c => c.type === 'tool_use').map(c => c.id);
+            if (toolUseIds.length > 0 && msg.role === 'assistant') {
+                const nextMsg = anthropicMessages[i + 1];
+                if (!nextMsg || nextMsg.role !== 'user') {
+                    console.warn(`[Azure Fix] メッセージ${i}にtool_use(${toolUseIds.join(',')})があるが、次のメッセージがuserではない。ダミーtool_resultを挿入します。`);
+                    const dummyResults = toolUseIds.map(id => ({
+                        type: 'tool_result',
+                        tool_use_id: id,
+                        content: '[Tool execution result not available in history]'
+                    }));
+                    anthropicMessages.splice(i + 1, 0, { role: 'user', content: dummyResults });
+                } else {
+                    const resultIds = nextMsg.content.filter(c => c.type === 'tool_result').map(c => c.tool_use_id);
+                    const missingIds = toolUseIds.filter(id => !resultIds.includes(id));
+                    if (missingIds.length > 0) {
+                        console.warn(`[Azure Fix] tool_use ID ${missingIds.join(',')} に対応するtool_resultが見つからない。追加します。`);
+                        missingIds.forEach(id => {
+                            nextMsg.content.unshift({
+                                type: 'tool_result',
+                                tool_use_id: id,
+                                content: '[Tool execution result not available in history]'
+                            });
+                        });
+                    }
+                }
             }
         }
 
