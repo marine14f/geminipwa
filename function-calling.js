@@ -2104,14 +2104,14 @@ window.functionDeclarations = [
               "name": "generate_image",
               "description": "【重要】ユーザーの指示や許可が無い場合、本関数をモデルの判断で勝手に使用することは禁止します。テキストプロンプトから画像を生成します。重要：この関数を呼び出した後は、その結果を使ってユーザーへの最終的な応答メッセージを生成し、会話を完了させてください。画像以外の余計な定型文（例：「Here is the original image:」など）は絶対に出力しないでください。再度関数を呼び出すことは禁止です。応答メッセージには、生成した画像を埋め込む場所を示す `[IMAGE_HERE]` という文字列の目印を必ず1つだけ配置してください。HTMLタグは絶対に生成しないでください。ユーザーの指示から、動画の内容を表す英語のプロンプトを生成して `prompt` 引数に設定してください。関数がエラーを返した場合、エラー番号とエラー文をユーザーに出力して下さい。",
               "parameters": {
-                  "type": "object",
+                  "type": "OBJECT",
                   "properties": {
                   "prompt": { 
-                      "type": "string", 
+                      "type": "STRING", 
                       "description": "生成したい画像の内容を表す英語プロンプト。" 
                   },
                   "model": {
-                      "type": "string",
+                      "type": "STRING",
                       "description": "使用する画像生成モデルを指定します。指定がない場合はプロンプト内容に応じて自動的に選択されます。\n\n- \"imagen-4.0-generate-001\": 標準モデル。汎用的な画像生成に適しています。\n- \"imagen-4.0-ultra-generate-001\": 複雑な構図や多要素を含む画像（風景、群衆、広角など）に適しています。\n- \"imagen-4.0-fast-generate-001\": 単純でフラットな画像（アイコン、パターン、スタンプなど）に適しています。\n- \"gemini-2.5-flash-image-preview\": ユーザーが明示的に指定した場合のみ使用。Geminiによる簡易プレビュー生成を行います。\n- \"gemini-3-pro-image-preview\": ユーザーが明示的に指定した場合のみ使用。Gemini 3 Proによる画像生成を行います。",
                       "enum": [
                       "imagen-4.0-generate-001",
@@ -2122,22 +2122,17 @@ window.functionDeclarations = [
                       ]
                   },
                   "numberOfImages": { 
-                      "type": "integer", 
-                      "minimum": 1, 
-                      "maximum": 4, 
-                      "default": 1,
+                      "type": "NUMBER", 
                       "description": "生成する画像の枚数（1〜4）。指定がなければ1。" 
                   },
                   "sampleImageSize": { 
-                      "type": "string", 
+                      "type": "STRING", 
                       "enum": ["1K", "2K"], 
-                      "default": "1K",
                       "description": "生成画像の解像度を指定します。1Kは標準、2Kは高解像度。" 
                   },
                   "aspectRatio": { 
-                      "type": "string", 
+                      "type": "STRING", 
                       "enum": ["1:1","3:4","4:3","9:16","16:9"], 
-                      "default": "1:1",
                       "description": "生成画像のアスペクト比を指定します。指定がなければ1:1。" 
                   }
                   },
@@ -2279,4 +2274,3 @@ window.functionDeclarations = [
     ]
 }
 ];
-  

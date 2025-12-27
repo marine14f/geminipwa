@@ -5015,13 +5015,66 @@ const apiUtils = {
         // Function Calling（ツール）の処理
         if (state.settings.geminiEnableFunctionCalling && tools && tools.length > 0) {
             const anthropicTools = [];
+            
+            // JSON Schemaを再帰的にクリーンアップする関数
+            const cleanJsonSchema = (schema) => {
+                if (!schema || typeof schema !== 'object') return schema;
+                
+                const cleaned = {};
+                for (const key in schema) {
+                    if (!schema.hasOwnProperty(key)) continue;
+                    
+                    // Anthropic/Claudeが認識しない拡張キーを除外
+                    if (key === 'nullable' || key === 'format' && schema[key] === 'enum') {
+                        continue;
+                    }
+                    
+                    let value = schema[key];
+                    
+                    // 'type'フィールドの正規化（大文字を小文字に）
+                    if (key === 'type' && typeof value === 'string') {
+                        value = value.toLowerCase();
+                    }
+                    
+                    // オブジェクトや配列は再帰的に処理
+                    if (typeof value === 'object' && value !== null) {
+                        if (Array.isArray(value)) {
+                            value = value.map(item => 
+                                typeof item === 'object' && item !== null ? cleanJsonSchema(item) : item
+                            );
+                        } else {
+                            value = cleanJsonSchema(value);
+                        }
+                    }
+                    
+                    cleaned[key] = value;
+                }
+                return cleaned;
+            };
+            
             for (const geminiTool of tools) {
                 if (geminiTool.function_declarations && Array.isArray(geminiTool.function_declarations)) {
                     for (const funcDecl of geminiTool.function_declarations) {
+                        // Anthropic APIではinput_schemaのtypeは必ず'object'でなければならない
+                        let inputSchema = funcDecl.parameters ? cleanJsonSchema(funcDecl.parameters) : {};
+                        
+                        // 必須: type は 'object' でなければならない
+                        inputSchema.type = 'object';
+                        
+                        // propertiesがない場合は空オブジェクトを設定
+                        if (!inputSchema.properties) {
+                            inputSchema.properties = {};
+                        }
+                        
+                        // additionalPropertiesがない場合は明示的にfalseを設定（Claude推奨）
+                        if (inputSchema.additionalProperties === undefined) {
+                            inputSchema.additionalProperties = false;
+                        }
+                        
                         anthropicTools.push({
                             name: funcDecl.name,
                             description: funcDecl.description || '',
-                            input_schema: funcDecl.parameters || { type: 'object', properties: {} }
+                            input_schema: inputSchema
                         });
                     }
                 }
