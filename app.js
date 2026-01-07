@@ -12320,13 +12320,16 @@ const appLogic = {
                 const messagesForApi = [{ role: 'user', parts: [{ text: userContent }] }];
                 const generationConfig = { temperature: 0.3, maxOutputTokens: 8192 };
                 
+                // 要約用に独立したAbortControllerを使用（メインのstate.abortControllerとは分離）
+                const summaryAbortController = new AbortController();
+                
                 const response = await apiUtils.callAzureApi(
                     messagesForApi,
                     generationConfig,
                     systemInstruction,
                     null,  // tools
                     false, // forceCalling
-                    null   // signal
+                    summaryAbortController.signal   // 独立したsignal
                 );
                 
                 if (!response.ok) {
