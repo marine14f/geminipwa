@@ -5915,64 +5915,30 @@ const appLogic = {
 
         // 要約コンテキストが存在する場合、API送信用の履歴を動的に構築する
         if (state.currentSummarizedContext && state.currentSummarizedContext.summaryText) {
-            if (provider === 'bedrock') {
-                // Bedrockの場合：冒頭5件 + 要約文 + 要約後のメッセージ
-                // Geminiと同様の形式でメッセージ履歴に要約文を含める
-                const headCount = 5;
-                const tailCount = 15;
-                const { summaryText } = state.currentSummarizedContext;
-                const rawSummaryEndIndex = state.currentSummarizedContext.summaryRange?.end || 0;
-                const totalMessages = messagesForApi.length;
-                // summaryEndIndexがtotalMessagesを超える場合は補正
-                const summaryEndIndex = Math.min(rawSummaryEndIndex, totalMessages);
-                
-                console.log(`[API Prep] Bedrock Debug: totalMessages=${totalMessages}, summaryEndIndex=${summaryEndIndex} (raw=${rawSummaryEndIndex}), headCount=${headCount}`);
-                
-                const headMessages = messagesForApi.slice(0, Math.min(headCount, totalMessages));
-                
-                // 要約メッセージを作成
-                const summaryMessage = {
-                    role: 'user',
-                    content: `【これまでの会話の要約】\n${summaryText}`,
-                    timestamp: Date.now(),
-                    isHidden: true,
-                    attachments: []
-                };
-                
-                // 要約後のメッセージを取得（重複防止のためheadCountより後から）
-                const afterSummaryStartIndex = Math.max(headCount, summaryEndIndex);
-                let afterSummaryMessages = messagesForApi.slice(afterSummaryStartIndex);
-                
-                // 要約後のメッセージがない場合は、最新tailCount件を取得（冒頭と重複しないように）
-                if (afterSummaryMessages.length === 0 && totalMessages > headCount) {
-                    const tailStartIndex = Math.max(headCount, totalMessages - tailCount);
-                    afterSummaryMessages = messagesForApi.slice(tailStartIndex);
-                    console.log(`[API Prep] Bedrock: 要約後メッセージがないため、最新${afterSummaryMessages.length}件（index ${tailStartIndex}から）を使用`);
-                }
-                
-                historyToProcess = [...headMessages, summaryMessage, ...afterSummaryMessages];
-                console.log(`[API Prep] Bedrock: 冒頭${headMessages.length}件 + 要約文(1) + 後続${afterSummaryMessages.length}件 = 合計${historyToProcess.length}件を送信します。`);
-            } else {
-                // Gemini等の場合：従来通り冒頭+要約+末尾の形式で圧縮
-                console.log("[API Prep] 要約コンテキストを検出。API履歴を圧縮します。");
-                const { summaryText } = state.currentSummarizedContext;
-                const headCount = 5;
-                const tailCount = 15;
-
-                const headMessages = messagesForApi.slice(0, headCount);
-                const tailMessages = messagesForApi.slice(Math.max(headCount, messagesForApi.length - tailCount));
-
-                const summaryMessage = {
-                    role: 'user',
-                    content: `【これまでの会話の要約】\n${summaryText}`,
-                    timestamp: Date.now(),
-                    isHidden: true, // UIには表示されない内部的なメッセージ
-                    attachments: []
-                };
-
-                historyToProcess = [...headMessages, summaryMessage, ...tailMessages];
-                console.log(`[API Prep] 履歴を圧縮しました: Head(${headMessages.length}) + Summary(1) + Tail(${tailMessages.length}) = ${historyToProcess.length}件`);
-            }
+            // 正しい仕様: 冒頭5件 + 要約文 + 要約後の履歴全文を送信
+            console.log("[API Prep] 要約コンテキストを検出。冒頭5件 + 要約文 + 要約後の全履歴を送信します。");
+            const { summaryText } = state.currentSummarizedContext;
+            const summaryEndIndex = state.currentSummarizedContext.summaryRange?.end || 0;
+            const headCount = 5;
+            
+            // 冒頭5件を取得
+            const headMessages = messagesForApi.slice(0, Math.min(headCount, messagesForApi.length));
+            
+            // 要約メッセージを作成
+            const summaryMessage = {
+                role: 'user',
+                content: `【これまでの会話の要約】\n${summaryText}`,
+                timestamp: Date.now(),
+                isHidden: true,
+                attachments: []
+            };
+            
+            // 要約後のメッセージを全て取得（冒頭と重複しないようにheadCountまたはsummaryEndIndexの大きい方から）
+            const afterSummaryStartIndex = Math.max(headCount, summaryEndIndex);
+            const afterSummaryMessages = messagesForApi.slice(afterSummaryStartIndex);
+            
+            historyToProcess = [...headMessages, summaryMessage, ...afterSummaryMessages];
+            console.log(`[API Prep] 冒頭(${headMessages.length}件) + 要約文(1) + 要約後の全履歴(${afterSummaryMessages.length}件) = 合計${historyToProcess.length}件を送信します。`);
         } else {
             // 通常の履歴
             historyToProcess = messagesForApi;
