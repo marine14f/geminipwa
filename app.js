@@ -5915,16 +5915,18 @@ const appLogic = {
 
         // 要約コンテキストが存在する場合、API送信用の履歴を動的に構築する
         if (state.currentSummarizedContext && state.currentSummarizedContext.summaryText) {
-            // 正しい仕様: 冒頭5件 + 要約文 + 要約後の履歴全文を送信
-            console.log("[API Prep] 要約コンテキストを検出。冒頭5件 + 要約文 + 要約後の全履歴を送信します。");
             const { summaryText } = state.currentSummarizedContext;
             const summaryEndIndex = state.currentSummarizedContext.summaryRange?.end || 0;
             const headCount = 5;
             
-            // 冒頭5件を取得
-            const headMessages = messagesForApi.slice(0, Math.min(headCount, messagesForApi.length));
+            console.log(`[API Prep] 要約コンテキスト検出。summaryEndIndex=${summaryEndIndex}, messagesForApi.length=${messagesForApi.length}, headCount=${headCount}`);
             
-            // 要約メッセージを作成
+            // 冒頭5件を取得（全メッセージの最初から）
+            // ただしメッセージが5件未満の場合はその数だけ
+            const actualHeadCount = Math.min(headCount, messagesForApi.length);
+            const headMessages = messagesForApi.slice(0, actualHeadCount);
+            
+            // 要約メッセージを作成（結合された要約テキスト全体を含む）
             const summaryMessage = {
                 role: 'user',
                 content: `【これまでの会話の要約】\n${summaryText}`,
@@ -5933,12 +5935,14 @@ const appLogic = {
                 attachments: []
             };
             
-            // 要約後のメッセージを全て取得（冒頭と重複しないようにheadCountまたはsummaryEndIndexの大きい方から）
-            const afterSummaryStartIndex = Math.max(headCount, summaryEndIndex);
-            const afterSummaryMessages = messagesForApi.slice(afterSummaryStartIndex);
+            // 要約後のメッセージを取得
+            // 冒頭5件と要約範囲の終端のうち、より大きい方からスタート
+            // これにより冒頭5件と重複しない新しいメッセージのみを取得
+            const afterStartIndex = Math.max(actualHeadCount, summaryEndIndex);
+            const afterSummaryMessages = messagesForApi.slice(afterStartIndex);
             
             historyToProcess = [...headMessages, summaryMessage, ...afterSummaryMessages];
-            console.log(`[API Prep] 冒頭(${headMessages.length}件) + 要約文(1) + 要約後の全履歴(${afterSummaryMessages.length}件) = 合計${historyToProcess.length}件を送信します。`);
+            console.log(`[API Prep] 冒頭(${headMessages.length}件) + 要約文(1) + 要約後(${afterSummaryMessages.length}件, index ${afterStartIndex}以降) = 合計${historyToProcess.length}件を送信`);
         } else {
             // 通常の履歴
             historyToProcess = messagesForApi;
