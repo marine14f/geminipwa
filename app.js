@@ -5936,10 +5936,20 @@ const appLogic = {
             };
             
             // 要約後のメッセージを取得
-            // 冒頭5件と要約範囲の終端のうち、より大きい方からスタート
-            // ただし、summaryEndIndexがメッセージ数を超えている場合は全履歴が要約済みとみなす
-            const afterStartIndex = Math.min(Math.max(actualHeadCount, summaryEndIndex), messagesForApi.length);
-            const afterSummaryMessages = messagesForApi.slice(afterStartIndex);
+            // summaryEndIndexがメッセージ数を超えている場合、新しく追加されたメッセージを取得
+            let afterSummaryMessages;
+            if (summaryEndIndex >= messagesForApi.length) {
+                // 全履歴が要約済みの場合でも、最後のユーザーメッセージ以降は送信する
+                const lastUserIdx = messagesForApi.map(m => m.role).lastIndexOf('user');
+                if (lastUserIdx >= 0 && lastUserIdx >= actualHeadCount) {
+                    afterSummaryMessages = messagesForApi.slice(lastUserIdx);
+                } else {
+                    afterSummaryMessages = [];
+                }
+            } else {
+                const afterStartIndex = Math.max(actualHeadCount, summaryEndIndex);
+                afterSummaryMessages = messagesForApi.slice(afterStartIndex);
+            }
             
             historyToProcess = [...headMessages, summaryMessage, ...afterSummaryMessages];
             console.log(`[API Prep] 冒頭(${headMessages.length}件) + 要約文(1) + 要約後(${afterSummaryMessages.length}件, index ${afterStartIndex}以降) = 合計${historyToProcess.length}件を送信`);
