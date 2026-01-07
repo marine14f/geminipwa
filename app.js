@@ -4938,6 +4938,13 @@ const apiUtils = {
         }
         if (!signal) { state.abortController = new AbortController(); signal = state.abortController.signal; }
 
+        // デバッグログ: 受信したメッセージ数を出力
+        console.log(`[Azure Debug] callAzureApi: messagesForApiの数 = ${messagesForApi.length}`);
+        messagesForApi.forEach((msg, idx) => {
+            const contentPreview = msg.parts?.[0]?.text?.substring(0, 50) || '(no text)';
+            console.log(`  [${idx}] role=${msg.role}, parts=${msg.parts?.length || 0}, preview="${contentPreview}..."`);
+        });
+
         // Anthropic Messages API形式のエンドポイント
         const endpoint = `https://${resourceName}.services.ai.azure.com/anthropic/v1/messages`;
 
@@ -5047,12 +5054,14 @@ const apiUtils = {
         }
 
         // デバッグ: メッセージ構造を詳細にログ出力
+        console.log(`[Azure Debug] 変換後のAnthropicメッセージ数: ${anthropicMessages.length}`);
         console.log("[Azure Debug] 変換後のメッセージ構造:");
         anthropicMessages.forEach((msg, idx) => {
             const contentTypes = msg.content.map(c => c.type).join(', ');
             const toolIds = msg.content.filter(c => c.type === 'tool_use').map(c => c.id);
             const resultIds = msg.content.filter(c => c.type === 'tool_result').map(c => c.tool_use_id);
-            console.log(`  [${idx}] role=${msg.role}, types=[${contentTypes}], tool_use_ids=${JSON.stringify(toolIds)}, tool_result_ids=${JSON.stringify(resultIds)}`);
+            const textPreview = msg.content.filter(c => c.type === 'text').map(c => c.text?.substring(0, 30) + '...').join(', ');
+            console.log(`  [${idx}] role=${msg.role}, types=[${contentTypes}], text="${textPreview}"`);
         });
 
         // 検証と修復: tool_useの直後にtool_resultがあるか確認し、なければ追加
@@ -9435,6 +9444,7 @@ const appLogic = {
         uiUtils.appendMessage(userMessage.role, userMessage.content, state.currentMessages.length - 1, false, null, userMessage.attachments);
 
         const baseHistory = state.currentMessages.filter(msg => !msg.isCascaded || msg.isSelected);
+        console.log(`[handleSend Debug] baseHistory長 = ${baseHistory.length}, currentMessages長 = ${state.currentMessages.length}`);
 
         const modelMessage = { role: 'model', content: '', timestamp: Date.now() };
         state.currentMessages.push(modelMessage);
