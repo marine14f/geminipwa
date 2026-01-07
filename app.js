@@ -5938,16 +5938,19 @@ const appLogic = {
             // 要約後のメッセージを取得
             // summaryEndIndexがメッセージ数を超えている場合、新しく追加されたメッセージを取得
             let afterSummaryMessages;
+            let afterStartIndex;
             if (summaryEndIndex >= messagesForApi.length) {
                 // 全履歴が要約済みの場合でも、最後のユーザーメッセージ以降は送信する
                 const lastUserIdx = messagesForApi.map(m => m.role).lastIndexOf('user');
                 if (lastUserIdx >= 0 && lastUserIdx >= actualHeadCount) {
+                    afterStartIndex = lastUserIdx;
                     afterSummaryMessages = messagesForApi.slice(lastUserIdx);
                 } else {
+                    afterStartIndex = messagesForApi.length;
                     afterSummaryMessages = [];
                 }
             } else {
-                const afterStartIndex = Math.max(actualHeadCount, summaryEndIndex);
+                afterStartIndex = Math.max(actualHeadCount, summaryEndIndex);
                 afterSummaryMessages = messagesForApi.slice(afterStartIndex);
             }
             
