@@ -5935,22 +5935,32 @@ const appLogic = {
                 attachments: []
             };
             
-            // 要約後のメッセージを取得
-            // summaryEndIndexより後にあるメッセージすべてを取得
-            // summaryEndIndexが現在の長さ以上の場合は新規メッセージなし
-            let afterSummaryMessages;
-            let afterStartIndex;
-            if (summaryEndIndex < messagesForApi.length) {
-                afterStartIndex = Math.max(actualHeadCount, summaryEndIndex);
-                afterSummaryMessages = messagesForApi.slice(afterStartIndex);
-            } else {
-                // 全履歴が要約対象だった場合、冒頭5件より後のメッセージを追加
-                afterStartIndex = actualHeadCount;
-                afterSummaryMessages = messagesForApi.slice(actualHeadCount);
-            }
+            // 要約後のメッセージを state.currentMessages から直接取得し、API形式に変換する
+            const afterSummaryInCurrentMessages = state.currentMessages.slice(summaryEndIndex);
+            // 選択されたカスケードのみにフィルタリング
+            const filteredAfterSummary = afterSummaryInCurrentMessages.filter(msg => !msg.isCascaded || msg.isSelected);
+            // API形式に変換（messagesForApiと同じ変換ロジックを適用）
+            const afterSummaryMessages = filteredAfterSummary.map(msg => {
+                if (msg.parts && Array.isArray(msg.parts) && msg.parts.length > 0) {
+                    return { role: msg.role === 'model' ? 'model' : 'user', parts: JSON.parse(JSON.stringify(msg.parts)) };
+                }
+                const parts = [];
+                let contentText = msg.content || '';
+                if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
+                    const fileNames = msg.attachments.map(att => att.name).join(', ');
+                    contentText = (contentText.trim() ? contentText : '') + `\n\n[添付ファイル: ${fileNames}]`;
+                }
+                if (contentText.trim() !== '' || msg.isHidden) parts.push({ text: contentText });
+                if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
+                    msg.attachments.forEach(att => parts.push({ inlineData: { mimeType: att.mimeType, data: att.base64Data } }));
+                }
+                return { role: msg.role === 'model' ? 'model' : 'user', parts };
+            }).filter(c => c.parts.length > 0);
+            
+            console.log(`[API Prep] 要約後メッセージ: state.currentMessages[${summaryEndIndex}以降] から ${filteredAfterSummary.length}件 -> 変換後 ${afterSummaryMessages.length}件`);
             
             historyToProcess = [...headMessages, summaryMessage, ...afterSummaryMessages];
-            console.log(`[API Prep] 冒頭(${headMessages.length}件) + 要約文(1) + 要約後(${afterSummaryMessages.length}件, index ${afterStartIndex}以降) = 合計${historyToProcess.length}件を送信`);
+            console.log(`[API Prep] 冒頭(${headMessages.length}件) + 要約文(1) + 要約後(${afterSummaryMessages.length}件) = 合計${historyToProcess.length}件を送信`);
         } else {
             // 通常の履歴
             historyToProcess = messagesForApi;
