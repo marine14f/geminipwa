@@ -12315,7 +12315,26 @@ const appLogic = {
 
             let responseData;
 
-            if (provider === 'bedrock') {
+            if (provider === 'azure') {
+                // Azure API経由で要約を実行
+                const messagesForApi = [{ role: 'user', parts: [{ text: userContent }] }];
+                const generationConfig = { temperature: 0.3, maxOutputTokens: 8192 };
+                
+                const response = await apiUtils.callAzureApi(
+                    messagesForApi,
+                    generationConfig,
+                    systemInstruction,
+                    null,  // tools
+                    false, // forceCalling
+                    null   // signal
+                );
+                
+                if (!response.ok) {
+                    throw new Error(`Azure APIエラー: ${response.status}`);
+                }
+                responseData = await response.json();
+                
+            } else if (provider === 'bedrock') {
                 // Bedrock API経由で要約を実行
                 // 現在のチャットセッションと分離するため、一時的なセッションIDを使用
                 const originalSessionId = state.currentSessionId;
