@@ -5935,9 +5935,19 @@ const appLogic = {
                 attachments: []
             };
             
-            // 要約後のメッセージを取得: summaryEndIndex以降のすべてのメッセージ
-            const afterStartIndex = Math.max(actualHeadCount, summaryEndIndex);
-            const afterSummaryMessages = messagesForApi.slice(afterStartIndex);
+            // 要約後のメッセージを取得
+            // summaryEndIndexより後にあるメッセージすべてを取得
+            // summaryEndIndexが現在の長さ以上の場合は新規メッセージなし
+            let afterSummaryMessages;
+            let afterStartIndex;
+            if (summaryEndIndex < messagesForApi.length) {
+                afterStartIndex = Math.max(actualHeadCount, summaryEndIndex);
+                afterSummaryMessages = messagesForApi.slice(afterStartIndex);
+            } else {
+                // 全履歴が要約対象だった場合、冒頭5件より後のメッセージを追加
+                afterStartIndex = actualHeadCount;
+                afterSummaryMessages = messagesForApi.slice(actualHeadCount);
+            }
             
             historyToProcess = [...headMessages, summaryMessage, ...afterSummaryMessages];
             console.log(`[API Prep] 冒頭(${headMessages.length}件) + 要約文(1) + 要約後(${afterSummaryMessages.length}件, index ${afterStartIndex}以降) = 合計${historyToProcess.length}件を送信`);
