@@ -12503,10 +12503,15 @@ const appLogic = {
         const start = parseInt(elements.summaryDialog.dataset.summaryRangeStart, 10);
         const end = parseInt(elements.summaryDialog.dataset.summaryRangeEnd, 10);
 
+        console.log(`[Summary Confirm] start=${start}, end=${end}, currentMessages.length=${state.currentMessages.length}`);
+
         try {
             // 既存の要約と新しい要約を結合する
             const existingSummary = state.currentSummarizedContext ? state.currentSummarizedContext.summaryText : "";
-            const newSummaryText = existingSummary ? `${existingSummary}\n\n${summaryText}` : summaryText;
+            const previousEnd = state.currentSummarizedContext?.summaryRange?.end || 0;
+            const newSummaryText = existingSummary ? `${existingSummary}\n\n---\n\n${summaryText}` : summaryText;
+
+            console.log(`[Summary Confirm] existingSummary存在=${!!existingSummary}, previousEnd=${previousEnd}, newEnd=${end}`);
 
             // state.currentMessagesを上書きせず、summarizedContextオブジェクトを更新する
             state.currentSummarizedContext = {
@@ -12514,6 +12519,8 @@ const appLogic = {
                 summaryRange: { start: 0, end: end }, // startは常に0、endを更新
                 summarizedAt: Date.now()
             };
+
+            console.log(`[Summary Confirm] 更新後のsummaryRange.end=${state.currentSummarizedContext.summaryRange.end}`);
 
             // Bedrockプロバイダーの場合、セッションIDをリセット
             // これにより、KVストアの古い全履歴がクリアされ、要約後は新しいセッションで開始される
