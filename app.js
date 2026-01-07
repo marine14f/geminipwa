@@ -5937,8 +5937,8 @@ const appLogic = {
             
             // 要約後のメッセージを取得
             // 冒頭5件と要約範囲の終端のうち、より大きい方からスタート
-            // これにより冒頭5件と重複しない新しいメッセージのみを取得
-            const afterStartIndex = Math.max(actualHeadCount, summaryEndIndex);
+            // ただし、summaryEndIndexがメッセージ数を超えている場合は全履歴が要約済みとみなす
+            const afterStartIndex = Math.min(Math.max(actualHeadCount, summaryEndIndex), messagesForApi.length);
             const afterSummaryMessages = messagesForApi.slice(afterStartIndex);
             
             historyToProcess = [...headMessages, summaryMessage, ...afterSummaryMessages];
