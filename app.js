@@ -77,6 +77,8 @@ const VERTEX_MODELS = [
     { value: 'gemini-2.0-flash', label: 'gemini-2.0-flash' },
     { value: 'gemini-2.0-flash-lite', label: 'gemini-2.0-flash-lite' },
     { value: 'gemini-3-pro-preview', label: 'gemini-3-pro-preview (globalリージョン推奨)', group: 'プレビュー版' },
+    { value: 'claude-sonnet-4-5', label: 'Claude 4.5 Sonnet', group: 'Anthropic' },
+    { value: 'claude-opus-4-5', label: 'Claude 4.5 Opus', group: 'Anthropic' },
 ];
 
 const DEFAULT_VERTEX_MODEL = 'gemini-2.5-pro';
@@ -117,7 +119,7 @@ class BedrockRateLimiter {
         this.requestsPerMinute = requestsPerMinute;
         this.minInterval = (60 * 1000) / requestsPerMinute; // ミリ秒
         this.lastRequestTime = 0;
-        
+
         // TPM制限
         this.tokensPerMinute = tokensPerMinute;
         this.tokenUsageHistory = []; // { timestamp, tokens } の配列
@@ -161,7 +163,7 @@ class BedrockRateLimiter {
      */
     async waitForNextSlot(estimatedInputTokens = 0) {
         const now = Date.now();
-        
+
         // RPM制限のチェック
         const timeSinceLastRequest = now - this.lastRequestTime;
         let rpmWaitTime = Math.max(0, this.minInterval - timeSinceLastRequest);
@@ -4963,9 +4965,9 @@ const apiUtils = {
             const parts = msg.parts || [];
 
             // toolロールまたはfunctionResponseを持つメッセージ、または履歴からのtool応答の処理
-            const isToolResponse = msg.role === 'tool' || 
-                                   parts.some(p => p.functionResponse) ||
-                                   (msg.name && msg.response !== undefined);
+            const isToolResponse = msg.role === 'tool' ||
+                parts.some(p => p.functionResponse) ||
+                (msg.name && msg.response !== undefined);
             if (isToolResponse) {
                 // 連続するtoolメッセージをすべて収集
                 const toolResults = [];
@@ -4974,9 +4976,9 @@ const apiUtils = {
                     const currentMsg = messagesForApi[j];
                     const currentParts = currentMsg.parts || [];
                     const hasFunctionResponse = currentMsg.role === 'tool' || currentParts.some(p => p.functionResponse);
-                    
+
                     if (!hasFunctionResponse) break;
-                    
+
                     // parts形式のfunctionResponseを処理
                     for (const part of currentParts) {
                         if (part.functionResponse) {
@@ -5007,13 +5009,13 @@ const apiUtils = {
                     }
                     j++;
                 }
-                
+
                 // 収集したtool_resultsをuserメッセージとして追加
                 if (toolResults.length > 0) {
                     console.log(`[Azure Debug] tool_results(${toolResults.length}件)をuserメッセージとして追加`);
                     anthropicMessages.push({ role: 'user', content: toolResults });
                 }
-                
+
                 // 処理済みのメッセージをスキップ
                 i = j - 1;
                 continue;
@@ -5107,62 +5109,62 @@ const apiUtils = {
         // Function Calling（ツール）の処理
         if (state.settings.geminiEnableFunctionCalling && tools && tools.length > 0) {
             const anthropicTools = [];
-            
+
             // JSON Schemaを再帰的にクリーンアップする関数
             const cleanJsonSchema = (schema) => {
                 if (!schema || typeof schema !== 'object') return schema;
-                
+
                 const cleaned = {};
                 for (const key in schema) {
                     if (!schema.hasOwnProperty(key)) continue;
-                    
+
                     // Anthropic/Claudeが認識しない拡張キーを除外
                     if (key === 'nullable' || key === 'format' && schema[key] === 'enum') {
                         continue;
                     }
-                    
+
                     let value = schema[key];
-                    
+
                     // 'type'フィールドの正規化（大文字を小文字に）
                     if (key === 'type' && typeof value === 'string') {
                         value = value.toLowerCase();
                     }
-                    
+
                     // オブジェクトや配列は再帰的に処理
                     if (typeof value === 'object' && value !== null) {
                         if (Array.isArray(value)) {
-                            value = value.map(item => 
+                            value = value.map(item =>
                                 typeof item === 'object' && item !== null ? cleanJsonSchema(item) : item
                             );
                         } else {
                             value = cleanJsonSchema(value);
                         }
                     }
-                    
+
                     cleaned[key] = value;
                 }
                 return cleaned;
             };
-            
+
             for (const geminiTool of tools) {
                 if (geminiTool.function_declarations && Array.isArray(geminiTool.function_declarations)) {
                     for (const funcDecl of geminiTool.function_declarations) {
                         // Anthropic APIではinput_schemaのtypeは必ず'object'でなければならない
                         let inputSchema = funcDecl.parameters ? cleanJsonSchema(funcDecl.parameters) : {};
-                        
+
                         // 必須: type は 'object' でなければならない
                         inputSchema.type = 'object';
-                        
+
                         // propertiesがない場合は空オブジェクトを設定
                         if (!inputSchema.properties) {
                             inputSchema.properties = {};
                         }
-                        
+
                         // additionalPropertiesがない場合は明示的にfalseを設定（Claude推奨）
                         if (inputSchema.additionalProperties === undefined) {
                             inputSchema.additionalProperties = false;
                         }
-                        
+
                         anthropicTools.push({
                             name: funcDecl.name,
                             description: funcDecl.description || '',
@@ -5203,7 +5205,7 @@ const apiUtils = {
             });
             if (!response.ok) {
                 let errorData = null;
-                try { errorData = await response.json(); } catch (e) {}
+                try { errorData = await response.json(); } catch (e) { }
                 const errorMsg = errorData?.error?.message || response.statusText;
                 throw new Error(`Azure APIエラー (${response.status}): ${errorMsg}`);
             }
@@ -5316,76 +5318,217 @@ const apiUtils = {
         }
 
         const modelId = state.settings.modelName || DEFAULT_VERTEX_MODEL;
+        const isClaude = modelId.toLowerCase().startsWith('claude');
+
+        // Claudeモデルはglobalリージョンでは動作しないため、強制的にus-east5を使用する
+        let effectiveRegion = region;
+        if (isClaude && region === 'global') {
+            console.warn("[Vertex AI] Claudeモデルはglobalリージョンをサポートしていません。us-east5を使用します。");
+            effectiveRegion = 'us-east5';
+        }
 
         try {
             // サービスアカウントキーをBase64エンコード
             const serviceAccountKeyBase64 = btoa(serviceAccountKey);
+            let requestBody;
 
-            // Gemini用にメッセージをサニタイズ（不要なIDフィールドを削除）
-            const sanitizeForVertex = (msgs) => {
-                return msgs.map(msg => {
-                    const newMsg = { ...msg };
-                    if (newMsg.parts && Array.isArray(newMsg.parts)) {
-                        newMsg.parts = newMsg.parts.map(part => {
-                            const newPart = { ...part };
-                            if (newPart.functionCall) {
-                                newPart.functionCall = { ...newPart.functionCall };
-                                delete newPart.functionCall._toolCallId;
-                                delete newPart.functionCall._toolUseId;
+            if (isClaude) {
+                // --- Claude (Anthropic) 用の処理 ---
+                console.log(`[Vertex AI] Claudeモデルを検出しました。Anthropic形式に変換します。(Region: ${effectiveRegion})`);
+
+                const anthropicMessages = [];
+                let systemText = '';
+                if (systemInstruction?.parts?.[0]?.text) {
+                    systemText = systemInstruction.parts[0].text;
+                }
+
+                for (let i = 0; i < messagesForApi.length; i++) {
+                    const msg = messagesForApi[i];
+                    const parts = msg.parts || [];
+
+                    // Tool responseの処理
+                    const isToolResponse = msg.role === 'tool' ||
+                        parts.some(p => p.functionResponse) ||
+                        (msg.name && msg.response !== undefined);
+
+                    if (isToolResponse) {
+                        const toolResults = [];
+                        let j = i;
+                        while (j < messagesForApi.length) {
+                            const currentMsg = messagesForApi[j];
+                            const currentParts = currentMsg.parts || [];
+                            const hasFunctionResponse = currentMsg.role === 'tool' || currentParts.some(p => p.functionResponse);
+
+                            if (!hasFunctionResponse) break;
+
+                            for (const part of currentParts) {
+                                if (part.functionResponse) {
+                                    const responseContent = typeof part.functionResponse.response === 'string'
+                                        ? part.functionResponse.response
+                                        : JSON.stringify(part.functionResponse.response);
+                                    const toolUseId = part.functionResponse._toolCallId || part.functionResponse.name;
+                                    toolResults.push({
+                                        type: 'tool_result',
+                                        tool_use_id: toolUseId,
+                                        content: responseContent
+                                    });
+                                }
                             }
-                            if (newPart.functionResponse) {
-                                newPart.functionResponse = { ...newPart.functionResponse };
-                                delete newPart.functionResponse._toolCallId;
-                                delete newPart.functionResponse._toolUseId;
+                            if (currentMsg.name && currentMsg.response !== undefined) {
+                                const responseContent = typeof currentMsg.response === 'string'
+                                    ? currentMsg.response
+                                    : JSON.stringify(currentMsg.response);
+                                const toolUseId = currentMsg._toolCallId || currentMsg.name;
+                                toolResults.push({
+                                    type: 'tool_result',
+                                    tool_use_id: toolUseId,
+                                    content: responseContent
+                                });
                             }
-                            return newPart;
-                        });
+                            j++;
+                        }
+                        if (toolResults.length > 0) {
+                            anthropicMessages.push({ role: 'user', content: toolResults });
+                        }
+                        i = j - 1;
+                        continue;
                     }
-                    return newMsg;
-                });
-            };
 
-            const sanitizedMessages = sanitizeForVertex(messagesForApi);
-
-            // リクエストボディを構築
-            const requestBody = {
-                modelId: modelId,
-                contents: sanitizedMessages,
-                generationConfig: generationConfig,
-                safetySettings: [
-                    { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-                    { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-                    { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-                    { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
-                ]
-            };
-
-            // システムインストラクションを追加
-            if (systemInstruction && systemInstruction.parts && systemInstruction.parts.length > 0 && systemInstruction.parts[0].text) {
-                requestBody.systemInstruction = systemInstruction;
-            }
-
-            // ツール設定
-            let finalTools = [];
-            if (state.settings.geminiEnableFunctionCalling) {
-                finalTools = window.functionDeclarations || [];
-                console.log("Function Calling を有効にしてAPIを呼び出します。");
-            } else if (state.settings.geminiEnableGrounding) {
-                finalTools.push({ "google_search": {} });
-                console.log("グラウンディング (Google Search) を有効にしてAPIを呼び出します。");
-            }
-
-            if (finalTools.length > 0) {
-                requestBody.tools = finalTools;
-            }
-
-            if (forceCalling && state.settings.geminiEnableFunctionCalling) {
-                requestBody.toolConfig = {
-                    functionCallingConfig: {
-                        mode: 'ANY'
+                    const role = msg.role === 'model' ? 'assistant' : 'user';
+                    const content = [];
+                    for (const part of parts) {
+                        if (part.text) {
+                            content.push({ type: 'text', text: part.text });
+                        } else if (part.inlineData) {
+                            content.push({
+                                type: 'image',
+                                source: { type: 'base64', media_type: part.inlineData.mimeType, data: part.inlineData.data }
+                            });
+                        } else if (part.functionCall) {
+                            const toolUseId = part.functionCall._toolCallId || `call_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+                            content.push({
+                                type: 'tool_use',
+                                id: toolUseId,
+                                name: part.functionCall.name,
+                                input: part.functionCall.args || {}
+                            });
+                        }
                     }
+                    if (content.length > 0) {
+                        anthropicMessages.push({ role, content });
+                    }
+                }
+
+                // ペイロード作成
+                requestBody = {
+                    modelId: modelId, // プロキシのパス構築用
+                    anthropic_version: "vertex-2023-10-16",
+                    messages: anthropicMessages,
+                    max_tokens: generationConfig?.maxOutputTokens || 4096,
+                    stream: false
                 };
-                console.log("Function Calling を強制モード (ANY) で実行します。");
+                if (systemText) requestBody.system = systemText;
+                if (generationConfig?.temperature !== undefined) requestBody.temperature = generationConfig.temperature;
+                if (generationConfig?.topP !== undefined) requestBody.top_p = generationConfig.topP;
+                if (generationConfig?.topK !== undefined) requestBody.top_k = generationConfig.topK;
+
+                // Function Calling (Claude)
+                if (state.settings.geminiEnableFunctionCalling && tools && tools.length > 0) {
+                    const anthropicTools = [];
+                    const cleanJsonSchema = (schema) => {
+                        if (!schema || typeof schema !== 'object') return schema;
+                        const cleaned = {};
+                        for (const key in schema) {
+                            if (!schema.hasOwnProperty(key)) continue;
+                            if (key === 'nullable' || key === 'format' && schema[key] === 'enum') continue;
+                            let value = schema[key];
+                            if (key === 'type' && typeof value === 'string') value = value.toLowerCase();
+                            if (typeof value === 'object' && value !== null) {
+                                value = Array.isArray(value) ? value.map(item => typeof item === 'object' ? cleanJsonSchema(item) : item) : cleanJsonSchema(value);
+                            }
+                            cleaned[key] = value;
+                        }
+                        return cleaned;
+                    };
+
+                    for (const geminiTool of tools) {
+                        if (geminiTool.function_declarations && Array.isArray(geminiTool.function_declarations)) {
+                            for (const funcDecl of geminiTool.function_declarations) {
+                                let inputSchema = funcDecl.parameters ? cleanJsonSchema(funcDecl.parameters) : {};
+                                inputSchema.type = 'object';
+                                if (!inputSchema.properties) inputSchema.properties = {};
+                                if (inputSchema.additionalProperties === undefined) inputSchema.additionalProperties = false;
+                                anthropicTools.push({
+                                    name: funcDecl.name,
+                                    description: funcDecl.description || '',
+                                    input_schema: inputSchema
+                                });
+                            }
+                        }
+                    }
+                    if (anthropicTools.length > 0) {
+                        requestBody.tools = anthropicTools;
+                        requestBody.tool_choice = forceCalling ? { type: 'any' } : { type: 'auto' };
+                    }
+                }
+
+            } else {
+                // --- Gemini (Google) 用の処理 ---
+                const sanitizeForVertex = (msgs) => {
+                    return msgs.map(msg => {
+                        const newMsg = { ...msg };
+                        if (newMsg.parts && Array.isArray(newMsg.parts)) {
+                            newMsg.parts = newMsg.parts.map(part => {
+                                const newPart = { ...part };
+                                if (newPart.functionCall) {
+                                    newPart.functionCall = { ...newPart.functionCall };
+                                    delete newPart.functionCall._toolCallId;
+                                    delete newPart.functionCall._toolUseId;
+                                }
+                                if (newPart.functionResponse) {
+                                    newPart.functionResponse = { ...newPart.functionResponse };
+                                    delete newPart.functionResponse._toolCallId;
+                                    delete newPart.functionResponse._toolUseId;
+                                }
+                                return newPart;
+                            });
+                        }
+                        return newMsg;
+                    });
+                };
+
+                const sanitizedMessages = sanitizeForVertex(messagesForApi);
+
+                requestBody = {
+                    modelId: modelId,
+                    contents: sanitizedMessages,
+                    generationConfig: generationConfig,
+                    safetySettings: [
+                        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+                    ]
+                };
+
+                if (systemInstruction && systemInstruction.parts && systemInstruction.parts.length > 0 && systemInstruction.parts[0].text) {
+                    requestBody.systemInstruction = systemInstruction;
+                }
+
+                let finalTools = [];
+                if (state.settings.geminiEnableFunctionCalling) {
+                    finalTools = window.functionDeclarations || [];
+                } else if (state.settings.geminiEnableGrounding) {
+                    finalTools.push({ "google_search": {} });
+                }
+
+                if (finalTools.length > 0) {
+                    requestBody.tools = finalTools;
+                }
+
+                if (forceCalling && state.settings.geminiEnableFunctionCalling) {
+                    requestBody.toolConfig = { functionCallingConfig: { mode: 'ANY' } };
+                }
             }
 
             console.log("[Vertex AI] リクエストを送信:", JSON.stringify(requestBody, (key, value) => {
@@ -5398,14 +5541,19 @@ const apiUtils = {
             const timestamp = new Date().toLocaleTimeString();
             console.log(`[API_DEBUG ${timestamp}] Sending fetch request to Vertex AI Proxy...`);
 
+            const headers = {
+                'Content-Type': 'application/json',
+                'X-Vertex-Project-Id': projectId,
+                'X-Vertex-Region': isClaude ? effectiveRegion : region,
+                'X-Vertex-Service-Account-Key': serviceAccountKeyBase64,
+            };
+            if (isClaude) {
+                headers['X-Vertex-Model-Provider'] = 'anthropic';
+            }
+
             const proxyResponse = await fetch(`${PROXY_URL}?type=vertex_proxy`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Vertex-Project-Id': projectId,
-                    'X-Vertex-Region': region,
-                    'X-Vertex-Service-Account-Key': serviceAccountKeyBase64,
-                },
+                headers: headers,
                 body: JSON.stringify(requestBody),
                 signal
             });
@@ -5413,20 +5561,71 @@ const apiUtils = {
             const receivedTimestamp = new Date().toLocaleTimeString();
             console.log(`[API_DEBUG ${receivedTimestamp}] Received response from Vertex AI Proxy. Status: ${proxyResponse.status}`);
 
-            const proxyData = await proxyResponse.json();
+            let proxyData;
+            const responseText = await proxyResponse.text();
+            try {
+                proxyData = JSON.parse(responseText);
+            } catch (e) {
+                console.warn("レスポンスがJSONではありませんでした:", responseText);
+                proxyData = { error: responseText || proxyResponse.statusText };
+            }
 
             if (!proxyResponse.ok) {
                 console.error("Vertex AI Proxyからのエラー:", proxyData);
-                throw new Error(`Vertex AI APIエラー (${proxyResponse.status}): ${proxyData.error || proxyResponse.statusText}`);
+                const errorMessage = proxyData.error?.message || proxyData.error || proxyResponse.statusText;
+                throw new Error(`Vertex AI APIエラー (${proxyResponse.status}): ${errorMessage}`);
             }
 
-            console.log("[Vertex AI] プロキシレスポンス受信:", JSON.stringify(proxyData).substring(0, 500));
+            if (isClaude) {
+                console.log("[Vertex AI] Claudeレスポンスを受信。Gemini形式に変換します。");
+                const anthropicResponse = proxyData;
 
-            // Gemini形式のレスポンスを返す（Vertex AIとGemini APIは同じレスポンス形式）
-            return {
-                ok: true,
-                json: async () => proxyData
-            };
+                const parts = [];
+                if (anthropicResponse.content) {
+                    for (const block of anthropicResponse.content) {
+                        if (block.type === 'text') {
+                            parts.push({ text: block.text });
+                        } else if (block.type === 'tool_use') {
+                            parts.push({
+                                functionCall: {
+                                    name: block.name,
+                                    args: block.input || {},
+                                    _toolCallId: block.id
+                                }
+                            });
+                        }
+                    }
+                }
+
+                let finishReason = 'STOP';
+                if (anthropicResponse.stop_reason) {
+                    const reasonMap = {
+                        'end_turn': 'STOP',
+                        'tool_use': 'STOP',
+                        'max_tokens': 'MAX_TOKENS',
+                        'stop_sequence': 'STOP'
+                    };
+                    finishReason = reasonMap[anthropicResponse.stop_reason] || 'STOP';
+                }
+
+                const geminiFormatResponse = {
+                    candidates: [{
+                        content: { parts, role: 'model' },
+                        finishReason: finishReason
+                    }],
+                    usageMetadata: {
+                        promptTokenCount: anthropicResponse.usage?.input_tokens || 0,
+                        candidatesTokenCount: anthropicResponse.usage?.output_tokens || 0,
+                        totalTokenCount: (anthropicResponse.usage?.input_tokens || 0) + (anthropicResponse.usage?.output_tokens || 0)
+                    }
+                };
+                return { ok: true, json: async () => geminiFormatResponse };
+
+            } else {
+                console.log("[Vertex AI] Geminiレスポンス受信:", JSON.stringify(proxyData).substring(0, 500));
+                return { ok: true, json: async () => proxyData };
+            }
+
         } catch (error) {
             if (error.name === 'AbortError') {
                 throw new Error("リクエストがキャンセルされました。");
@@ -5918,14 +6117,14 @@ const appLogic = {
             const { summaryText } = state.currentSummarizedContext;
             const summaryEndIndex = state.currentSummarizedContext.summaryRange?.end || 0;
             const headCount = 5;
-            
+
             console.log(`[API Prep] 要約コンテキスト検出。summaryEndIndex=${summaryEndIndex}, messagesForApi.length=${messagesForApi.length}, headCount=${headCount}`);
-            
+
             // 冒頭5件を取得（全メッセージの最初から）
             // ただしメッセージが5件未満の場合はその数だけ
             const actualHeadCount = Math.min(headCount, messagesForApi.length);
             const headMessages = messagesForApi.slice(0, actualHeadCount);
-            
+
             // 要約メッセージを作成（結合された要約テキスト全体を含む）
             const summaryMessage = {
                 role: 'user',
@@ -5934,7 +6133,7 @@ const appLogic = {
                 isHidden: true,
                 attachments: []
             };
-            
+
             // 要約後のメッセージを state.currentMessages から直接取得し、API形式に変換する
             const afterSummaryInCurrentMessages = state.currentMessages.slice(summaryEndIndex);
             // 選択されたカスケードのみにフィルタリング
@@ -5956,9 +6155,9 @@ const appLogic = {
                 }
                 return { role: msg.role === 'model' ? 'model' : 'user', parts };
             }).filter(c => c.parts.length > 0);
-            
+
             console.log(`[API Prep] 要約後メッセージ: state.currentMessages[${summaryEndIndex}以降] から ${filteredAfterSummary.length}件 -> 変換後 ${afterSummaryMessages.length}件`);
-            
+
             historyToProcess = [...headMessages, summaryMessage, ...afterSummaryMessages];
             console.log(`[API Prep] 冒頭(${headMessages.length}件) + 要約文(1) + 要約後(${afterSummaryMessages.length}件) = 合計${historyToProcess.length}件を送信`);
         } else {
@@ -12330,7 +12529,7 @@ const appLogic = {
 
             const userContent = `【要約対象の会話履歴】\n${originalText}`;
             const summaryModel = state.settings.summaryModelName || state.settings.modelName;
-            
+
             console.log("--- [要約API] リクエスト開始 ---");
             console.log("使用プロバイダー:", provider);
             console.log("使用モデル:", summaryModel);
@@ -12341,10 +12540,10 @@ const appLogic = {
                 // Azure API経由で要約を実行
                 const messagesForApi = [{ role: 'user', parts: [{ text: userContent }] }];
                 const generationConfig = { temperature: 0.3, maxOutputTokens: 8192 };
-                
+
                 // 要約用に独立したAbortControllerを使用（メインのstate.abortControllerとは分離）
                 const summaryAbortController = new AbortController();
-                
+
                 const response = await apiUtils.callAzureApi(
                     messagesForApi,
                     generationConfig,
@@ -12353,22 +12552,22 @@ const appLogic = {
                     false, // forceCalling
                     summaryAbortController.signal   // 独立したsignal
                 );
-                
+
                 if (!response.ok) {
                     throw new Error(`Azure APIエラー: ${response.status}`);
                 }
                 responseData = await response.json();
-                
+
             } else if (provider === 'bedrock') {
                 // Bedrock API経由で要約を実行
                 // 現在のチャットセッションと分離するため、一時的なセッションIDを使用
                 const originalSessionId = state.currentSessionId;
                 state.currentSessionId = `summary_${crypto.randomUUID()}`;
                 state.bedrockSessionJustReset = true; // 新規セッションフラグを設定
-                
+
                 const messagesForApi = [{ role: 'user', parts: [{ text: userContent }] }];
                 const generationConfig = { temperature: 0.3, maxOutputTokens: 8192 };
-                
+
                 try {
                     const response = await apiUtils.callBedrockApi(
                         messagesForApi,
@@ -12378,7 +12577,7 @@ const appLogic = {
                         false, // forceCalling
                         null   // signal
                     );
-                    
+
                     if (!response.ok) {
                         throw new Error(`Bedrock APIエラー: ${response.status}`);
                     }
@@ -12387,12 +12586,12 @@ const appLogic = {
                     // セッションIDを元に戻す
                     state.currentSessionId = originalSessionId;
                 }
-                
+
             } else if (provider === 'vertex') {
                 // Vertex AI経由で要約を実行
                 const messagesForApi = [{ role: 'user', parts: [{ text: userContent }] }];
                 const generationConfig = { temperature: 0.3, maxOutputTokens: 8192 };
-                
+
                 const response = await apiUtils.callVertexApi(
                     messagesForApi,
                     generationConfig,
@@ -12401,12 +12600,12 @@ const appLogic = {
                     false, // forceCalling
                     null   // signal
                 );
-                
+
                 if (!response.ok) {
                     throw new Error(`Vertex AI APIエラー: ${response.status}`);
                 }
                 responseData = await response.json();
-                
+
             } else {
                 // Gemini API（デフォルト）
                 const requestBody = {
