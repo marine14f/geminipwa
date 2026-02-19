@@ -50,7 +50,8 @@ const GEMINI_MODELS = [
     { value: 'gemini-2.5-flash-preview-09-2025', label: 'gemini-2.5-flash-preview-09-2025', group: 'プレビュー版' },
     { value: 'gemini-2.5-flash-lite-preview-09-2025', label: 'gemini-2.5-flash-lite-preview-09-2025', group: 'プレビュー版' },
     { value: 'gemini-2.5-flash-image-preview', label: 'gemini-2.5-flash-image-preview (Nano Banana)', group: 'プレビュー版' },
-    { value: 'gemini-3-pro-preview', label: 'gemini-3-pro-preview', group: 'プレビュー版' }
+    { value: 'gemini-3-pro-preview', label: 'gemini-3-pro-preview', group: 'プレビュー版' },
+    { value: 'gemini-3-flash-preview', label: 'gemini-3-flash-preview', group: 'プレビュー版' }
 ];
 
 const ZAI_MODELS = [
@@ -9882,8 +9883,12 @@ const appLogic = {
         let dataMatch;
         while ((dataMatch = dataBlockRegex.exec(text)) !== null) {
             const blockType = dataMatch[1];
-            const blockContent = dataMatch[2].trim();
+            let blockContent = dataMatch[2].trim();
             try {
+                // 特殊文字のエスケープ処理: 制御文字をエスケープシーケンスに変換
+                // JSON文字列内の不正な制御文字を除去（U+0000-U+001F、ただしタブ・改行・CRは許可）
+                blockContent = blockContent.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+                
                 const jsonData = JSON.parse(blockContent);
                 switch (blockType) {
                     case 'metadata':
@@ -9895,12 +9900,13 @@ const appLogic = {
                     case 'imagedata':
                         Object.assign(imageData, jsonData);
                         break;
-                    case 'attachmentdata': // attachmentdataブロックの処理を追加
+                    case 'attachmentdata':
                         Object.assign(attachmentData, jsonData);
                         break;
                 }
             } catch (e) {
                 console.error(`インポートされた ${blockType} のJSONパースに失敗:`, e);
+                console.error(`問題のコンテンツ(先頭500文字): ${blockContent.substring(0, 500)}`);
             }
             // パースしたブロックを元のテキストから削除
             remainingText = remainingText.replace(dataMatch[0], '');
