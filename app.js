@@ -2742,6 +2742,7 @@ const uiUtils = {
         if (elements.azureApiVersionSelect) {
             elements.azureApiVersionSelect.value = state.settings.azureApiVersion || '2024-12-01-preview';
         }
+        this.updateUserModelOptions();
         elements.modelNameSelect.value = state.settings.modelName || DEFAULT_MODEL;
         elements.systemPromptDefaultTextarea.value = state.settings.systemPrompt || '';
         elements.temperatureInput.value = state.settings.temperature === null ? '' : state.settings.temperature;
@@ -2813,7 +2814,7 @@ const uiUtils = {
         const defaultHeaderColor = state.settings.darkMode ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
         elements.headerColorInput.value = state.settings.headerColor || defaultHeaderColor;
 
-        this.updateUserModelOptions();
+        // updateUserModelOptions() は modelNameSelect.value 設定前に移動済み
         this.updateBackgroundSettingsUI();
         this.applyDarkMode();
         this.applyFontFamily();
@@ -9888,7 +9889,7 @@ const appLogic = {
                 // 特殊文字のエスケープ処理: 制御文字をエスケープシーケンスに変換
                 // JSON文字列内の不正な制御文字を除去（U+0000-U+001F、ただしタブ・改行・CRは許可）
                 blockContent = blockContent.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
-                
+
                 const jsonData = JSON.parse(blockContent);
                 switch (blockType) {
                     case 'metadata':

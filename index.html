@@ -308,8 +308,8 @@
 
                     <div id="vertex-api-key-container" class="hidden">
                         <label for="vertex-project-id">Google Cloud Project ID:</label>
-                        <input type="text" id="vertex-project-id"
-                            placeholder="例: my-project-123" aria-label="Google Cloud Project ID">
+                        <input type="text" id="vertex-project-id" placeholder="例: my-project-123"
+                            aria-label="Google Cloud Project ID">
                         <label for="vertex-region-select" style="margin-top: 10px;">Vertex AI リージョン:</label>
                         <select id="vertex-region-select" aria-label="Vertex AI リージョン">
                             <option value="global">global (グローバル - Gemini 3 Pro等)</option>
@@ -340,11 +340,11 @@
 
                     <div id="azure-api-key-container" class="hidden">
                         <label for="azure-resource-name">リソース名:</label>
-                        <input type="text" id="azure-resource-name"
-                            placeholder="例: my-ai-resource" aria-label="Azure AI Foundry リソース名">
+                        <input type="text" id="azure-resource-name" placeholder="例: my-ai-resource"
+                            aria-label="Azure AI Foundry リソース名">
                         <label for="azure-deployment-name" style="margin-top: 10px;">デプロイメント名:</label>
-                        <input type="text" id="azure-deployment-name"
-                            placeholder="例: claude-sonnet-deployment" aria-label="Azure AI Foundry デプロイメント名">
+                        <input type="text" id="azure-deployment-name" placeholder="例: claude-sonnet-deployment"
+                            aria-label="Azure AI Foundry デプロイメント名">
                         <label for="azure-api-key" style="margin-top: 10px;">APIキー:</label>
                         <input type="password" autocomplete="new-password" id="azure-api-key"
                             placeholder="Azure AI Foundry APIキーを入力" aria-label="Azure AI Foundry APIキー">
@@ -1033,6 +1033,9 @@
         <div class="dialog-content">
             <div class="file-upload-area">
 
+                <input type="file" id="file-input" multiple
+                    accept="image/*,video/*,audio/*,.pdf,.txt,.js,.py,.html,.css,.json,.md,.csv,.xml,.java,.c,.cpp,.h,.hpp,.cs,.php,.rb,.go,.swift,.kt,.kts,.rs,.ts,.tsx,.sql,.sh,.yml,.yaml,.rtf"
+                    class="hidden">
                 <label for="file-input" id="select-files-btn" class="dialog-button">ファイルを選択</label>
             </div>
             <ul id="selected-files-list">
