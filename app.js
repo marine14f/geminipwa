@@ -51,7 +51,8 @@ const GEMINI_MODELS = [
     { value: 'gemini-2.5-flash-lite-preview-09-2025', label: 'gemini-2.5-flash-lite-preview-09-2025', group: 'プレビュー版' },
     { value: 'gemini-2.5-flash-image-preview', label: 'gemini-2.5-flash-image-preview (Nano Banana)', group: 'プレビュー版' },
     { value: 'gemini-3-pro-preview', label: 'gemini-3-pro-preview', group: 'プレビュー版' },
-    { value: 'gemini-3-flash-preview', label: 'gemini-3-flash-preview', group: 'プレビュー版' }
+    { value: 'gemini-3-flash-preview', label: 'gemini-3-flash-preview', group: 'プレビュー版' },
+    { value: 'gemini-3-pro-preview', label: 'gemini-3-pro-preview', group: 'プレビュー版' }
 ];
 
 const ZAI_MODELS = [
