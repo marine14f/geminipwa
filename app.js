@@ -28,6 +28,8 @@ const TEXTAREA_MAX_HEIGHT = 120;
 const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models/';
 const ZAI_API_BASE_URL = 'https://api.z.ai/api/paas/v4/chat/completions';
 const OPENROUTER_API_BASE_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const OPENCODE_GO_CHAT_API_BASE_URL = 'https://opencode.ai/zen/go/v1/chat/completions';
+const OPENCODE_GO_MESSAGES_API_BASE_URL = 'https://opencode.ai/zen/go/v1/messages';
 const PROXY_URL = 'https://gemini-pwa-mk2-proxy.marine14f.workers.dev/';
 const DUPLICATE_SUFFIX = ' (コピー)';
 const IMPORT_PREFIX = '(取込) ';
@@ -36,6 +38,7 @@ const DARK_THEME_COLOR = '#007aff';
 const APP_VERSION = "1.13";
 const DEFAULT_ZAI_MODEL = 'glm-4.6';
 const DEFAULT_OPENROUTER_MODEL = 'x-ai/grok-4.1-fast';
+const DEFAULT_OPENCODE_GO_MODEL = 'kimi-k2.6';
 const VERSION_NOTICE_SESSION_KEY = 'pendingVersionNotice';
 const VERSION_ACK_STORAGE_KEY = 'appVersionAcknowledged';
 const VERSION_LEGACY_STORAGE_KEY = 'appVersion';
@@ -59,6 +62,24 @@ const ZAI_MODELS = [
     { value: 'glm-4.6', label: 'GLM-4.6' },
     { value: 'glm-4.5-Air', label: 'GLM-4.5 Air' },
     { value: 'glm-4.5-flash', label: 'GLM-4.5 Flash' }
+];
+
+const OPENCODE_GO_MODELS = [
+    { value: 'minimax-m2.7', label: 'MiniMax M2.7', group: 'MiniMax' },
+    { value: 'minimax-m2.5', label: 'MiniMax M2.5', group: 'MiniMax' },
+    { value: 'kimi-k2.6', label: 'Kimi K2.6', group: 'Kimi' },
+    { value: 'kimi-k2.5', label: 'Kimi K2.5', group: 'Kimi' },
+    { value: 'glm-5.1', label: 'GLM-5.1', group: 'GLM' },
+    { value: 'glm-5', label: 'GLM-5', group: 'GLM' },
+    { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro', group: 'DeepSeek' },
+    { value: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash', group: 'DeepSeek' },
+    { value: 'qwen3.6-plus', label: 'Qwen3.6 Plus', group: 'Qwen' },
+    { value: 'qwen3.5-plus', label: 'Qwen3.5 Plus', group: 'Qwen' },
+    { value: 'mimo-v2-pro', label: 'MiMo V2 Pro', group: 'MiMo' },
+    { value: 'mimo-v2-omni', label: 'MiMo V2 Omni', group: 'MiMo' },
+    { value: 'mimo-v2.5-pro', label: 'MiMo-V2.5-Pro', group: 'MiMo' },
+    { value: 'mimo-v2.5', label: 'MiMo-V2.5', group: 'MiMo' },
+    { value: 'hy3-preview', label: 'HY3 Preview', group: 'Preview' }
 ];
 
 const BEDROCK_MODELS = [
@@ -425,6 +446,8 @@ try {
         zaiApiKeyContainer: document.getElementById('zai-api-key-container'),
         openrouterApiKeyInput: document.getElementById('openrouter-api-key'),
         openrouterApiKeyContainer: document.getElementById('openrouter-api-key-container'),
+        opencodeGoApiKeyInput: document.getElementById('opencode-go-api-key'),
+        opencodeGoApiKeyContainer: document.getElementById('opencode-go-api-key-container'),
         openrouterModelInput: document.getElementById('openrouter-model-input'),
         openrouterModelInputContainer: document.getElementById('openrouter-model-input-container'),
         bedrockAccessKeyInput: document.getElementById('bedrock-access-key'),
@@ -664,10 +687,11 @@ const state = {
     videoUrlCache: new Map(),
     imageUrlCache: new Map(),
     settings: {
-        apiProvider: 'gemini', // 'gemini' | 'zai' | 'bedrock' | 'openrouter' | 'vertex'
+        apiProvider: 'gemini', // 'gemini' | 'zai' | 'bedrock' | 'openrouter' | 'opencode_go' | 'vertex'
         apiKey: '',
         zaiApiKey: '',
         openrouterApiKey: '',
+        opencodeGoApiKey: '',
         bedrockAccessKey: '',
         bedrockSecretKey: '',
         bedrockRegion: DEFAULT_BEDROCK_REGION,
@@ -2687,7 +2711,7 @@ const uiUtils = {
         // プロバイダーとAPIキーの設定（要素が存在する場合のみ）
         if (elements.apiProviderSelect) {
             let provider = state.settings.apiProvider || 'gemini';
-            const isDebugOnlyProvider = provider === 'zai' || provider === 'openrouter' || provider === 'bedrock' || provider === 'vertex';
+            const isDebugOnlyProvider = provider === 'zai' || provider === 'openrouter' || provider === 'opencode_go' || provider === 'bedrock' || provider === 'vertex';
             if (!state.settings.debugMode && isDebugOnlyProvider) {
                 provider = 'gemini';
                 state.settings.apiProvider = provider;
@@ -2712,6 +2736,9 @@ const uiUtils = {
         }
         if (elements.openrouterApiKeyInput) {
             elements.openrouterApiKeyInput.value = state.settings.openrouterApiKey || '';
+        }
+        if (elements.opencodeGoApiKeyInput) {
+            elements.opencodeGoApiKeyInput.value = state.settings.opencodeGoApiKey || '';
         }
         if (elements.bedrockAccessKeyInput) {
             elements.bedrockAccessKeyInput.value = state.settings.bedrockAccessKey || '';
@@ -4678,6 +4705,276 @@ const apiUtils = {
         }
     },
     // Amazon Bedrock APIを呼び出す
+    async callOpenCodeGoApi(messagesForApi, generationConfig, systemInstruction, tools = null, forceCalling = false, signal = null) {
+        console.log(`[Debug] callOpenCodeGoApi: OpenCode Go APIを呼び出します。`);
+
+        const apiKey = state.settings.opencodeGoApiKey;
+        if (!apiKey) {
+            throw new Error("OpenCode Go APIキーが設定されていません。");
+        }
+
+        if (!signal) {
+            state.abortController = new AbortController();
+            signal = state.abortController.signal;
+        }
+
+        const model = state.settings.modelName || DEFAULT_OPENCODE_GO_MODEL;
+        const isMessagesModel = model.startsWith('minimax-');
+
+        if (isMessagesModel) {
+            return await this.callOpenCodeGoMessagesApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling, signal, apiKey, model);
+        }
+
+        const openAIMessages = this.convertGeminiToOpenAIFormat(messagesForApi);
+        if (systemInstruction && systemInstruction.parts && systemInstruction.parts.length > 0) {
+            const systemText = systemInstruction.parts[0].text;
+            if (systemText) {
+                openAIMessages.unshift({ role: 'system', content: systemText });
+            }
+        }
+
+        const requestBody = { model, messages: openAIMessages };
+
+        if (generationConfig) {
+            if (generationConfig.temperature !== undefined) requestBody.temperature = generationConfig.temperature;
+            if (generationConfig.maxOutputTokens !== undefined) requestBody.max_tokens = generationConfig.maxOutputTokens;
+            if (generationConfig.topP !== undefined) requestBody.top_p = generationConfig.topP;
+        }
+
+        if (state.settings.geminiEnableFunctionCalling && window.functionDeclarations) {
+            const openAITools = [];
+            for (const geminiTool of window.functionDeclarations) {
+                if (geminiTool.function_declarations && Array.isArray(geminiTool.function_declarations)) {
+                    for (const funcDecl of geminiTool.function_declarations) {
+                        openAITools.push({
+                            type: 'function',
+                            function: {
+                                name: funcDecl.name,
+                                description: funcDecl.description || '',
+                                parameters: funcDecl.parameters || {}
+                            }
+                        });
+                    }
+                } else if (geminiTool.google_search) {
+                    console.warn("OpenCode Go APIではGoogle Searchはサポートされていません。スキップします。");
+                }
+            }
+            if (openAITools.length > 0) {
+                requestBody.tools = openAITools;
+                requestBody.tool_choice = forceCalling ? 'required' : 'auto';
+            }
+        }
+
+        try {
+            const response = await fetch(`${PROXY_URL}?type=opencode_go_proxy`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-OpenCode-Go-Api-Key': apiKey,
+                    'X-OpenCode-Go-Endpoint-Type': 'chat'
+                },
+                body: JSON.stringify(requestBody),
+                signal
+            });
+
+            if (!response.ok) {
+                let errorMsg = `OpenCode Go APIエラー (${response.status}): ${response.statusText}`;
+                let errorData = null;
+                let responseText = '';
+                try {
+                    responseText = await response.text();
+                    errorData = responseText ? JSON.parse(responseText) : null;
+                    if (errorData.error?.message) {
+                        errorMsg = `OpenCode Go APIエラー (${response.status}): ${errorData.error.message}`;
+                    } else if (errorData.message) {
+                        errorMsg = `OpenCode Go APIエラー (${response.status}): ${errorData.message}`;
+                    } else if (errorData.error) {
+                        errorMsg = `OpenCode Go APIエラー (${response.status}): ${errorData.error}`;
+                    }
+                } catch (e) {
+                    console.error("OpenCode Go APIエラーレスポンスのパースに失敗しました:", e, responseText?.substring?.(0, 1000));
+                    if (responseText) {
+                        errorMsg = `OpenCode Go APIエラー (${response.status}): ${responseText.substring(0, 300)}`;
+                    }
+                }
+                const error = new Error(errorMsg);
+                error.status = response.status;
+                error.responseText = responseText;
+                error.data = errorData;
+                throw error;
+            }
+
+            const openAIResponse = await response.json();
+            const geminiFormatResponse = this.convertOpenAIToGeminiFormat(openAIResponse);
+            return { ok: true, status: response.status, json: async () => geminiFormatResponse };
+        } catch (error) {
+            if (error.name === 'AbortError') throw new Error("リクエストがキャンセルされました。");
+            throw error;
+        }
+    },
+
+    async callOpenCodeGoMessagesApi(messagesForApi, generationConfig, systemInstruction, tools = null, forceCalling = false, signal = null, apiKey, model) {
+        const anthropicMessages = this.convertGeminiToAnthropicMessages(messagesForApi);
+        const requestBody = {
+            model,
+            messages: anthropicMessages,
+            max_tokens: generationConfig?.maxOutputTokens || DEFAULT_MAX_TOKENS
+        };
+
+        if (generationConfig) {
+            if (generationConfig.temperature !== undefined) requestBody.temperature = generationConfig.temperature;
+            if (generationConfig.topP !== undefined) requestBody.top_p = generationConfig.topP;
+        }
+
+        if (systemInstruction && systemInstruction.parts && systemInstruction.parts.length > 0) {
+            const systemText = systemInstruction.parts.map(part => part.text || '').filter(Boolean).join('\n');
+            if (systemText) requestBody.system = systemText;
+        }
+
+        if (state.settings.geminiEnableFunctionCalling && tools && tools.length > 0) {
+            const anthropicTools = [];
+            for (const geminiTool of tools) {
+                if (geminiTool.function_declarations && Array.isArray(geminiTool.function_declarations)) {
+                    for (const funcDecl of geminiTool.function_declarations) {
+                        anthropicTools.push({
+                            name: funcDecl.name,
+                            description: funcDecl.description || '',
+                            input_schema: funcDecl.parameters || { type: 'object', properties: {} }
+                        });
+                    }
+                }
+            }
+            if (anthropicTools.length > 0) {
+                requestBody.tools = anthropicTools;
+                if (forceCalling) requestBody.tool_choice = { type: 'any' };
+            }
+        }
+
+        try {
+            const response = await fetch(`${PROXY_URL}?type=opencode_go_proxy`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-OpenCode-Go-Api-Key': apiKey,
+                    'X-OpenCode-Go-Endpoint-Type': 'messages'
+                },
+                body: JSON.stringify(requestBody),
+                signal
+            });
+
+            if (!response.ok) {
+                let errorMsg = `OpenCode Go Messages APIエラー (${response.status}): ${response.statusText}`;
+                let errorData = null;
+                let responseText = '';
+                try {
+                    responseText = await response.text();
+                    errorData = responseText ? JSON.parse(responseText) : null;
+                    if (errorData.error?.message) {
+                        errorMsg = `OpenCode Go Messages APIエラー (${response.status}): ${errorData.error.message}`;
+                    } else if (errorData.message) {
+                        errorMsg = `OpenCode Go Messages APIエラー (${response.status}): ${errorData.message}`;
+                    } else if (errorData.error) {
+                        errorMsg = `OpenCode Go Messages APIエラー (${response.status}): ${errorData.error}`;
+                    }
+                } catch (e) {
+                    console.error("OpenCode Go Messages APIエラーレスポンスのパースに失敗しました:", e, responseText?.substring?.(0, 1000));
+                    if (responseText) {
+                        errorMsg = `OpenCode Go Messages APIエラー (${response.status}): ${responseText.substring(0, 300)}`;
+                    }
+                }
+                const error = new Error(errorMsg);
+                error.status = response.status;
+                error.responseText = responseText;
+                error.data = errorData;
+                throw error;
+            }
+
+            const anthropicResponse = await response.json();
+            const geminiFormatResponse = this.convertAnthropicToGeminiFormat(anthropicResponse);
+            return { ok: true, status: response.status, json: async () => geminiFormatResponse };
+        } catch (error) {
+            if (error.name === 'AbortError') throw new Error("リクエストがキャンセルされました。");
+            throw error;
+        }
+    },
+
+    convertGeminiToAnthropicMessages(messagesForApi) {
+        return messagesForApi.map(msg => {
+            const role = msg.role === 'model' ? 'assistant' : 'user';
+            const content = [];
+
+            if (msg.parts) {
+                for (const part of msg.parts) {
+                    if (part.text) {
+                        content.push({ type: 'text', text: part.text });
+                    } else if (part.inlineData) {
+                        content.push({
+                            type: 'image',
+                            source: {
+                                type: 'base64',
+                                media_type: part.inlineData.mimeType,
+                                data: part.inlineData.data
+                            }
+                        });
+                    } else if (part.functionCall) {
+                        content.push({
+                            type: 'tool_use',
+                            id: part.functionCall.id || `toolu_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+                            name: part.functionCall.name,
+                            input: part.functionCall.args || {}
+                        });
+                    } else if (part.functionResponse) {
+                        content.push({
+                            type: 'tool_result',
+                            tool_use_id: part.functionResponse._toolCallId || part.functionResponse.id || part.functionResponse.name,
+                            content: JSON.stringify(part.functionResponse.response || {})
+                        });
+                    }
+                }
+            }
+
+            return { role, content: content.length > 0 ? content : [{ type: 'text', text: '' }] };
+        }).filter(msg => msg.content.length > 0);
+    },
+
+    convertAnthropicToGeminiFormat(anthropicResponse) {
+        const parts = [];
+        if (Array.isArray(anthropicResponse.content)) {
+            for (const block of anthropicResponse.content) {
+                if (block.type === 'text' && block.text) {
+                    parts.push({ text: block.text });
+                } else if (block.type === 'tool_use') {
+                    parts.push({
+                        functionCall: {
+                            name: block.name,
+                            args: block.input || {},
+                            _toolCallId: block.id
+                        }
+                    });
+                }
+            }
+        }
+
+        const reasonMap = {
+            end_turn: 'STOP',
+            max_tokens: 'MAX_TOKENS',
+            stop_sequence: 'STOP',
+            tool_use: 'STOP'
+        };
+
+        return {
+            candidates: [{
+                content: { parts, role: 'model' },
+                finishReason: reasonMap[anthropicResponse.stop_reason] || 'STOP'
+            }],
+            usageMetadata: {
+                promptTokenCount: anthropicResponse.usage?.input_tokens || 0,
+                candidatesTokenCount: anthropicResponse.usage?.output_tokens || 0,
+                totalTokenCount: (anthropicResponse.usage?.input_tokens || 0) + (anthropicResponse.usage?.output_tokens || 0)
+            }
+        };
+    },
+
     async callBedrockApi(messagesForApi, generationConfig, systemInstruction, tools = null, forceCalling = false, signal = null) {
         console.log(`[Debug] callBedrockApi: Amazon Bedrock APIをプロキシ経由で呼び出します。`);
 
@@ -5274,6 +5571,8 @@ const apiUtils = {
             return await this.callZaiApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling, signal);
         } else if (provider === 'openrouter') {
             return await this.callOpenRouterApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling, signal);
+        } else if (provider === 'opencode_go') {
+            return await this.callOpenCodeGoApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling, signal);
         } else if (provider === 'bedrock') {
             return await this.callBedrockApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling, signal);
         } else if (provider === 'vertex') {
@@ -6039,7 +6338,7 @@ const appLogic = {
 
     getCurrentUiSettings() {
         const settings = {};
-        const stringKeys = ['apiProvider', 'apiKey', 'zaiApiKey', 'openrouterApiKey', 'bedrockAccessKey', 'bedrockSecretKey', 'bedrockRegion', 'vertexProjectId', 'vertexRegion', 'vertexServiceAccountKey', 'modelName', 'dummyUser', 'dummyModel', 'additionalModels', 'historySortOrder', 'fontFamily', 'proofreadingModelName', 'proofreadingSystemInstruction', 'googleSearchApiKey', 'googleSearchEngineId', 'headerColor', 'thoughtTranslationModel', 'summaryModelName', 'summarySystemPrompt'];
+        const stringKeys = ['apiProvider', 'apiKey', 'zaiApiKey', 'openrouterApiKey', 'opencodeGoApiKey', 'bedrockAccessKey', 'bedrockSecretKey', 'bedrockRegion', 'vertexProjectId', 'vertexRegion', 'vertexServiceAccountKey', 'modelName', 'dummyUser', 'dummyModel', 'additionalModels', 'historySortOrder', 'fontFamily', 'proofreadingModelName', 'proofreadingSystemInstruction', 'googleSearchApiKey', 'googleSearchEngineId', 'headerColor', 'thoughtTranslationModel', 'summaryModelName', 'summarySystemPrompt'];
         const numberKeys = ['temperature', 'maxTokens', 'topK', 'topP', 'thinkingBudget', 'maxRetries', 'maxBackoffDelaySeconds', 'overlayOpacity', 'messageOpacity'];
         const booleanKeys = ['enterToSend', 'darkMode', 'geminiEnableGrounding', 'geminiEnableFunctionCalling', 'enableSwipeNavigation', 'enableProofreading', 'enableAutoRetry', 'useFixedRetryDelay', 'reverseDummyOrder', 'concatDummyModel', 'includeThoughts', 'enableThoughtTranslation', 'applyDummyToProofread', 'applyDummyToTranslate', 'forceFunctionCalling', 'autoScroll', 'enableWideMode', 'enableSummaryButton'];
 
@@ -6501,6 +6800,7 @@ const appLogic = {
         const isGemini = provider === 'gemini';
         const isZai = provider === 'zai';
         const isOpenRouter = provider === 'openrouter';
+        const isOpenCodeGo = provider === 'opencode_go';
         const isBedrock = provider === 'bedrock';
         const isVertex = provider === 'vertex';
         const isAzure = provider === 'azure';
@@ -6514,6 +6814,9 @@ const appLogic = {
         }
         if (elements.openrouterApiKeyContainer) {
             elements.openrouterApiKeyContainer.classList.toggle('hidden', !isOpenRouter);
+        }
+        if (elements.opencodeGoApiKeyContainer) {
+            elements.opencodeGoApiKeyContainer.classList.toggle('hidden', !isOpenCodeGo);
         }
         if (elements.bedrockApiKeyContainer) {
             elements.bedrockApiKeyContainer.classList.toggle('hidden', !isBedrock);
@@ -6537,7 +6840,7 @@ const appLogic = {
         }
 
         // デバッグモード専用プロバイダーのチェック
-        const isDebugOnlyProvider = isZai || isOpenRouter || isBedrock || isVertex || isAzure;
+        const isDebugOnlyProvider = isZai || isOpenRouter || isOpenCodeGo || isBedrock || isVertex || isAzure;
         if (!state.settings.debugMode && isDebugOnlyProvider) {
             // デバッグモードOFFならGeminiに戻す
             state.settings.apiProvider = 'gemini';
@@ -6593,6 +6896,8 @@ const appLogic = {
         let models;
         if (provider === 'zai') {
             models = ZAI_MODELS;
+        } else if (provider === 'opencode_go') {
+            models = OPENCODE_GO_MODELS;
         } else if (provider === 'bedrock') {
             models = BEDROCK_MODELS;
         } else if (provider === 'vertex') {
@@ -6641,6 +6946,8 @@ const appLogic = {
             let defaultModel;
             if (provider === 'zai') {
                 defaultModel = DEFAULT_ZAI_MODEL;
+            } else if (provider === 'opencode_go') {
+                defaultModel = DEFAULT_OPENCODE_GO_MODEL;
             } else if (provider === 'openrouter') {
                 defaultModel = DEFAULT_OPENROUTER_MODEL;
             } else if (provider === 'bedrock') {
@@ -7750,7 +8057,7 @@ const appLogic = {
                 element: elements.apiProviderSelect,
                 event: 'change',
                 onUpdate: (value) => {
-                    const isDebugOnlyProvider = value === 'zai' || value === 'openrouter' || value === 'bedrock' || value === 'vertex';
+                    const isDebugOnlyProvider = value === 'zai' || value === 'openrouter' || value === 'opencode_go' || value === 'bedrock' || value === 'vertex';
                     if (!state.settings.debugMode && isDebugOnlyProvider) {
                         const fallbackProvider = 'gemini';
                         state.settings.apiProvider = fallbackProvider;
@@ -7775,6 +8082,7 @@ const appLogic = {
             apiKey: { element: elements.apiKeyInput, event: 'input' },
             zaiApiKey: { element: elements.zaiApiKeyInput, event: 'input' },
             openrouterApiKey: { element: elements.openrouterApiKeyInput, event: 'input' },
+            opencodeGoApiKey: { element: elements.opencodeGoApiKeyInput, event: 'input' },
             bedrockAccessKey: { element: elements.bedrockAccessKeyInput, event: 'input' },
             bedrockSecretKey: { element: elements.bedrockSecretKeyInput, event: 'input' },
             bedrockRegion: { element: elements.bedrockRegionSelect, event: 'change' },
@@ -7829,7 +8137,7 @@ const appLogic = {
                         elements.apiProviderRow.classList.toggle('hidden', !value);
                     }
 
-                    const isDebugOnlyProvider = state.settings.apiProvider === 'zai' || state.settings.apiProvider === 'openrouter' || state.settings.apiProvider === 'bedrock' || state.settings.apiProvider === 'vertex';
+                    const isDebugOnlyProvider = state.settings.apiProvider === 'zai' || state.settings.apiProvider === 'openrouter' || state.settings.apiProvider === 'opencode_go' || state.settings.apiProvider === 'bedrock' || state.settings.apiProvider === 'vertex';
                     if (!value && isDebugOnlyProvider) {
                         const fallbackProvider = 'gemini';
                         state.settings.apiProvider = fallbackProvider;

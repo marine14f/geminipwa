@@ -254,6 +254,7 @@
                             <option value="gemini">Gemini</option>
                             <option value="zai">Z.ai</option>
                             <option value="openrouter">OpenRouter</option>
+                            <option value="opencode_go">OpenCode Go</option>
                             <option value="bedrock">Amazon Bedrock</option>
                             <option value="vertex">Vertex AI</option>
                             <option value="azure">Azure AI Foundry</option>
@@ -280,6 +281,18 @@
                             ※ OpenRouterはデバッグモード専用です。APIキーは安全に管理してください。<br>
                             ※ APIキーは <a href="https://openrouter.ai/keys" target="_blank"
                                 rel="noopener noreferrer">OpenRouter</a> から取得できます。
+                        </p>
+                    </div>
+
+                    <div id="opencode-go-api-key-container" class="hidden">
+                        <label for="opencode-go-api-key">OpenCode Go APIキー:</label>
+                        <input type="password" autocomplete="new-password" id="opencode-go-api-key"
+                            placeholder="OpenCode Go APIキーを入力" aria-label="OpenCode Go APIキー">
+                        <p style="font-size: 11px; color: var(--text-secondary); margin-top: 8px;">
+                            ※ APIキーは <a href="https://opencode.ai/auth" target="_blank"
+                                rel="noopener noreferrer">OpenCode Zen</a> でGoをサブスクライブして取得します。<br>
+                            ※ 利用可能モデルは <a href="https://opencode.ai/zen/go/v1/models" target="_blank"
+                                rel="noopener noreferrer">OpenCode Go Models API</a> の一覧を反映しています。
                         </p>
                     </div>
 
