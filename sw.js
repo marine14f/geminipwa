@@ -1,6 +1,6 @@
 // sw.js
 
-const CACHE_NAME = 'gemini-pwa-cache-v1.13'; // 更新後はここも変更
+const CACHE_NAME = 'gemini-pwa-cache-v1.14'; // 更新後はここも変更
 const urlsToCache = [
   './',
   './index.html',
@@ -31,14 +31,17 @@ self.addEventListener('install', (event) => {
 self.addEventListener('fetch', (event) => {
   const requestUrl = new URL(event.request.url);
 
-  // APIリクエスト (Google API, Stable Diffusion API) はService Workerの処理から完全に除外する
+  // APIリクエスト (Google API, Azure API, Stable Diffusion API) はService Workerの処理から完全に除外する
   const isGoogleApiPost = requestUrl.hostname === 'generativelanguage.googleapis.com' && event.request.method === 'POST';
+  // Azure AI Services (Anthropicモデル含む) へのリクエストを判定
+  const isAzureApiPost = requestUrl.hostname.endsWith('.services.ai.azure.com') && event.request.method === 'POST';
   // ポート番号(ローカル接続)またはトンネルサービス経由のホスト名でSD APIへのリクエストかを判定
   const tunnelDomains = ['ngrok-free.dev', 'trycloudflare.com'];
   const isTunnelService = tunnelDomains.some(domain => requestUrl.hostname.endsWith(domain));
   const isStableDiffusionApi = (requestUrl.port === '7860' || isTunnelService) && event.request.method === 'POST';
+  const isProxyApiPost = requestUrl.hostname === 'gemini-pwa-mk2-proxy.marine14f.workers.dev' && event.request.method === 'POST';
 
-  if (isGoogleApiPost || isStableDiffusionApi) {
+  if (isGoogleApiPost || isAzureApiPost || isStableDiffusionApi || isProxyApiPost || event.request.method !== 'GET') {
     // console.log('[SW] Ignoring API request:', event.request.url);
     return; 
   }
@@ -69,7 +72,7 @@ self.addEventListener('fetch', (event) => {
           }
         ).catch(error => {
           console.error('SW: Fetch failed for:', event.request.url, error);
-          if (event.request.headers.get('accept').includes('application/json')) {
+          if ((event.request.headers.get('accept') || '').includes('application/json')) {
             return new Response(JSON.stringify({ error: 'Offline or network error' }), {
               status: 503,
               headers: { 'Content-Type': 'application/json' }

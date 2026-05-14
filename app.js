@@ -4765,17 +4765,48 @@ const apiUtils = {
             }
         }
 
+        console.log("OpenCode Goへの送信データ:", JSON.stringify(requestBody, (key, value) => {
+            if (key === 'data' && typeof value === 'string' && value.length > 100) {
+                return value.substring(0, 50) + '...[省略]...' + value.substring(value.length - 20);
+            }
+            return value;
+        }, 2));
+
+        if (requestBody.messages && requestBody.messages.length > 0) {
+            const recentMessages = requestBody.messages.slice(-6);
+            console.log('[OpenCode Go Debug] 送信する最近のメッセージ構造:');
+            recentMessages.forEach((msg, idx) => {
+                const info = { role: msg.role };
+                if (msg.tool_calls) info.tool_calls = msg.tool_calls.map(tc => ({ id: tc.id, name: tc.function?.name }));
+                if (msg.tool_call_id) info.tool_call_id = msg.tool_call_id;
+                if ('content' in msg) {
+                    if (typeof msg.content === 'string') {
+                        info.content_preview = msg.content === '' ? '""' : msg.content.substring(0, 50) + '...';
+                    } else {
+                        info.content_type = Array.isArray(msg.content) ? 'array' : typeof msg.content;
+                    }
+                } else {
+                    info.no_content_field = true;
+                }
+                console.log(`  [${idx}]`, JSON.stringify(info));
+            });
+        }
+
         try {
+            const timestamp = new Date().toLocaleTimeString();
+            console.log(`[API_DEBUG ${timestamp}] Sending fetch request to OpenCode Go Proxy...`);
+
             const response = await fetch(`${PROXY_URL}?type=opencode_go_proxy`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'X-OpenCode-Go-Api-Key': apiKey,
-                    'X-OpenCode-Go-Endpoint-Type': 'chat'
+                    'Content-Type': 'text/plain'
                 },
-                body: JSON.stringify(requestBody),
+                body: JSON.stringify({ apiKey, endpointType: 'chat', payload: requestBody }),
                 signal
             });
+
+            const receivedTimestamp = new Date().toLocaleTimeString();
+            console.log(`[API_DEBUG ${receivedTimestamp}] Received response from OpenCode Go Proxy. Status: ${response.status}`);
 
             if (!response.ok) {
                 let errorMsg = `OpenCode Go APIエラー (${response.status}): ${response.statusText}`;
@@ -4850,17 +4881,47 @@ const apiUtils = {
             }
         }
 
+        console.log("OpenCode Go Messagesへの送信データ:", JSON.stringify(requestBody, (key, value) => {
+            if (key === 'data' && typeof value === 'string' && value.length > 100) {
+                return value.substring(0, 50) + '...[省略]...' + value.substring(value.length - 20);
+            }
+            return value;
+        }, 2));
+
+        if (requestBody.messages && requestBody.messages.length > 0) {
+            const recentMessages = requestBody.messages.slice(-6);
+            console.log('[OpenCode Go Messages Debug] 送信する最近のメッセージ構造:');
+            recentMessages.forEach((msg, idx) => {
+                const info = { role: msg.role };
+                if (Array.isArray(msg.content)) {
+                    info.content = msg.content.map(block => {
+                        if (block.type === 'text') return { type: 'text', text_preview: (block.text || '').substring(0, 50) + '...' };
+                        if (block.type === 'tool_use') return { type: 'tool_use', id: block.id, name: block.name };
+                        if (block.type === 'tool_result') return { type: 'tool_result', tool_use_id: block.tool_use_id };
+                        return { type: block.type || typeof block };
+                    });
+                } else {
+                    info.content_type = typeof msg.content;
+                }
+                console.log(`  [${idx}]`, JSON.stringify(info));
+            });
+        }
+
         try {
+            const timestamp = new Date().toLocaleTimeString();
+            console.log(`[API_DEBUG ${timestamp}] Sending fetch request to OpenCode Go Messages Proxy...`);
+
             const response = await fetch(`${PROXY_URL}?type=opencode_go_proxy`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'X-OpenCode-Go-Api-Key': apiKey,
-                    'X-OpenCode-Go-Endpoint-Type': 'messages'
+                    'Content-Type': 'text/plain'
                 },
-                body: JSON.stringify(requestBody),
+                body: JSON.stringify({ apiKey, endpointType: 'messages', payload: requestBody }),
                 signal
             });
+
+            const receivedTimestamp = new Date().toLocaleTimeString();
+            console.log(`[API_DEBUG ${receivedTimestamp}] Received response from OpenCode Go Messages Proxy. Status: ${response.status}`);
 
             if (!response.ok) {
                 let errorMsg = `OpenCode Go Messages APIエラー (${response.status}): ${response.statusText}`;
