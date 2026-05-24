@@ -27,6 +27,7 @@ const CHAT_TITLE_LENGTH = 15;
 const TEXTAREA_MAX_HEIGHT = 120;
 const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models/';
 const ZAI_API_BASE_URL = 'https://api.z.ai/api/paas/v4/chat/completions';
+const DEEPSEEK_API_BASE_URL = 'https://api.deepseek.com/chat/completions';
 const OPENROUTER_API_BASE_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const OPENCODE_GO_CHAT_API_BASE_URL = 'https://opencode.ai/zen/go/v1/chat/completions';
 const OPENCODE_GO_MESSAGES_API_BASE_URL = 'https://opencode.ai/zen/go/v1/messages';
@@ -37,6 +38,7 @@ const LIGHT_THEME_COLOR = '#4a90e2';
 const DARK_THEME_COLOR = '#007aff';
 const APP_VERSION = "1.13";
 const DEFAULT_ZAI_MODEL = 'glm-4.6';
+const DEFAULT_DEEPSEEK_MODEL = 'deepseek-v4-pro';
 const DEFAULT_OPENROUTER_MODEL = 'x-ai/grok-4.1-fast';
 const DEFAULT_OPENCODE_GO_MODEL = 'kimi-k2.6';
 const VERSION_NOTICE_SESSION_KEY = 'pendingVersionNotice';
@@ -62,6 +64,13 @@ const ZAI_MODELS = [
     { value: 'glm-4.6', label: 'GLM-4.6' },
     { value: 'glm-4.5-Air', label: 'GLM-4.5 Air' },
     { value: 'glm-4.5-flash', label: 'GLM-4.5 Flash' }
+];
+
+const DEEPSEEK_MODELS = [
+    { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
+    { value: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
+    { value: 'deepseek-chat', label: 'deepseek-chat (legacy)' },
+    { value: 'deepseek-reasoner', label: 'deepseek-reasoner (legacy)' }
 ];
 
 const OPENCODE_GO_MODELS = [
@@ -444,6 +453,8 @@ try {
         zaiApiKeyInput: document.getElementById('zai-api-key'),
         geminiApiKeyContainer: document.getElementById('gemini-api-key-container'),
         zaiApiKeyContainer: document.getElementById('zai-api-key-container'),
+        deepseekApiKeyInput: document.getElementById('deepseek-api-key'),
+        deepseekApiKeyContainer: document.getElementById('deepseek-api-key-container'),
         openrouterApiKeyInput: document.getElementById('openrouter-api-key'),
         openrouterApiKeyContainer: document.getElementById('openrouter-api-key-container'),
         opencodeGoApiKeyInput: document.getElementById('opencode-go-api-key'),
@@ -687,9 +698,10 @@ const state = {
     videoUrlCache: new Map(),
     imageUrlCache: new Map(),
     settings: {
-        apiProvider: 'gemini', // 'gemini' | 'zai' | 'bedrock' | 'openrouter' | 'opencode_go' | 'vertex'
+        apiProvider: 'gemini', // 'gemini' | 'zai' | 'deepseek' | 'bedrock' | 'openrouter' | 'opencode_go' | 'vertex'
         apiKey: '',
         zaiApiKey: '',
+        deepseekApiKey: '',
         openrouterApiKey: '',
         opencodeGoApiKey: '',
         bedrockAccessKey: '',
@@ -1076,7 +1088,7 @@ const dbUtils = {
                             });
 
                             const profileSettingKeys = [
-                                'apiProvider', 'apiKey', 'zaiApiKey', 'bedrockAccessKey', 'bedrockSecretKey', 'bedrockRegion',
+                                'apiProvider', 'apiKey', 'zaiApiKey', 'deepseekApiKey', 'bedrockAccessKey', 'bedrockSecretKey', 'bedrockRegion',
                                 'vertexProjectId', 'vertexRegion', 'vertexServiceAccountKey',
                                 'modelName', 'systemPrompt', 'temperature', 'maxTokens', 'topK', 'topP',
                                 'presencePenalty', 'frequencyPenalty', 'thinkingBudget', 'includeThoughts',
@@ -2711,7 +2723,7 @@ const uiUtils = {
         // プロバイダーとAPIキーの設定（要素が存在する場合のみ）
         if (elements.apiProviderSelect) {
             let provider = state.settings.apiProvider || 'gemini';
-            const isDebugOnlyProvider = provider === 'zai' || provider === 'openrouter' || provider === 'opencode_go' || provider === 'bedrock' || provider === 'vertex';
+            const isDebugOnlyProvider = provider === 'zai' || provider === 'deepseek' || provider === 'openrouter' || provider === 'opencode_go' || provider === 'bedrock' || provider === 'vertex' || provider === 'azure';
             if (!state.settings.debugMode && isDebugOnlyProvider) {
                 provider = 'gemini';
                 state.settings.apiProvider = provider;
@@ -2733,6 +2745,9 @@ const uiUtils = {
         elements.apiKeyInput.value = state.settings.apiKey || '';
         if (elements.zaiApiKeyInput) {
             elements.zaiApiKeyInput.value = state.settings.zaiApiKey || '';
+        }
+        if (elements.deepseekApiKeyInput) {
+            elements.deepseekApiKeyInput.value = state.settings.deepseekApiKey || '';
         }
         if (elements.openrouterApiKeyInput) {
             elements.openrouterApiKeyInput.value = state.settings.openrouterApiKey || '';
@@ -4487,7 +4502,132 @@ const apiUtils = {
         }
     },
 
+    // DeepSeek official APIを呼び出す
+    async callDeepSeekApi(messagesForApi, generationConfig, systemInstruction, tools = null, forceCalling = false, signal = null) {
+        console.log(`[Debug] callDeepSeekApi: DeepSeek official APIを呼び出します。`);
+
+        const apiKey = state.settings.deepseekApiKey;
+        if (!apiKey) {
+            throw new Error("DeepSeek APIキーが設定されていません。");
+        }
+
+        if (!signal) {
+            state.abortController = new AbortController();
+            signal = state.abortController.signal;
+        }
+
+        const model = state.settings.modelName || DEFAULT_DEEPSEEK_MODEL;
+        const openAIMessages = this.convertGeminiToOpenAIFormat(messagesForApi);
+
+        if (systemInstruction && systemInstruction.parts && systemInstruction.parts.length > 0) {
+            const systemText = systemInstruction.parts[0].text;
+            if (systemText) {
+                openAIMessages.unshift({
+                    role: 'system',
+                    content: systemText
+                });
+            }
+        }
+
+        const requestBody = {
+            model: model,
+            messages: openAIMessages
+        };
+
+        if (generationConfig) {
+            if (generationConfig.temperature !== undefined) {
+                requestBody.temperature = generationConfig.temperature;
+            }
+            if (generationConfig.maxOutputTokens !== undefined) {
+                requestBody.max_tokens = generationConfig.maxOutputTokens;
+            }
+            if (generationConfig.topP !== undefined) {
+                requestBody.top_p = generationConfig.topP;
+            }
+        }
+
+        if (state.settings.geminiEnableFunctionCalling && window.functionDeclarations) {
+            const openAITools = [];
+
+            for (const geminiTool of window.functionDeclarations) {
+                if (geminiTool.function_declarations && Array.isArray(geminiTool.function_declarations)) {
+                    for (const funcDecl of geminiTool.function_declarations) {
+                        openAITools.push({
+                            type: 'function',
+                            function: {
+                                name: funcDecl.name,
+                                description: funcDecl.description || '',
+                                parameters: funcDecl.parameters || {}
+                            }
+                        });
+                    }
+                } else if (geminiTool.google_search) {
+                    console.warn("DeepSeek APIではGoogle Searchはサポートされていません。スキップします。");
+                }
+            }
+
+            if (openAITools.length > 0) {
+                requestBody.tools = openAITools;
+                requestBody.tool_choice = forceCalling ? 'required' : 'auto';
+                console.log(`DeepSeek APIに ${openAITools.length} 個のFunction Callingツールを設定しました。`);
+            }
+        }
+
+        console.log("DeepSeekへの送信データ:", JSON.stringify(requestBody, (key, value) => {
+            if (key === 'data' && typeof value === 'string' && value.length > 100) {
+                return value.substring(0, 50) + '...[省略]...' + value.substring(value.length - 20);
+            }
+            return value;
+        }, 2));
+
+        try {
+            const response = await fetch(DEEPSEEK_API_BASE_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify(requestBody),
+                signal
+            });
+
+            if (!response.ok) {
+                let errorMsg = `DeepSeek APIエラー (${response.status}): ${response.statusText}`;
+                let errorData = null;
+                try {
+                    errorData = await response.json();
+                    console.error("DeepSeek APIエラーレスポンス:", errorData);
+                    if (errorData.error && errorData.error.message) {
+                        errorMsg = `DeepSeek APIエラー (${response.status}): ${errorData.error.message}`;
+                    } else if (errorData.message) {
+                        errorMsg = `DeepSeek APIエラー (${response.status}): ${errorData.message}`;
+                    }
+                } catch (e) {
+                    console.error("DeepSeek APIエラーレスポンスのパース失敗:", e);
+                }
+                const error = new Error(errorMsg);
+                error.status = response.status;
+                error.data = errorData;
+                throw error;
+            }
+
+            const openAIResponse = await response.json();
+            const geminiFormatResponse = this.convertOpenAIToGeminiFormat(openAIResponse);
+
+            return {
+                ok: true,
+                status: response.status,
+                json: async () => geminiFormatResponse
+            };
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                throw new Error("リクエストがキャンセルされました。");
+            }
+            throw error;
+        }
+    },
     // OpenRouter APIを呼び出す
+
     async callOpenRouterApi(messagesForApi, generationConfig, systemInstruction, tools = null, forceCalling = false, signal = null) {
         console.log(`[Debug] callOpenRouterApi: OpenRouter APIを呼び出します。`);
 
@@ -5630,6 +5770,8 @@ const apiUtils = {
 
         if (provider === 'zai') {
             return await this.callZaiApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling, signal);
+        } else if (provider === 'deepseek') {
+            return await this.callDeepSeekApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling, signal);
         } else if (provider === 'openrouter') {
             return await this.callOpenRouterApi(messagesForApi, generationConfig, systemInstruction, tools, forceCalling, signal);
         } else if (provider === 'opencode_go') {
@@ -6399,7 +6541,7 @@ const appLogic = {
 
     getCurrentUiSettings() {
         const settings = {};
-        const stringKeys = ['apiProvider', 'apiKey', 'zaiApiKey', 'openrouterApiKey', 'opencodeGoApiKey', 'bedrockAccessKey', 'bedrockSecretKey', 'bedrockRegion', 'vertexProjectId', 'vertexRegion', 'vertexServiceAccountKey', 'modelName', 'dummyUser', 'dummyModel', 'additionalModels', 'historySortOrder', 'fontFamily', 'proofreadingModelName', 'proofreadingSystemInstruction', 'googleSearchApiKey', 'googleSearchEngineId', 'headerColor', 'thoughtTranslationModel', 'summaryModelName', 'summarySystemPrompt'];
+        const stringKeys = ['apiProvider', 'apiKey', 'zaiApiKey', 'deepseekApiKey', 'openrouterApiKey', 'opencodeGoApiKey', 'bedrockAccessKey', 'bedrockSecretKey', 'bedrockRegion', 'vertexProjectId', 'vertexRegion', 'vertexServiceAccountKey', 'modelName', 'dummyUser', 'dummyModel', 'additionalModels', 'historySortOrder', 'fontFamily', 'proofreadingModelName', 'proofreadingSystemInstruction', 'googleSearchApiKey', 'googleSearchEngineId', 'headerColor', 'thoughtTranslationModel', 'summaryModelName', 'summarySystemPrompt'];
         const numberKeys = ['temperature', 'maxTokens', 'topK', 'topP', 'thinkingBudget', 'maxRetries', 'maxBackoffDelaySeconds', 'overlayOpacity', 'messageOpacity'];
         const booleanKeys = ['enterToSend', 'darkMode', 'geminiEnableGrounding', 'geminiEnableFunctionCalling', 'enableSwipeNavigation', 'enableProofreading', 'enableAutoRetry', 'useFixedRetryDelay', 'reverseDummyOrder', 'concatDummyModel', 'includeThoughts', 'enableThoughtTranslation', 'applyDummyToProofread', 'applyDummyToTranslate', 'forceFunctionCalling', 'autoScroll', 'enableWideMode', 'enableSummaryButton'];
 
@@ -6860,6 +7002,7 @@ const appLogic = {
     updateProviderUI(provider) {
         const isGemini = provider === 'gemini';
         const isZai = provider === 'zai';
+        const isDeepSeek = provider === 'deepseek';
         const isOpenRouter = provider === 'openrouter';
         const isOpenCodeGo = provider === 'opencode_go';
         const isBedrock = provider === 'bedrock';
@@ -6872,6 +7015,9 @@ const appLogic = {
         }
         if (elements.zaiApiKeyContainer) {
             elements.zaiApiKeyContainer.classList.toggle('hidden', !isZai);
+        }
+        if (elements.deepseekApiKeyContainer) {
+            elements.deepseekApiKeyContainer.classList.toggle('hidden', !isDeepSeek);
         }
         if (elements.openrouterApiKeyContainer) {
             elements.openrouterApiKeyContainer.classList.toggle('hidden', !isOpenRouter);
@@ -6901,7 +7047,7 @@ const appLogic = {
         }
 
         // デバッグモード専用プロバイダーのチェック
-        const isDebugOnlyProvider = isZai || isOpenRouter || isOpenCodeGo || isBedrock || isVertex || isAzure;
+        const isDebugOnlyProvider = isZai || isDeepSeek || isOpenRouter || isOpenCodeGo || isBedrock || isVertex || isAzure;
         if (!state.settings.debugMode && isDebugOnlyProvider) {
             // デバッグモードOFFならGeminiに戻す
             state.settings.apiProvider = 'gemini';
@@ -6957,6 +7103,8 @@ const appLogic = {
         let models;
         if (provider === 'zai') {
             models = ZAI_MODELS;
+        } else if (provider === 'deepseek') {
+            models = DEEPSEEK_MODELS;
         } else if (provider === 'opencode_go') {
             models = OPENCODE_GO_MODELS;
         } else if (provider === 'bedrock') {
@@ -7007,6 +7155,8 @@ const appLogic = {
             let defaultModel;
             if (provider === 'zai') {
                 defaultModel = DEFAULT_ZAI_MODEL;
+            } else if (provider === 'deepseek') {
+                defaultModel = DEFAULT_DEEPSEEK_MODEL;
             } else if (provider === 'opencode_go') {
                 defaultModel = DEFAULT_OPENCODE_GO_MODEL;
             } else if (provider === 'openrouter') {
@@ -8118,7 +8268,7 @@ const appLogic = {
                 element: elements.apiProviderSelect,
                 event: 'change',
                 onUpdate: (value) => {
-                    const isDebugOnlyProvider = value === 'zai' || value === 'openrouter' || value === 'opencode_go' || value === 'bedrock' || value === 'vertex';
+                    const isDebugOnlyProvider = value === 'zai' || value === 'deepseek' || value === 'openrouter' || value === 'opencode_go' || value === 'bedrock' || value === 'vertex' || value === 'azure';
                     if (!state.settings.debugMode && isDebugOnlyProvider) {
                         const fallbackProvider = 'gemini';
                         state.settings.apiProvider = fallbackProvider;
@@ -8142,6 +8292,7 @@ const appLogic = {
             },
             apiKey: { element: elements.apiKeyInput, event: 'input' },
             zaiApiKey: { element: elements.zaiApiKeyInput, event: 'input' },
+            deepseekApiKey: { element: elements.deepseekApiKeyInput, event: 'input' },
             openrouterApiKey: { element: elements.openrouterApiKeyInput, event: 'input' },
             opencodeGoApiKey: { element: elements.opencodeGoApiKeyInput, event: 'input' },
             bedrockAccessKey: { element: elements.bedrockAccessKeyInput, event: 'input' },
@@ -8198,7 +8349,7 @@ const appLogic = {
                         elements.apiProviderRow.classList.toggle('hidden', !value);
                     }
 
-                    const isDebugOnlyProvider = state.settings.apiProvider === 'zai' || state.settings.apiProvider === 'openrouter' || state.settings.apiProvider === 'opencode_go' || state.settings.apiProvider === 'bedrock' || state.settings.apiProvider === 'vertex';
+                    const isDebugOnlyProvider = state.settings.apiProvider === 'zai' || state.settings.apiProvider === 'deepseek' || state.settings.apiProvider === 'openrouter' || state.settings.apiProvider === 'opencode_go' || state.settings.apiProvider === 'bedrock' || state.settings.apiProvider === 'vertex' || state.settings.apiProvider === 'azure';
                     if (!value && isDebugOnlyProvider) {
                         const fallbackProvider = 'gemini';
                         state.settings.apiProvider = fallbackProvider;

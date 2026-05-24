@@ -1,6 +1,6 @@
 // sw.js
 
-const CACHE_NAME = 'gemini-pwa-cache-v1.14'; // 更新後はここも変更
+const CACHE_NAME = 'gemini-pwa-cache-v1.15'; // 更新後はここも変更
 const urlsToCache = [
   './',
   './index.html',
@@ -33,6 +33,7 @@ self.addEventListener('fetch', (event) => {
 
   // APIリクエスト (Google API, Azure API, Stable Diffusion API) はService Workerの処理から完全に除外する
   const isGoogleApiPost = requestUrl.hostname === 'generativelanguage.googleapis.com' && event.request.method === 'POST';
+  const isDeepSeekApiPost = requestUrl.hostname === 'api.deepseek.com' && event.request.method === 'POST';
   // Azure AI Services (Anthropicモデル含む) へのリクエストを判定
   const isAzureApiPost = requestUrl.hostname.endsWith('.services.ai.azure.com') && event.request.method === 'POST';
   // ポート番号(ローカル接続)またはトンネルサービス経由のホスト名でSD APIへのリクエストかを判定
@@ -41,7 +42,7 @@ self.addEventListener('fetch', (event) => {
   const isStableDiffusionApi = (requestUrl.port === '7860' || isTunnelService) && event.request.method === 'POST';
   const isProxyApiPost = requestUrl.hostname === 'gemini-pwa-mk2-proxy.marine14f.workers.dev' && event.request.method === 'POST';
 
-  if (isGoogleApiPost || isAzureApiPost || isStableDiffusionApi || isProxyApiPost || event.request.method !== 'GET') {
+  if (isGoogleApiPost || isDeepSeekApiPost || isAzureApiPost || isStableDiffusionApi || isProxyApiPost || event.request.method !== 'GET') {
     // console.log('[SW] Ignoring API request:', event.request.url);
     return; 
   }

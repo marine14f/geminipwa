@@ -253,6 +253,7 @@
                         <select id="api-provider" aria-label="APIプロバイダー">
                             <option value="gemini">Gemini</option>
                             <option value="zai">Z.ai</option>
+                            <option value="deepseek">DeepSeek</option>
                             <option value="openrouter">OpenRouter</option>
                             <option value="opencode_go">OpenCode Go</option>
                             <option value="bedrock">Amazon Bedrock</option>
@@ -271,6 +272,16 @@
                         <label for="zai-api-key">Z.ai APIキー:</label>
                         <input type="password" autocomplete="new-password" id="zai-api-key" placeholder="Z.ai APIキーを入力"
                             aria-label="Z.ai APIキー">
+                    </div>
+
+                    <div id="deepseek-api-key-container" class="hidden">
+                        <label for="deepseek-api-key">DeepSeek APIキー:</label>
+                        <input type="password" autocomplete="new-password" id="deepseek-api-key"
+                            placeholder="DeepSeek APIキーを入力" aria-label="DeepSeek APIキー">
+                        <p style="font-size: 11px; color: var(--text-secondary); margin-top: 8px;">
+                            ※ DeepSeek公式API (https://api.deepseek.com) を使用します。<br>
+                            ※ ブラウザからCORSで接続できない場合はProxyが必要です。
+                        </p>
                     </div>
 
                     <div id="openrouter-api-key-container" class="hidden">
